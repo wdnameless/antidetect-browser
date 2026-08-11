@@ -1,0 +1,105 @@
+{
+  "name": "antidetect-browser",
+  "version": "0.2.0",
+  "private": true,
+  "description": "Personal antidetect browser with an AdsPower-compatible Local API.",
+  "main": "dist/electron/main.js",
+  "scripts": {
+    "typecheck": "npm run typecheck:main && npm run typecheck:renderer",
+    "typecheck:main": "tsc -p tsconfig.main.json --noEmit",
+    "typecheck:renderer": "tsc -p src/renderer/tsconfig.json --noEmit",
+    "build:main": "tsc -p tsconfig.main.json",
+    "build:renderer": "vite build --config src/renderer/vite.config.ts",
+    "build": "npm run build:main && npm run build:renderer",
+    "vite:dev": "vite --config src/renderer/vite.config.ts",
+    "electron:dev": "npm run build:main && wait-on http://localhost:5173 && cross-env NODE_ENV=development electron .",
+    "dev": "concurrently -k -n vite,electron -c blue,green \"npm run vite:dev\" \"npm run electron:dev\"",
+    "start": "npm run build && cross-env NODE_ENV=production electron .",
+    "service": "tsx src/main/index.ts",
+    "install-chromium": "node scripts/install-chromium.mjs",
+    "ensure-kernel": "node scripts/ensure-kernel.mjs",
+    "predist": "npm run ensure-kernel",
+    "dist": "npm run build && electron-builder --win",
+    "publish": "npm run build && electron-builder --win --publish always"
+  },
+  "dependencies": {
+    "@types/adm-zip": "^0.5.8",
+    "adm-zip": "^0.6.0",
+    "cors": "^2.8.5",
+    "electron-updater": "^6.8.9",
+    "express": "^4.21.0",
+    "http-proxy-agent": "^5.0.0",
+    "node-fetch": "^2.7.0",
+    "playwright": "^1.60.0",
+    "puppeteer-core": "^23.4.1",
+    "socks-proxy-agent": "^6.2.1",
+    "sql.js": "^1.14.1",
+    "ssh2": "^1.17.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@puppeteer/browsers": "^2.4.0",
+    "@types/cors": "^2.8.17",
+    "@types/express": "^4.17.21",
+    "@types/node": "^22.7.4",
+    "@types/node-fetch": "^2.6.13",
+    "@types/react": "^18.3.10",
+    "@types/react-dom": "^18.3.0",
+    "@types/sql.js": "^1.4.11",
+    "@types/ssh2": "^1.15.5",
+    "@vitejs/plugin-react": "^4.3.2",
+    "concurrently": "^9.0.1",
+    "cross-env": "^7.0.3",
+    "electron": "^32.3.3",
+    "electron-builder": "^25.0.5",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "tsx": "^4.19.1",
+    "typescript": "^5.6.2",
+    "vite": "^5.4.8",
+    "wait-on": "^8.0.1"
+  },
+  "build": {
+    "appId": "com.antidetect.browser",
+    "productName": "Antidetect Browser",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "data/chromium/fingerprint-chromium",
+        "to": "kernel/fingerprint-chromium",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ],
+    "asar": true,
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "wdnameless",
+      "repo": "antidetect-browser",
+      "private": false
+    },
+    "artifactName": "${productName}-Setup-${version}.${ext}"
+  }
+}
