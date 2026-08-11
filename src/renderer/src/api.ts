@@ -82,26 +82,51 @@ async function request<T>(path: string, init?: RequestInit): Promise<ApiEnvelope
   return (await res.json()) as ApiEnvelope<T>;
 }
 
+export interface GroupItem {
+  id: string;
+  name: string;
+  created_at: number;
+  profile_count: number;
+}
+
 export const api = {
   status: () => request<{ status: string; version: string }>('/status'),
-  list: () =>
-    request<{ list: ProfileListItem[]; total: number; page: number; page_size: number }>(
-      '/api/v1/browser/list'
-    ),
-  create: (name: string) =>
+  list: (groupId?: string | null) => {
+    const url = groupId ? `/api/v1/browser/list?group_id=${encodeURIComponent(groupId)}` : '/api/v1/browser/list';
+    return request<{ list: ProfileListItem[]; total: number; page: number; page_size: number }>(url);
+  },
+  create: (name?: string, groupId?: string, proxyId?: string, deviceId?: string) =>
     request<{ user_id: string }>('/api/v1/browser-profile/create', {
       method: 'POST',
-      body: JSON.stringify({ name }),
+      body: JSON.stringify({ name, group_id: groupId, proxy_id: proxyId, device_id: deviceId }),
     }),
   start: (id: string) =>
     request<StartResult>(`/api/v1/browser/start?user_id=${encodeURIComponent(id)}`),
   stop: (id: string) =>
     request<Record<string, never>>(`/api/v1/browser/stop?user_id=${encodeURIComponent(id)}`),
-  profileUpdate: (body: { user_id: string; proxy_id?: string | null; device_id?: string | null }) =>
+  profileUpdate: (body: {
+    user_id: string;
+    name?: string;
+    group_id?: string | null;
+    proxy_id?: string | null;
+    device_id?: string | null;
+  }) =>
     request<Record<string, never>>('/api/v1/browser-profile/update', {
       method: 'POST',
       body: JSON.stringify(body),
     }),
+  randomizeFingerprint: (user_id: string) =>
+    request<{ seed: number }>('/api/v1/browser-profile/randomize-fingerprint', {
+      method: 'POST',
+      body: JSON.stringify({ user_id }),
+    }),
+  groupList: () => request<{ list: GroupItem[] }>('/api/v1/group/list'),
+  groupCreate: (name: string) =>
+    request<{ group_id: string }>('/api/v1/group/create', { method: 'POST', body: JSON.stringify({ name }) }),
+  groupUpdate: (group_id: string, name: string) =>
+    request<Record<string, never>>('/api/v1/group/update', { method: 'POST', body: JSON.stringify({ group_id, name }) }),
+  groupDelete: (group_id: string) =>
+    request<Record<string, never>>('/api/v1/group/delete', { method: 'POST', body: JSON.stringify({ group_id }) }),
   proxyList: () => request<{ list: ProxyItem[]; total: number }>('/api/v1/proxy/list'),
   proxyCreate: (body: Record<string, unknown>) =>
     request<{ proxy_id: string }>('/api/v1/proxy/create', { method: 'POST', body: JSON.stringify(body) }),
@@ -128,6 +153,11 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ extension_id }),
     }),
+  profileBindExtensions: (user_id: string, extension_ids: string[]) =>
+    request<{ count: number }>('/api/v1/browser-profile/extensions/bind', {
+      method: 'POST',
+      body: JSON.stringify({ user_id, extension_ids }),
+    }),
   profileExtensionsBind: (user_id: string, extension_ids: string[]) =>
     request<{ count: number }>('/api/v1/browser-profile/extensions/bind', {
       method: 'POST',
@@ -137,7 +167,6 @@ export const api = {
     request<{ extension_ids: string[] }>(
       `/api/v1/browser-profile/extensions?user_id=${encodeURIComponent(user_id)}`
     ),
-  // Cookies (Sprint A)
   cookiesImport: (user_id: string, cookies: Array<Record<string, unknown>>) =>
     request<{ count: number }>('/api/v1/browser-profile/cookies/import', {
       method: 'POST',
@@ -147,8 +176,7 @@ export const api = {
     request<{ cookies: Array<Record<string, unknown>>; source: string }>(
       `/api/v1/browser-profile/cookies/export?user_id=${encodeURIComponent(user_id)}`
     ),
-  // Fingerprint config (Tier 2)
-  fingerprintUpdate: (user_id: string, config: Record<string, unknown>) =>
+  profileUpdateFingerprint: (user_id: string, config: Record<string, unknown>) =>
     request<Record<string, never>>('/api/v1/browser-profile/fingerprint', {
       method: 'POST',
       body: JSON.stringify({ user_id, config }),

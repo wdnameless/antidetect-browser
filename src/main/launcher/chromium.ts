@@ -142,7 +142,22 @@ export async function startProfile(cfg: LaunchConfig): Promise<StartResult> {
     args.push(`--load-extension=${joined}`);
   }
 
-  const child = spawn(executable, args, { stdio: 'ignore' });
+  let child: ChildProcess;
+  try {
+    if (!fs.existsSync(executable) && executable !== 'chrome.exe') {
+      if (tunnel) void tunnel.close();
+      throw new Error(`Chromium binary not found at "${executable}". Please check installation.`);
+    }
+    child = spawn(executable, args, { stdio: 'ignore' });
+  } catch (err) {
+    if (tunnel) void tunnel.close();
+    throw new Error(`Failed to launch browser (${executable}): ${(err as Error).message}`);
+  }
+
+  child.on('error', (err) => {
+    console.error('[chromium] child process error:', err.message);
+  });
+
   if (!child.pid) {
     if (tunnel) void tunnel.close();
     throw new Error(`failed to spawn chromium (${executable})`);

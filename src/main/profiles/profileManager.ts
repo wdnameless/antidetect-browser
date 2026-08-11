@@ -225,12 +225,118 @@ export function setStatus(id: string, status: string): void {
     .run(status, Date.now(), id);
 }
 
-export function listProfiles(page: number, pageSize: number): { list: ProfileListItem[]; total: number } {
+export function updateProfile(
+  id: string,
+  updates: { name?: string; group_id?: string | null; proxy_id?: string | null; device_id?: string | null }
+): boolean {
   const db = getDb();
-  const total = (db.prepare('SELECT COUNT(*) AS c FROM profiles').get() as { c: number }).c;
+  const profile = getProfile(id);
+  if (!profile) return false;
+
+  const sets: string[] = [];
+  const params: unknown[] = [];
+
+  if (updates.name !== undefined) {
+    sets.push('name = ?');
+    params.push(updates.name);
+  }
+  if (updates.group_id !== undefined) {
+    sets.push('group_id = ?');
+    params.push(updates.group_id);
+  }
+  if (updates.proxy_id !== undefined) {
+    sets.push('proxy_id = ?');
+    params.push(updates.proxy_id);
+  }
+  if (updates.device_id !== undefined) {
+    sets.push('device_id = ?');
+    params.push(updates.device_id);
+  }
+
+  if (sets.length === 0) return true;
+
+  sets.push('updated_at = ?');
+  params.push(Date.now());
+  params.push(id);
+
+  db.prepare(`UPDATE profiles SET ${sets.join(', ')} WHERE id = ?`).run(...params);
+  return true;
+}
+
+export function randomizeProfileFingerprint(id: string): number | null {
+  const db = getDb();
+  const profile = getProfile(id);
+  if (!profile || !profile.fingerprint_id) return null;
+
+  const newSeed = randomInt(1, 2147483647);
+  db.prepare('UPDATE fingerprints SET seed = ?, updated_at = ? WHERE id = ?').run(
+    newSeed,
+    Date.now(),
+    profile.fingerprint_id
+  );
+  return newSeed;
+}
+
+export interface GroupItem {
+  id: string;
+  name: string;
+  created_at: number;
+  profile_count: number;
+}
+
+export function createGroup(name: string): string {
+  const db = getDb();
+  const id = 'g_' + randomUUID();
+  const now = Date.now();
+  db.prepare('INSERT INTO groups (id, name, created_at) VALUES (?, ?, ?)').run(id, name, now);
+  return id;
+}
+
+export function updateGroup(id: string, name: string): boolean {
+  const res = getDb().prepare('UPDATE groups SET name = ? WHERE id = ?').run(name, id);
+  return res.changes > 0;
+}
+
+export function deleteGroup(id: string): boolean {
+  const db = getDb();
+  db.prepare('UPDATE profiles SET group_id = NULL WHERE group_id = ?').run(id);
+  const res = db.prepare('DELETE FROM groups WHERE id = ?').run(id);
+  return res.changes > 0;
+}
+
+export function listGroups(): GroupItem[] {
+  const db = getDb();
   const rows = db
-    .prepare('SELECT id, name, status, group_id FROM profiles ORDER BY created_at DESC LIMIT ? OFFSET ?')
-    .all(pageSize, (page - 1) * pageSize) as Array<{
+    .prepare(
+      `SELECT g.id, g.name, g.created_at, COUNT(p.id) AS profile_count
+       FROM groups g
+       LEFT JOIN profiles p ON p.group_id = g.id
+       GROUP BY g.id
+       ORDER BY g.created_at DESC`
+    )
+    .all() as Array<{ id: string; name: string; created_at: number; profile_count: number }>;
+  return rows;
+}
+
+export function listProfiles(
+  page: number,
+  pageSize: number,
+  groupId?: string | null
+): { list: ProfileListItem[]; total: number } {
+  const db = getDb();
+  let where = '';
+  const params: unknown[] = [];
+  if (groupId !== undefined && groupId !== null && groupId !== '') {
+    where = ' WHERE group_id = ?';
+    params.push(groupId);
+  }
+
+  const total = (db.prepare(`SELECT COUNT(*) AS c FROM profiles${where}`).get(...params) as { c: number }).c;
+  const rows = db
+    .prepare(
+      `SELECT id, name, status, group_id FROM profiles${where} ORDER BY created_at DESC LIMIT ? OFFSET ?`
+    )
+    .all(...params, pageSize, (page - 1) * pageSize) as Array<{
     id: string;
     name: string | null;
     status: string;

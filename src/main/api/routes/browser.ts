@@ -78,15 +78,96 @@ router.get('/api/v1/browser/stop', async (req, res) => {
 router.get('/api/v1/browser/list', (req, res) => {
   const page = Math.max(1, Number(req.query.page) || 1);
   const pageSize = Math.min(500, Math.max(1, Number(req.query.page_size) || 100));
-  const { list, total } = pm.listProfiles(page, pageSize);
+  const groupId = typeof req.query.group_id === 'string' ? req.query.group_id : undefined;
+  const { list, total } = pm.listProfiles(page, pageSize, groupId);
   res.json({ code: 0, msg: 'success', data: { list, page, page_size: pageSize, total } });
 });
 // Alias compatible with AdsPower V2 list
 router.post('/api/v2/browser-profile/list', (req, res) => {
   const page = Math.max(1, Number(req.body?.page) || 1);
   const pageSize = Math.min(500, Math.max(1, Number(req.body?.page_size) || 100));
-  const { list, total } = pm.listProfiles(page, pageSize);
+  const groupId = typeof req.body?.group_id === 'string' ? req.body.group_id : undefined;
+  const { list, total } = pm.listProfiles(page, pageSize, groupId);
   res.json({ code: 0, msg: 'success', data: { list, page, page_size: pageSize, total } });
+});
+
+const updateProfileSchema = z.object({
+  user_id: z.string(),
+  name: z.string().optional(),
+  group_id: z.string().nullable().optional(),
+  proxy_id: z.string().nullable().optional(),
+  device_id: z.string().nullable().optional(),
+});
+
+router.post('/api/v1/browser-profile/update', (req, res) => {
+  const parsed = updateProfileSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.json({ code: -1, msg: 'invalid body', data: {} });
+    return;
+  }
+  const ok = pm.updateProfile(parsed.data.user_id, {
+    name: parsed.data.name,
+    group_id: parsed.data.group_id,
+    proxy_id: parsed.data.proxy_id,
+    device_id: parsed.data.device_id,
+  });
+  res.json(ok ? { code: 0, msg: 'success', data: {} } : { code: -1, msg: 'profile update failed', data: {} });
+});
+
+const randomizeFpSchema = z.object({
+  user_id: z.string(),
+});
+
+router.post('/api/v1/browser-profile/randomize-fingerprint', (req, res) => {
+  const parsed = randomizeFpSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.json({ code: -1, msg: 'invalid body', data: {} });
+    return;
+  }
+  const newSeed = pm.randomizeProfileFingerprint(parsed.data.user_id);
+  res.json(
+    newSeed !== null
+      ? { code: 0, msg: 'success', data: { seed: newSeed } }
+      : { code: -1, msg: 'randomize fingerprint failed', data: {} }
+  );
+});
+
+router.get('/api/v1/group/list', (_req, res) => {
+  const list = pm.listGroups();
+  res.json({ code: 0, msg: 'success', data: { list } });
+});
+
+const createGroupSchema = z.object({ name: z.string().min(1) });
+router.post('/api/v1/group/create', (req, res) => {
+  const parsed = createGroupSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.json({ code: -1, msg: 'name is required', data: {} });
+    return;
+  }
+  const id = pm.createGroup(parsed.data.name);
+  res.json({ code: 0, msg: 'success', data: { group_id: id } });
+});
+
+const updateGroupSchema = z.object({ group_id: z.string(), name: z.string().min(1) });
+router.post('/api/v1/group/update', (req, res) => {
+  const parsed = updateGroupSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.json({ code: -1, msg: 'invalid body', data: {} });
+    return;
+  }
+  const ok = pm.updateGroup(parsed.data.group_id, parsed.data.name);
+  res.json(ok ? { code: 0, msg: 'success', data: {} } : { code: -1, msg: 'group update failed', data: {} });
+});
+
+const deleteGroupSchema = z.object({ group_id: z.string() });
+router.post('/api/v1/group/delete', (req, res) => {
+  const parsed = deleteGroupSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.json({ code: -1, msg: 'invalid body', data: {} });
+    return;
+  }
+  const ok = pm.deleteGroup(parsed.data.group_id);
+  res.json(ok ? { code: 0, msg: 'success', data: {} } : { code: -1, msg: 'group delete failed', data: {} });
 });
 
 const createSchema = z.object({
