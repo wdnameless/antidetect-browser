@@ -96,7 +96,8 @@ function initAutoUpdater(): void {
     });
   });
   ipcMain.handle('update:quit-and-install', () => {
-    autoUpdater.quitAndInstall();
+    // isSilent = true (/S flag on NSIS installer), isForceRun = true (relaunch app immediately after update)
+    autoUpdater.quitAndInstall(true, true);
   });
 }
 

@@ -269,11 +269,7 @@ export function randomizeProfileFingerprint(id: string): number | null {
   if (!profile || !profile.fingerprint_id) return null;
 
   const newSeed = randomInt(1, 2147483647);
-  db.prepare('UPDATE fingerprints SET seed = ?, updated_at = ? WHERE id = ?').run(
-    newSeed,
-    Date.now(),
-    profile.fingerprint_id
-  );
+  db.prepare('UPDATE fingerprints SET seed = ? WHERE id = ?').run(newSeed, profile.fingerprint_id);
   return newSeed;
 }
 

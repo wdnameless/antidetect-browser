@@ -124,12 +124,16 @@ router.post('/api/v1/browser-profile/randomize-fingerprint', (req, res) => {
     res.json({ code: -1, msg: 'invalid body', data: {} });
     return;
   }
-  const newSeed = pm.randomizeProfileFingerprint(parsed.data.user_id);
-  res.json(
-    newSeed !== null
-      ? { code: 0, msg: 'success', data: { seed: newSeed } }
-      : { code: -1, msg: 'randomize fingerprint failed', data: {} }
-  );
+  try {
+    const newSeed = pm.randomizeProfileFingerprint(parsed.data.user_id);
+    res.json(
+      newSeed !== null
+        ? { code: 0, msg: 'success', data: { seed: newSeed } }
+        : { code: -1, msg: 'randomize fingerprint failed', data: {} }
+    );
+  } catch (err) {
+    res.json({ code: -1, msg: (err as Error).message, data: {} });
+  }
 });
 
 router.get('/api/v1/group/list', (_req, res) => {
