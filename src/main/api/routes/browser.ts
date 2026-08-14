@@ -3,7 +3,7 @@ import { z } from 'zod';
 import * as pm from '../../profiles/profileManager';
 import * as launcher from '../../launcher/chromium';
 import * as firefox from '../../launcher/firefox';
-import { getDb } from '../../db';
+import { checkProxy, type ProxyInput } from '../../proxy/proxyManager';
 
 const router = Router();
 
@@ -20,48 +20,87 @@ async function handleStart(id: string, res: Response): Promise<void> {
   try {
     const cfg = pm.resolveLaunchConfig(id);
     if (cfg.browserType === 'firefox') {
-      const result = await firefox.startFirefox({
-        profileId: id,
-        userDataDir: cfg.userDataDir,
-        proxyServer: cfg.proxyServer,
-        proxyAuth: cfg.proxyAuth,
-        timezone: cfg.fingerprint?.timezone ?? cfg.proxyTimezone,
-        lang: cfg.fingerprint?.lang,
-      });
-      if (!result.ok) {
+      const result = await firefox.startFirefox(cfg);
+      if (result.ok) {
+        pm.setStatus(id, 'running');
+        res.json({
+          code: 0,
+          msg: 'success',
+          data: {
+            browser_type: 'firefox',
+            url: result.url,
+            title: result.title,
+          },
+        });
+      } else {
         res.json({ code: -1, msg: result.error ?? 'firefox start failed', data: {} });
-        return;
       }
+    } else {
+      const startResult = await launcher.startProfile(cfg);
       pm.setStatus(id, 'running');
-      res.json({ code: 0, msg: 'success', data: { browser_type: 'firefox', url: result.url ?? '' } });
-      return;
+      res.json({ code: 0, msg: 'success', data: startResult });
     }
-    const result = await launcher.startProfile(cfg);
-    pm.setStatus(id, 'running');
-    res.json({ code: 0, msg: 'success', data: result });
   } catch (err) {
+    pm.setStatus(id, 'closed');
     res.json({ code: -1, msg: (err as Error).message, data: {} });
   }
 }
 
-// AdsPower V1
+// GET /api/v1/browser/start?user_id=<id>
 router.get('/api/v1/browser/start', async (req, res) => {
-  await handleStart(String(req.query.user_id || ''), res);
+  const id = String(req.query.user_id || '');
+  await handleStart(id, res);
 });
 
-// AdsPower V2
-const startV2Schema = z.object({ profile_id: z.string() });
+// POST /api/v1/browser/start { user_id }
+router.post('/api/v1/browser/start', async (req, res) => {
+  const id = String(req.body?.user_id || req.query.user_id || '');
+  await handleStart(id, res);
+});
+
+// POST /api/v2/browser-profile/start (AdsPower V2 alias)
 router.post('/api/v2/browser-profile/start', async (req, res) => {
-  const parsed = startV2Schema.safeParse(req.body);
-  if (!parsed.success) {
-    res.json({ code: -1, msg: 'invalid body: profile_id required', data: {} });
-    return;
-  }
-  await handleStart(parsed.data.profile_id, res);
+  const id = String(req.body?.user_id || req.query.user_id || '');
+  await handleStart(id, res);
 });
 
+// GET /api/v1/browser/stop?user_id=<id>
 router.get('/api/v1/browser/stop', async (req, res) => {
   const id = String(req.query.user_id || '');
+  const profile = id ? pm.getProfile(id) : undefined;
+  if (profile?.browser_type === 'firefox') {
+    const result = await firefox.stopFirefox(id);
+    if (!result.ok) {
+      res.json({ code: -1, msg: result.error ?? 'stop failed', data: {} });
+      return;
+    }
+  } else {
+    launcher.stopProfile(id);
+  }
+  if (id) pm.setStatus(id, 'closed');
+  res.json({ code: 0, msg: 'success', data: {} });
+});
+
+// POST /api/v1/browser/stop { user_id }
+router.post('/api/v1/browser/stop', async (req, res) => {
+  const id = String(req.body?.user_id || req.query.user_id || '');
+  const profile = id ? pm.getProfile(id) : undefined;
+  if (profile?.browser_type === 'firefox') {
+    const result = await firefox.stopFirefox(id);
+    if (!result.ok) {
+      res.json({ code: -1, msg: result.error ?? 'stop failed', data: {} });
+      return;
+    }
+  } else {
+    launcher.stopProfile(id);
+  }
+  if (id) pm.setStatus(id, 'closed');
+  res.json({ code: 0, msg: 'success', data: {} });
+});
+
+// POST /api/v2/browser-profile/stop (AdsPower V2 alias)
+router.post('/api/v2/browser-profile/stop', async (req, res) => {
+  const id = String(req.body?.user_id || req.query.user_id || '');
   const profile = id ? pm.getProfile(id) : undefined;
   if (profile?.browser_type === 'firefox') {
     const result = await firefox.stopFirefox(id);
@@ -83,6 +122,7 @@ router.get('/api/v1/browser/list', (req, res) => {
   const { list, total } = pm.listProfiles(page, pageSize, groupId);
   res.json({ code: 0, msg: 'success', data: { list, page, page_size: pageSize, total } });
 });
+
 // Alias compatible with AdsPower V2 list
 router.post('/api/v2/browser-profile/list', (req, res) => {
   const page = Math.max(1, Number(req.body?.page) || 1);
@@ -92,59 +132,70 @@ router.post('/api/v2/browser-profile/list', (req, res) => {
   res.json({ code: 0, msg: 'success', data: { list, page, page_size: pageSize, total } });
 });
 
+router.get('/api/v1/browser-profile/detail', (req, res) => {
+  const id = String(req.query.user_id || '');
+  if (!id) {
+    res.json({ code: -1, msg: 'user_id is required', data: {} });
+    return;
+  }
+  const details = pm.getProfileDetails(id);
+  if (!details) {
+    res.json({ code: -1, msg: 'profile not found', data: {} });
+    return;
+  }
+  res.json({ code: 0, msg: 'success', data: details });
+});
+
+const proxyInputSchema = z.object({
+  type: z.enum(['http', 'https', 'socks5', 'ssh']),
+  host: z.string(),
+  port: z.union([z.number(), z.string()]).transform(Number),
+  username: z.string().optional(),
+  password: z.string().optional(),
+  privateKey: z.string().optional(),
+});
+
 const updateProfileSchema = z.object({
   user_id: z.string(),
   name: z.string().optional(),
   group_id: z.string().nullable().optional(),
   proxy_id: z.string().nullable().optional(),
+  proxy: proxyInputSchema.nullable().optional(),
   device_id: z.string().nullable().optional(),
-  geolocation: z
-    .object({ latitude: z.number(), longitude: z.number(), accuracy: z.number().optional() })
-    .nullable()
-    .optional(),
+  user_agent: z.string().nullable().optional(),
+  timezone: z.string().nullable().optional(),
 });
 
 router.post('/api/v1/browser-profile/update', (req, res) => {
   const parsed = updateProfileSchema.safeParse(req.body);
   if (!parsed.success) {
-    res.json({ code: -1, msg: 'invalid body', data: {} });
+    res.json({ code: -1, msg: 'invalid body', data: { errors: parsed.error.flatten() } });
     return;
   }
-  const db = getDb();
-  const profile = pm.getProfile(parsed.data.user_id);
-  if (!profile) {
-    res.json({ code: -1, msg: 'profile not found', data: {} });
-    return;
-  }
-  if (parsed.data.proxy_id) {
-    const proxy = db.prepare('SELECT id FROM proxies WHERE id = ?').get(parsed.data.proxy_id);
-    if (!proxy) {
-      res.json({ code: -1, msg: 'proxy not found', data: {} });
-      return;
-    }
-  }
-  if (parsed.data.device_id) {
-    const device = db.prepare('SELECT id FROM devices WHERE id = ?').get(parsed.data.device_id);
-    if (!device) {
-      res.json({ code: -1, msg: 'device not found', data: {} });
-      return;
-    }
-  }
-  // Geolocation: only change when explicitly provided (object to set, null to clear).
-  const geolocation =
-    parsed.data.geolocation === undefined
-      ? undefined
-      : parsed.data.geolocation === null
-        ? null
-        : JSON.stringify(parsed.data.geolocation);
   const ok = pm.updateProfile(parsed.data.user_id, {
     name: parsed.data.name,
     group_id: parsed.data.group_id,
     proxy_id: parsed.data.proxy_id,
+    proxy: parsed.data.proxy ? (parsed.data.proxy as pm.ProxyInput) : parsed.data.proxy,
     device_id: parsed.data.device_id,
-    geolocation,
+    user_agent: parsed.data.user_agent,
+    timezone: parsed.data.timezone,
   });
   res.json(ok ? { code: 0, msg: 'success', data: {} } : { code: -1, msg: 'profile update failed', data: {} });
+});
+
+const deleteProfileSchema = z.object({
+  user_id: z.string(),
+});
+
+router.post('/api/v1/browser-profile/delete', (req, res) => {
+  const parsed = deleteProfileSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.json({ code: -1, msg: 'user_id is required', data: {} });
+    return;
+  }
+  const ok = pm.deleteProfile(parsed.data.user_id);
+  res.json(ok ? { code: 0, msg: 'success', data: {} } : { code: -1, msg: 'profile delete failed', data: {} });
 });
 
 const randomizeFpSchema = z.object({
@@ -210,20 +261,13 @@ router.post('/api/v1/group/delete', (req, res) => {
 const createSchema = z.object({
   name: z.string().optional(),
   group_id: z.string().optional(),
-  proxy_id: z.string().optional(),
-  device_id: z.string().optional(),
   user_agent: z.string().optional(),
   timezone: z.string().optional(),
   browser_type: z.enum(['chromium', 'firefox']).optional(),
-  proxy: z
-    .object({
-      type: z.enum(['http', 'https', 'socks5', 'ssh']),
-      host: z.string(),
-      port: z.union([z.number(), z.string()]),
-      username: z.string().optional(),
-      password: z.string().optional(),
-    })
-    .optional(),
+  proxy_id: z.string().optional(),
+  device_id: z.string().optional(),
+  fingerprint_seed: z.number().optional(),
+  proxy: proxyInputSchema.optional(),
 });
 
 router.post('/api/v1/browser-profile/create', (req, res) => {
@@ -235,20 +279,13 @@ router.post('/api/v1/browser-profile/create', (req, res) => {
   const input: pm.CreateProfileInput = {
     name: parsed.data.name,
     group_id: parsed.data.group_id,
-    proxy_id: parsed.data.proxy_id,
-    device_id: parsed.data.device_id,
     user_agent: parsed.data.user_agent,
     timezone: parsed.data.timezone,
     browser_type: parsed.data.browser_type,
-    proxy: parsed.data.proxy
-      ? {
-          type: parsed.data.proxy.type,
-          host: parsed.data.proxy.host,
-          port: Number(parsed.data.proxy.port),
-          username: parsed.data.proxy.username,
-          password: parsed.data.proxy.password,
-        }
-      : undefined,
+    device_id: parsed.data.device_id,
+    proxy_id: parsed.data.proxy_id,
+    fingerprint_seed: parsed.data.fingerprint_seed,
+    proxy: parsed.data.proxy ? (parsed.data.proxy as pm.ProxyInput) : undefined,
   };
   try {
     const id = pm.createProfile(input);
@@ -258,8 +295,36 @@ router.post('/api/v1/browser-profile/create', (req, res) => {
   }
 });
 
-// --- Firefox managed-control endpoints (Juggler, no ws endpoint) ---
+// Proxy test endpoint (without saving)
+router.post('/api/v1/proxy/test', async (req, res) => {
+  const parsed = proxyInputSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.json({ code: -1, msg: 'invalid proxy payload', data: { errors: parsed.error.flatten() } });
+    return;
+  }
+  try {
+    const result = await checkProxy({
+      id: 'tmp_test',
+      type: parsed.data.type,
+      host: parsed.data.host,
+      port: parsed.data.port,
+      username: parsed.data.username ?? null,
+      password: parsed.data.password ?? null,
+      private_key: parsed.data.privateKey ?? null,
+      country: null,
+      timezone: null,
+      latitude: null,
+      longitude: null,
+      status: 'unknown',
+      created_at: Date.now(),
+    });
+    res.json({ code: 0, msg: 'success', data: result });
+  } catch (err) {
+    res.json({ code: -1, msg: (err as Error).message, data: { ok: false, error: (err as Error).message } });
+  }
+});
 
+// Firefox management routes (managed model)
 const navigateSchema = z.object({ user_id: z.string(), url: z.string() });
 router.post('/api/v1/browser/firefox/navigate', async (req, res) => {
   const parsed = navigateSchema.safeParse(req.body);

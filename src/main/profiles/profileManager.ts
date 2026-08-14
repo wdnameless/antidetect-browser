@@ -3,6 +3,7 @@ import * as path from 'path';
 import { getDb } from '../db';
 import { PROFILES_DIR } from '../config';
 import { getEnabledExtensionPaths } from '../extensions/extensionManager';
+import { checkProxy, type ProxyCheckResult } from '../proxy/proxyManager';
 
 export type ProxyType = 'http' | 'https' | 'socks5' | 'ssh';
 
@@ -20,12 +21,14 @@ export type BrowserType = 'chromium' | 'firefox';
 export interface CreateProfileInput {
   name?: string;
   group_id?: string;
+  proxy_id?: string;
+  proxy?: ProxyInput;
+  device_id?: string;
+  fingerprint_seed?: number;
   user_agent?: string;
   timezone?: string;
-  proxy?: ProxyInput;
-  proxy_id?: string;
-  device_id?: string;
   browser_type?: BrowserType;
+  geolocation?: string;
 }
 
 export interface ProfileRow {
@@ -35,12 +38,10 @@ export interface ProfileRow {
   proxy_id: string | null;
   fingerprint_id: string | null;
   device_id: string | null;
-  browser_type: string;
+  browser_type: string | null;
   user_agent: string | null;
   timezone: string | null;
   geolocation: string | null;
-  cookies_json: string | null;
-  start_urls: string | null;
   status: string;
   created_at: number;
   updated_at: number;
@@ -54,9 +55,11 @@ export interface ProxyRow {
   username: string | null;
   password: string | null;
   private_key: string | null;
+  country: string | null;
   timezone: string | null;
   latitude: number | null;
   longitude: number | null;
+  status: string;
 }
 
 export interface FingerprintLaunch {
@@ -110,6 +113,46 @@ export interface ProfileListItem {
   name: string | null;
   status: string;
   group_id: string | null;
+  proxy_type?: string | null;
+  proxy_host?: string | null;
+  proxy_port?: number | null;
+  proxy_country?: string | null;
+  fingerprint_seed?: number | null;
+  platform?: string | null;
+  device_name?: string | null;
+}
+
+export interface ProfileDetails {
+  user_id: string;
+  name: string | null;
+  status: string;
+  group_id: string | null;
+  device_id: string | null;
+  browser_type: string;
+  user_agent: string | null;
+  timezone: string | null;
+  proxy?: {
+    id: string;
+    type: ProxyType;
+    host: string;
+    port: number;
+    username: string | null;
+    country: string | null;
+    timezone: string | null;
+    status: string;
+  } | null;
+  fingerprint?: {
+    seed: number;
+    platform: string;
+    hardwareConcurrency?: number;
+    brand?: string;
+  } | null;
+  device?: {
+    id: string;
+    name: string;
+    platform: string;
+    config: Record<string, unknown>;
+  } | null;
 }
 
 export function createProfile(input: CreateProfileInput): string {
@@ -140,17 +183,26 @@ export function createProfile(input: CreateProfileInput): string {
     );
   }
 
-  const fpId = 'f_' + randomUUID();
-  const seed = randomInt(1, 2147483647);
+  const seed = typeof input.fingerprint_seed === 'number' && input.fingerprint_seed > 0
+    ? input.fingerprint_seed
+    : randomInt(1, 2147483647);
+  const fpId = 'fp_' + randomUUID();
+  const defaultFpConfig = JSON.stringify({
+    platform: 'windows',
+    brand: 'Chrome',
+    hardwareConcurrency: 8,
+    lang: 'en-US',
+  });
   db.prepare(
-    `INSERT INTO fingerprints (id, label, seed, config_json, created_at) VALUES (?, ?, ?, ?, ?)`
-  ).run(fpId, 'auto', seed, '{}', now);
+    'INSERT INTO fingerprints (id, label, seed, config_json, created_at) VALUES (?, ?, ?, ?, ?)'
+  ).run(fpId, 'default', seed, defaultFpConfig, now);
 
   db.prepare(
-    `INSERT INTO profiles
-       (id, name, group_id, proxy_id, fingerprint_id, device_id, browser_type, user_agent, timezone,
-        geolocation, cookies_json, start_urls, status, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    `INSERT INTO profiles (
+       id, name, group_id, proxy_id, fingerprint_id, device_id,
+       browser_type, user_agent, timezone, geolocation, status,
+       created_at, updated_at
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'closed', ?, ?)`
   ).run(
     profileId,
     input.name ?? null,
@@ -161,10 +213,7 @@ export function createProfile(input: CreateProfileInput): string {
     input.browser_type ?? 'chromium',
     input.user_agent ?? null,
     input.timezone ?? null,
-    null,
-    null,
-    null,
-    'closed',
+    input.geolocation ?? null,
     now,
     now
   );
@@ -172,25 +221,29 @@ export function createProfile(input: CreateProfileInput): string {
   return profileId;
 }
 
-/** Batch-create profiles (Sprint C). Proxies are assigned round-robin. */
-export function batchCreateProfiles(opts: {
+export function batchCreateProfiles(input: {
   count: number;
   namePrefix?: string;
   proxyIds?: string[];
   deviceId?: string;
 }): string[] {
+  const prefix = input.namePrefix || 'profile';
+  const proxyList = input.proxyIds && input.proxyIds.length ? input.proxyIds : [];
   const ids: string[] = [];
-  const prefix = opts.namePrefix ?? 'profile';
-  for (let i = 0; i < opts.count; i++) {
-    const proxyId =
-      opts.proxyIds && opts.proxyIds.length ? opts.proxyIds[i % opts.proxyIds.length] : undefined;
-    const id = createProfile({ name: `${prefix}-${i + 1}`, proxy_id: proxyId, device_id: opts.deviceId });
+
+  for (let i = 1; i <= input.count; i++) {
+    const name = `${prefix}-${String(i).padStart(3, '0')}`;
+    const proxyId = proxyList.length > 0 ? proxyList[(i - 1) % proxyList.length] : undefined;
+    const id = createProfile({
+      name,
+      proxy_id: proxyId,
+      device_id: input.deviceId,
+    });
     ids.push(id);
   }
   return ids;
 }
 
-/** Merge a config into the profile's fingerprint config_json (Tier 2). */
 export function updateProfileFingerprint(userId: string, config: Record<string, unknown>): boolean {
   const db = getDb();
   const profile = getProfile(userId);
@@ -219,6 +272,85 @@ export function getProfile(id: string): ProfileRow | undefined {
     .get(id) as ProfileRow | undefined;
 }
 
+export function getProfileDetails(id: string): ProfileDetails | null {
+  const db = getDb();
+  const p = getProfile(id);
+  if (!p) return null;
+
+  let proxy: ProfileDetails['proxy'] = null;
+  if (p.proxy_id) {
+    const px = db.prepare('SELECT * FROM proxies WHERE id = ?').get(p.proxy_id) as ProxyRow | undefined;
+    if (px) {
+      proxy = {
+        id: px.id,
+        type: px.type,
+        host: px.host,
+        port: px.port,
+        username: px.username,
+        country: px.country,
+        timezone: px.timezone,
+        status: px.status,
+      };
+    }
+  }
+
+  let fingerprint: ProfileDetails['fingerprint'] = null;
+  if (p.fingerprint_id) {
+    const fp = db.prepare('SELECT seed, config_json FROM fingerprints WHERE id = ?').get(p.fingerprint_id) as { seed: number; config_json: string } | undefined;
+    if (fp) {
+      let cfg: Record<string, unknown> = {};
+      try { cfg = JSON.parse(fp.config_json || '{}'); } catch { /* ignore */ }
+      fingerprint = {
+        seed: fp.seed,
+        platform: typeof cfg.platform === 'string' ? cfg.platform : 'windows',
+        hardwareConcurrency: typeof cfg.hardwareConcurrency === 'number' ? cfg.hardwareConcurrency : 8,
+        brand: typeof cfg.brand === 'string' ? cfg.brand : 'Chrome',
+      };
+    }
+  }
+
+  let device: ProfileDetails['device'] = null;
+  if (p.device_id) {
+    const dev = db.prepare('SELECT * FROM devices WHERE id = ?').get(p.device_id) as { id: string; name: string; platform: string; config_json: string } | undefined;
+    if (dev) {
+      let cfg: Record<string, unknown> = {};
+      try { cfg = JSON.parse(dev.config_json || '{}'); } catch { /* ignore */ }
+      device = {
+        id: dev.id,
+        name: dev.name,
+        platform: dev.platform,
+        config: cfg,
+      };
+    }
+  }
+
+  return {
+    user_id: p.id,
+    name: p.name,
+    status: p.status,
+    group_id: p.group_id,
+    device_id: p.device_id,
+    browser_type: p.browser_type || 'chromium',
+    user_agent: p.user_agent,
+    timezone: p.timezone,
+    proxy,
+    fingerprint,
+    device,
+  };
+}
+
+export function deleteProfile(id: string): boolean {
+  const db = getDb();
+  const p = getProfile(id);
+  if (!p) return false;
+  if (p.fingerprint_id) {
+    db.prepare('DELETE FROM fingerprints WHERE id = ?').run(p.fingerprint_id);
+  }
+  db.prepare('DELETE FROM profile_extensions WHERE profile_id = ?').run(id);
+  const res = db.prepare('DELETE FROM profiles WHERE id = ?').run(id);
+  return res.changes > 0;
+}
+
 export function setStatus(id: string, status: string): void {
   getDb()
     .prepare('UPDATE profiles SET status = ?, updated_at = ? WHERE id = ?')
@@ -231,13 +363,38 @@ export function updateProfile(
     name?: string;
     group_id?: string | null;
     proxy_id?: string | null;
+    proxy?: ProxyInput | null;
     device_id?: string | null;
-    geolocation?: string | null;
+    user_agent?: string | null;
+    timezone?: string | null;
   }
 ): boolean {
   const db = getDb();
   const profile = getProfile(id);
   if (!profile) return false;
+
+  let effectiveProxyId: string | null | undefined = updates.proxy_id;
+  if (updates.proxy) {
+    effectiveProxyId = 'x_' + randomUUID();
+    db.prepare(
+      `INSERT INTO proxies (id, type, host, port, username, password, private_key, country, timezone, status, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).run(
+      effectiveProxyId,
+      updates.proxy.type,
+      updates.proxy.host,
+      updates.proxy.port,
+      updates.proxy.username ?? null,
+      updates.proxy.password ?? null,
+      updates.proxy.privateKey ?? null,
+      null,
+      null,
+      'unknown',
+      Date.now()
+    );
+  } else if (updates.proxy === null) {
+    effectiveProxyId = null;
+  }
 
   const sets: string[] = [];
   const params: unknown[] = [];
@@ -250,17 +407,21 @@ export function updateProfile(
     sets.push('group_id = ?');
     params.push(updates.group_id);
   }
-  if (updates.proxy_id !== undefined) {
+  if (effectiveProxyId !== undefined) {
     sets.push('proxy_id = ?');
-    params.push(updates.proxy_id);
+    params.push(effectiveProxyId);
   }
   if (updates.device_id !== undefined) {
     sets.push('device_id = ?');
     params.push(updates.device_id);
   }
-  if (updates.geolocation !== undefined) {
-    sets.push('geolocation = ?');
-    params.push(updates.geolocation);
+  if (updates.user_agent !== undefined) {
+    sets.push('user_agent = ?');
+    params.push(updates.user_agent);
+  }
+  if (updates.timezone !== undefined) {
+    sets.push('timezone = ?');
+    params.push(updates.timezone);
   }
 
   if (sets.length === 0) return true;
@@ -333,26 +494,50 @@ export function listProfiles(
   let where = '';
   const params: unknown[] = [];
   if (groupId !== undefined && groupId !== null && groupId !== '') {
-    where = ' WHERE group_id = ?';
+    where = ' WHERE p.group_id = ?';
     params.push(groupId);
   }
 
-  const total = (db.prepare(`SELECT COUNT(*) AS c FROM profiles${where}`).get(...params) as { c: number }).c;
+  const total = (db.prepare(`SELECT COUNT(*) AS c FROM profiles p${where}`).get(...params) as { c: number }).c;
   const rows = db
     .prepare(
-      `SELECT id, name, status, group_id FROM profiles${where} ORDER BY created_at DESC LIMIT ? OFFSET ?`
+      `SELECT p.id, p.name, p.status, p.group_id,
+              px.type AS proxy_type, px.host AS proxy_host, px.port AS proxy_port, px.country AS proxy_country,
+              fp.seed AS fingerprint_seed,
+              dev.platform AS platform, dev.name AS device_name
+       FROM profiles p
+       LEFT JOIN proxies px ON px.id = p.proxy_id
+       LEFT JOIN fingerprints fp ON fp.id = p.fingerprint_id
+       LEFT JOIN devices dev ON dev.id = p.device_id
+       ${where}
+       ORDER BY p.created_at DESC LIMIT ? OFFSET ?`
     )
     .all(...params, pageSize, (page - 1) * pageSize) as Array<{
     id: string;
     name: string | null;
     status: string;
     group_id: string | null;
+    proxy_type: string | null;
+    proxy_host: string | null;
+    proxy_port: number | null;
+    proxy_country: string | null;
+    fingerprint_seed: number | null;
+    platform: string | null;
+    device_name: string | null;
   }>;
-  const list = rows.map((r) => ({
+
+  const list: ProfileListItem[] = rows.map((r) => ({
     user_id: r.id,
     name: r.name,
     status: r.status,
     group_id: r.group_id,
+    proxy_type: r.proxy_type,
+    proxy_host: r.proxy_host,
+    proxy_port: r.proxy_port,
+    proxy_country: r.proxy_country,
+    fingerprint_seed: r.fingerprint_seed,
+    platform: r.platform,
+    device_name: r.device_name,
   }));
   return { list, total };
 }
@@ -404,28 +589,26 @@ export function resolveLaunchConfig(id: string): LaunchConfig {
       } catch {
         devCfg = {};
       }
+
       if (devCfg.mobile === true) {
-        const screenRaw = devCfg.screen as { width?: unknown; height?: unknown; deviceScaleFactor?: unknown } | undefined;
         deviceEmulation = {
           mobile: true,
           ua: typeof devCfg.ua === 'string' ? devCfg.ua : undefined,
-          screen: screenRaw
-            ? {
-                width: Number(screenRaw.width) || 393,
-                height: Number(screenRaw.height) || 852,
-                deviceScaleFactor: Number(screenRaw.deviceScaleFactor) || 1,
-              }
-            : undefined,
-          touch: devCfg.touch === true,
-          maxTouchPoints: typeof devCfg.maxTouchPoints === 'number' ? devCfg.maxTouchPoints : undefined,
+          screen: devCfg.screen as DeviceEmulationConfig['screen'],
+          touch: typeof devCfg.touch === 'boolean' ? devCfg.touch : true,
+          maxTouchPoints:
+            typeof devCfg.maxTouchPoints === 'number' ? devCfg.maxTouchPoints : 5,
         };
-      } else if (fingerprint) {
-        // Desktop preset: override kernel fingerprint parameters.
-        if (typeof devCfg.platform === 'string') fingerprint.platform = devCfg.platform;
-        if (typeof devCfg.platformVersion === 'string') fingerprint.platformVersion = devCfg.platformVersion;
+      }
+
+      if (fingerprint) {
+        if (typeof devCfg.platform === 'string') {
+          fingerprint.platform = devCfg.platform;
+        }
+        if (typeof devCfg.platformVersion === 'string') {
+          fingerprint.platformVersion = devCfg.platformVersion;
+        }
         if (typeof devCfg.brand === 'string') fingerprint.brand = devCfg.brand;
-        if (typeof devCfg.brandVersion === 'string') fingerprint.brandVersion = devCfg.brandVersion;
-        if (typeof devCfg.disableSpoofing === 'string') fingerprint.disableSpoofing = devCfg.disableSpoofing;
         if (typeof devCfg.hardwareConcurrency === 'number') {
           fingerprint.hardwareConcurrency = devCfg.hardwareConcurrency;
         }
@@ -455,8 +638,7 @@ export function resolveLaunchConfig(id: string): LaunchConfig {
           privateKey: px.private_key ?? undefined,
         };
       } else {
-        const scheme = px.type;
-        proxyServer = `${scheme}://${px.host}:${px.port}`;
+        proxyServer = `${px.type}://${px.host}:${px.port}`;
         if (px.username && px.password) {
           proxyAuth = { username: px.username, password: px.password };
         }
@@ -464,33 +646,39 @@ export function resolveLaunchConfig(id: string): LaunchConfig {
     }
   }
 
-  // Geolocation (Sprint A): stored as JSON on the profile.
-  let geolocation: { latitude: number; longitude: number; accuracy?: number } | undefined;
+  // Geolocation override (Sprint A)
+  let geolocation: LaunchConfig['geolocation'];
   if (profile.geolocation) {
     try {
-      const geo = JSON.parse(profile.geolocation) as Record<string, unknown>;
-      if (typeof geo.latitude === 'number' && typeof geo.longitude === 'number') {
-        geolocation = {
-          latitude: geo.latitude,
-          longitude: geo.longitude,
-          accuracy: typeof geo.accuracy === 'number' ? geo.accuracy : undefined,
-        };
+      const g = JSON.parse(profile.geolocation) as { latitude?: number; longitude?: number; accuracy?: number };
+      if (typeof g.latitude === 'number' && typeof g.longitude === 'number') {
+        geolocation = { latitude: g.latitude, longitude: g.longitude, accuracy: g.accuracy };
       }
     } catch {
-      // ignore invalid JSON
+      // ignore
+    }
+  } else if (profile.proxy_id) {
+    const px = db.prepare('SELECT latitude, longitude FROM proxies WHERE id = ?').get(profile.proxy_id) as
+      | { latitude: number | null; longitude: number | null }
+      | undefined;
+    if (px && typeof px.latitude === 'number' && typeof px.longitude === 'number') {
+      geolocation = { latitude: px.latitude, longitude: px.longitude };
     }
   }
 
-  // Cookies (Sprint A): stored as a JSON array on the profile.
+  // Cookies (Sprint A)
   let cookies: Array<Record<string, unknown>> | undefined;
-  if (profile.cookies_json) {
-    try {
-      const parsedCookies = JSON.parse(profile.cookies_json);
-      if (Array.isArray(parsedCookies) && parsedCookies.length) {
-        cookies = parsedCookies as Array<Record<string, unknown>>;
+  const cookieRows = db
+    .prepare('SELECT cookie_json FROM cookies WHERE profile_id = ?')
+    .all(id) as Array<{ cookie_json: string }>;
+  if (cookieRows.length > 0) {
+    cookies = [];
+    for (const r of cookieRows) {
+      try {
+        cookies.push(JSON.parse(r.cookie_json));
+      } catch {
+        // ignore malformed rows
       }
-    } catch {
-      // ignore invalid JSON
     }
   }
 

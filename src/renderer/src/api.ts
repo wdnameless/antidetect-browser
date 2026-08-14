@@ -1,3 +1,11 @@
+let apiKey = '';
+
+export interface ApiEnvelope<T> {
+  code: number;
+  msg: string;
+  data: T;
+}
+
 export interface StartResult {
   ws: { puppeteer: string; selenium: string };
   debug_port: string;
@@ -10,6 +18,46 @@ export interface ProfileListItem {
   name: string | null;
   status: string;
   group_id: string | null;
+  proxy_type?: string | null;
+  proxy_host?: string | null;
+  proxy_port?: number | null;
+  proxy_country?: string | null;
+  fingerprint_seed?: number | null;
+  platform?: string | null;
+  device_name?: string | null;
+}
+
+export interface ProfileDetails {
+  user_id: string;
+  name: string | null;
+  status: string;
+  group_id: string | null;
+  device_id: string | null;
+  browser_type: string;
+  user_agent: string | null;
+  timezone: string | null;
+  proxy?: {
+    id: string;
+    type: 'http' | 'https' | 'socks5' | 'ssh';
+    host: string;
+    port: number;
+    username: string | null;
+    country: string | null;
+    timezone: string | null;
+    status: string;
+  } | null;
+  fingerprint?: {
+    seed: number;
+    platform: string;
+    hardwareConcurrency?: number;
+    brand?: string;
+  } | null;
+  device?: {
+    id: string;
+    name: string;
+    platform: string;
+    config: Record<string, unknown>;
+  } | null;
 }
 
 export interface ProxyItem {
@@ -38,14 +86,21 @@ export interface ExtensionItem {
   enabled: boolean;
 }
 
-interface ApiEnvelope<T> {
-  code: number;
-  msg: string;
-  data: T;
+export interface GroupItem {
+  id: string;
+  name: string;
+  created_at: number;
+  profile_count: number;
 }
 
-const API_BASE = 'http://127.0.0.1:50325';
-let apiKey = '';
+export interface ProxyTestResult {
+  ok: boolean;
+  ip?: string;
+  country?: string;
+  timezone?: string;
+  latencyMs?: number;
+  error?: string;
+}
 
 export async function initApiKey(): Promise<void> {
   if (window.antidetect?.getApiKey) {
@@ -67,26 +122,22 @@ export async function initApiKey(): Promise<void> {
 }
 
 export function getApiBase(): string {
-  return API_BASE;
+  return 'http://127.0.0.1:50325';
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<ApiEnvelope<T>> {
-  const res = await fetch(`${API_BASE}${path}`, {
-    ...init,
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${apiKey}`,
-      ...(init?.headers || {}),
-    },
+async function request<T>(path: string, options: RequestInit = {}): Promise<ApiEnvelope<T>> {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    ...(options.headers as Record<string, string>),
+  };
+  if (apiKey) {
+    headers['Authorization'] = `Bearer ${apiKey}`;
+  }
+  const res = await fetch(`${getApiBase()}${path}`, {
+    ...options,
+    headers,
   });
   return (await res.json()) as ApiEnvelope<T>;
-}
-
-export interface GroupItem {
-  id: string;
-  name: string;
-  created_at: number;
-  profile_count: number;
 }
 
 export const api = {
@@ -95,10 +146,27 @@ export const api = {
     const url = groupId ? `/api/v1/browser/list?group_id=${encodeURIComponent(groupId)}` : '/api/v1/browser/list';
     return request<{ list: ProfileListItem[]; total: number; page: number; page_size: number }>(url);
   },
-  create: (name?: string, groupId?: string, proxyId?: string, deviceId?: string) =>
+  profileDetail: (user_id: string) =>
+    request<ProfileDetails>(`/api/v1/browser-profile/detail?user_id=${encodeURIComponent(user_id)}`),
+  create: (body: {
+    name?: string;
+    group_id?: string;
+    proxy_id?: string;
+    proxy?: {
+      type: 'http' | 'https' | 'socks5' | 'ssh';
+      host: string;
+      port: number;
+      username?: string;
+      password?: string;
+    };
+    device_id?: string;
+    fingerprint_seed?: number;
+    user_agent?: string;
+    timezone?: string;
+  }) =>
     request<{ user_id: string }>('/api/v1/browser-profile/create', {
       method: 'POST',
-      body: JSON.stringify({ name, group_id: groupId, proxy_id: proxyId, device_id: deviceId }),
+      body: JSON.stringify(body),
     }),
   start: (id: string) =>
     request<StartResult>(`/api/v1/browser/start?user_id=${encodeURIComponent(id)}`),
@@ -109,11 +177,25 @@ export const api = {
     name?: string;
     group_id?: string | null;
     proxy_id?: string | null;
+    proxy?: {
+      type: 'http' | 'https' | 'socks5' | 'ssh';
+      host: string;
+      port: number;
+      username?: string;
+      password?: string;
+    } | null;
     device_id?: string | null;
+    user_agent?: string | null;
+    timezone?: string | null;
   }) =>
     request<Record<string, never>>('/api/v1/browser-profile/update', {
       method: 'POST',
       body: JSON.stringify(body),
+    }),
+  profileDelete: (user_id: string) =>
+    request<Record<string, never>>('/api/v1/browser-profile/delete', {
+      method: 'POST',
+      body: JSON.stringify({ user_id }),
     }),
   randomizeFingerprint: (user_id: string) =>
     request<{ seed: number }>('/api/v1/browser-profile/randomize-fingerprint', {
@@ -130,6 +212,8 @@ export const api = {
   proxyList: () => request<{ list: ProxyItem[]; total: number }>('/api/v1/proxy/list'),
   proxyCreate: (body: Record<string, unknown>) =>
     request<{ proxy_id: string }>('/api/v1/proxy/create', { method: 'POST', body: JSON.stringify(body) }),
+  proxyTest: (body: { type: string; host: string; port: number; username?: string; password?: string }) =>
+    request<ProxyTestResult>('/api/v1/proxy/test', { method: 'POST', body: JSON.stringify(body) }),
   proxyCheck: (proxy_id: string) =>
     request<{ ok: boolean; ip?: string; country?: string; timezone?: string; latencyMs?: number; error?: string }>(
       '/api/v1/proxy/check',
@@ -141,7 +225,6 @@ export const api = {
       body: JSON.stringify({ proxy_id }),
     }),
   deviceList: () => request<{ list: DeviceItem[]; total: number }>('/api/v1/device/list'),
-  // Extensions (Sprint B)
   extensionList: () => request<{ list: ExtensionItem[]; total: number }>('/api/v1/extension/list'),
   extensionImport: (name: string, path: string) =>
     request<{ extension_id: string }>('/api/v1/extension/import', {
@@ -181,7 +264,6 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ user_id, config }),
     }),
-  // Batch (Sprint C)
   batchCreate: (body: { count: number; name_prefix?: string; proxy_ids?: string[]; device_id?: string }) =>
     request<{ user_ids: string[]; count: number }>('/api/v1/browser-profile/batch-create', {
       method: 'POST',
