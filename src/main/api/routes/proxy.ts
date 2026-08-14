@@ -2,7 +2,6 @@ import { Router } from 'express';
 import { z } from 'zod';
 import * as xm from '../../proxy/proxyManager';
 import * as pm from '../../profiles/profileManager';
-import { getDb } from '../../db';
 
 const router = Router();
 
@@ -102,58 +101,8 @@ router.post('/api/v1/proxy/check', async (req, res) => {
   }
 });
 
-// Bind a proxy and/or device to a profile (unbind with null)
-const bindSchema = z.object({
-  user_id: z.string(),
-  proxy_id: z.string().nullable().optional(),
-  device_id: z.string().nullable().optional(),
-  geolocation: z
-    .object({ latitude: z.number(), longitude: z.number(), accuracy: z.number().optional() })
-    .nullable()
-    .optional(),
-});
-router.post('/api/v1/browser-profile/update', (req, res) => {
-  const parsed = bindSchema.safeParse(req.body);
-  if (!parsed.success) {
-    res.json({ code: -1, msg: 'invalid body', data: {} });
-    return;
-  }
-  const db = getDb();
-  const profile = db
-    .prepare('SELECT id, geolocation FROM profiles WHERE id = ?')
-    .get(parsed.data.user_id) as { id: string; geolocation: string | null } | undefined;
-  if (!profile) {
-    res.json({ code: -1, msg: 'profile not found', data: {} });
-    return;
-  }
-  if (parsed.data.proxy_id) {
-    const proxy = db.prepare('SELECT id FROM proxies WHERE id = ?').get(parsed.data.proxy_id);
-    if (!proxy) {
-      res.json({ code: -1, msg: 'proxy not found', data: {} });
-      return;
-    }
-  }
-  if (parsed.data.device_id) {
-    const device = db.prepare('SELECT id FROM devices WHERE id = ?').get(parsed.data.device_id);
-    if (!device) {
-      res.json({ code: -1, msg: 'device not found', data: {} });
-      return;
-    }
-  }
-  // Geolocation: only change when explicitly provided (object to set, null to clear).
-  let geolocationToSet: string | null;
-  if (parsed.data.geolocation === undefined) geolocationToSet = profile.geolocation;
-  else if (parsed.data.geolocation === null) geolocationToSet = null;
-  else geolocationToSet = JSON.stringify(parsed.data.geolocation);
-  db.prepare('UPDATE profiles SET proxy_id = ?, device_id = ?, geolocation = ?, updated_at = ? WHERE id = ?').run(
-    parsed.data.proxy_id ?? null,
-    parsed.data.device_id ?? null,
-    geolocationToSet,
-    Date.now(),
-    parsed.data.user_id
-  );
-  res.json({ code: 0, msg: 'success', data: {} });
-});
+// NOTE: profile binding (proxy/device/geolocation) is handled by the single
+// /api/v1/browser-profile/update route in routes/browser.ts.
 
 const fingerprintSchema = z.object({
   user_id: z.string(),

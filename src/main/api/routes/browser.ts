@@ -3,6 +3,7 @@ import { z } from 'zod';
 import * as pm from '../../profiles/profileManager';
 import * as launcher from '../../launcher/chromium';
 import * as firefox from '../../launcher/firefox';
+import { getDb } from '../../db';
 
 const router = Router();
 
@@ -97,6 +98,10 @@ const updateProfileSchema = z.object({
   group_id: z.string().nullable().optional(),
   proxy_id: z.string().nullable().optional(),
   device_id: z.string().nullable().optional(),
+  geolocation: z
+    .object({ latitude: z.number(), longitude: z.number(), accuracy: z.number().optional() })
+    .nullable()
+    .optional(),
 });
 
 router.post('/api/v1/browser-profile/update', (req, res) => {
@@ -105,11 +110,39 @@ router.post('/api/v1/browser-profile/update', (req, res) => {
     res.json({ code: -1, msg: 'invalid body', data: {} });
     return;
   }
+  const db = getDb();
+  const profile = pm.getProfile(parsed.data.user_id);
+  if (!profile) {
+    res.json({ code: -1, msg: 'profile not found', data: {} });
+    return;
+  }
+  if (parsed.data.proxy_id) {
+    const proxy = db.prepare('SELECT id FROM proxies WHERE id = ?').get(parsed.data.proxy_id);
+    if (!proxy) {
+      res.json({ code: -1, msg: 'proxy not found', data: {} });
+      return;
+    }
+  }
+  if (parsed.data.device_id) {
+    const device = db.prepare('SELECT id FROM devices WHERE id = ?').get(parsed.data.device_id);
+    if (!device) {
+      res.json({ code: -1, msg: 'device not found', data: {} });
+      return;
+    }
+  }
+  // Geolocation: only change when explicitly provided (object to set, null to clear).
+  const geolocation =
+    parsed.data.geolocation === undefined
+      ? undefined
+      : parsed.data.geolocation === null
+        ? null
+        : JSON.stringify(parsed.data.geolocation);
   const ok = pm.updateProfile(parsed.data.user_id, {
     name: parsed.data.name,
     group_id: parsed.data.group_id,
     proxy_id: parsed.data.proxy_id,
     device_id: parsed.data.device_id,
+    geolocation,
   });
   res.json(ok ? { code: 0, msg: 'success', data: {} } : { code: -1, msg: 'profile update failed', data: {} });
 });
@@ -177,6 +210,8 @@ router.post('/api/v1/group/delete', (req, res) => {
 const createSchema = z.object({
   name: z.string().optional(),
   group_id: z.string().optional(),
+  proxy_id: z.string().optional(),
+  device_id: z.string().optional(),
   user_agent: z.string().optional(),
   timezone: z.string().optional(),
   browser_type: z.enum(['chromium', 'firefox']).optional(),
@@ -200,6 +235,8 @@ router.post('/api/v1/browser-profile/create', (req, res) => {
   const input: pm.CreateProfileInput = {
     name: parsed.data.name,
     group_id: parsed.data.group_id,
+    proxy_id: parsed.data.proxy_id,
+    device_id: parsed.data.device_id,
     user_agent: parsed.data.user_agent,
     timezone: parsed.data.timezone,
     browser_type: parsed.data.browser_type,

@@ -1,21 +1,24 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api, type ExtensionItem, type ProfileListItem } from '../api';
+import { ExtensionsIcon, PlusIcon, TrashIcon } from '../icons';
 
 export function Extensions() {
   const [extensions, setExtensions] = useState<ExtensionItem[]>([]);
   const [profiles, setProfiles] = useState<ProfileListItem[]>([]);
   const [error, setError] = useState('');
-  const [name, setName] = useState('');
-  const [path, setPath] = useState('');
-  const [showForm, setShowForm] = useState(false);
   const [busy, setBusy] = useState(false);
+
+  const [showForm, setShowForm] = useState(false);
+  const [name, setName] = useState('');
+  const [extPath, setExtPath] = useState('');
+
   const [bindTarget, setBindTarget] = useState<{ extId: string; profileId: string } | null>(null);
 
   const load = useCallback(async () => {
     try {
-      const [e, p] = await Promise.all([api.extensionList(), api.list()]);
-      if (e.code === 0) setExtensions(e.data.list);
-      if (p.code === 0) setProfiles(p.data.list);
+      const [extRes, profRes] = await Promise.all([api.extensionList(), api.list()]);
+      if (extRes.code === 0) setExtensions(extRes.data.list);
+      if (profRes.code === 0) setProfiles(profRes.data.list);
     } catch (err) {
       setError((err as Error).message);
     }
@@ -29,12 +32,15 @@ export function Extensions() {
     setBusy(true);
     setError('');
     try {
-      const res = await api.extensionImport(name || 'extension', path);
-      if (res.code !== 0) setError(res.msg);
-      setName('');
-      setPath('');
-      setShowForm(false);
-      await load();
+      const res = await api.extensionImport(name.trim(), extPath.trim());
+      if (res.code === 0) {
+        setShowForm(false);
+        setName('');
+        setExtPath('');
+        await load();
+      } else {
+        setError(res.msg);
+      }
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -43,6 +49,7 @@ export function Extensions() {
   };
 
   const remove = async (id: string) => {
+    if (!confirm('Are you sure you want to delete this extension?')) return;
     setBusy(true);
     setError('');
     try {
@@ -72,97 +79,143 @@ export function Extensions() {
   };
 
   return (
-    <section>
-      <header className="page-header">
-        <h1>Extensions</h1>
-        <button className="primary" onClick={() => setShowForm((v) => !v)}>
-          {showForm ? 'Cancel' : '+ Import extension'}
-        </button>
-      </header>
+    <div>
+      <div className="page-header-actions">
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <ExtensionsIcon size={20} style={{ color: 'var(--accent)' }} />
+          <h2 style={{ fontSize: 16, fontWeight: 700 }}>Extensions Manager</h2>
+          <span className="hint" style={{ margin: 0 }}>({extensions.length} extensions imported)</span>
+        </div>
 
-      {error ? <div className="error">{error}</div> : null}
+        <button className="btn primary" onClick={() => setShowForm((v) => !v)}>
+          <PlusIcon size={15} />
+          <span>{showForm ? 'Cancel' : 'Import Extension'}</span>
+        </button>
+      </div>
+
+      {error ? <div className="error-banner">{error}</div> : null}
 
       {showForm ? (
-        <div className="panel">
-          <div className="form-row">
-            <input placeholder="name" value={name} onChange={(e) => setName(e.target.value)} />
+        <div className="panel" style={{ marginBottom: 20 }}>
+          <div className="panel-header">Import Unpacked / CRX Extension</div>
+          <div className="form-group" style={{ marginBottom: 12 }}>
+            <label>Extension Name</label>
             <input
-              placeholder="path to unpacked folder or .zip"
-              value={path}
-              onChange={(e) => setPath(e.target.value)}
-              style={{ minWidth: 320 }}
+              placeholder="e.g. MetaMask, EditThisCookie"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              autoFocus
             />
-            <button className="primary" onClick={() => void importExt()} disabled={busy}>
-              Import
+          </div>
+          <div className="form-group" style={{ marginBottom: 16 }}>
+            <label>Absolute Folder Path or .CRX Path</label>
+            <input
+              placeholder="C:\extensions\metamask or /path/to/extension"
+              value={extPath}
+              onChange={(e) => setExtPath(e.target.value)}
+              style={{ fontFamily: 'var(--font-mono)' }}
+            />
+          </div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button
+              className="btn primary"
+              onClick={() => void importExt()}
+              disabled={busy || !name.trim() || !extPath.trim()}
+            >
+              Import Extension
+            </button>
+            <button className="btn" onClick={() => setShowForm(false)}>
+              Cancel
             </button>
           </div>
-          <p className="hint">
-            Укажите путь к распакованной папке расширения или .zip (с manifest.json внутри).
-          </p>
         </div>
       ) : null}
 
-      <table className="table">
-        <thead>
-          <tr>
-            <th>Name</th>
-            <th>Version</th>
-            <th>Path</th>
-            <th>Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          {extensions.length === 0 ? (
+      <div className="table-container">
+        <table className="table">
+          <thead>
             <tr>
-              <td colSpan={4} className="empty">
-                No extensions imported.
-              </td>
+              <th style={{ width: '22%' }}>Extension Name</th>
+              <th style={{ width: '12%' }}>Version</th>
+              <th style={{ width: '42%' }}>Folder Path</th>
+              <th style={{ width: '24%', textAlign: 'right' }}>Actions</th>
             </tr>
-          ) : (
-            extensions.map((e) => (
-              <tr key={e.extension_id}>
-                <td>{e.name}</td>
-                <td>{e.version ?? '—'}</td>
-                <td className="mono">{e.path}</td>
-                <td className="actions">
-                  <button
-                    onClick={() =>
-                      setBindTarget({ extId: e.extension_id, profileId: profiles[0]?.user_id ?? '' })
-                    }
-                  >
-                    Bind to profile
-                  </button>
-                  <button onClick={() => void remove(e.extension_id)} disabled={busy}>
-                    Delete
-                  </button>
+          </thead>
+          <tbody>
+            {extensions.length === 0 ? (
+              <tr>
+                <td colSpan={4} className="empty-cell">
+                  No extensions imported yet. Click "+ Import Extension" to register an unpacked extension folder.
                 </td>
               </tr>
-            ))
-          )}
-        </tbody>
-      </table>
-
-      {bindTarget ? (
-        <div className="panel">
-          <div className="form-row">
-            <span>Bind extension to profile:</span>
-            <select
-              value={bindTarget.profileId}
-              onChange={(e) => setBindTarget({ ...bindTarget, profileId: e.target.value })}
-            >
-              {profiles.map((pr) => (
-                <option key={pr.user_id} value={pr.user_id}>
-                  {pr.name ?? pr.user_id}
-                </option>
-              ))}
-            </select>
-            <button className="primary" onClick={() => void bind()} disabled={busy}>
-              Bind
-            </button>
-            <button onClick={() => setBindTarget(null)}>Cancel</button>
-          </div>
-        </div>
-      ) : null}
-    </section>
+            ) : (
+              extensions.map((e) => (
+                <tr key={e.extension_id}>
+                  <td>
+                    <strong style={{ fontSize: 13.5 }}>{e.name}</strong>
+                  </td>
+                  <td>
+                    <span className="proxy-type-badge">{e.version || '1.0.0'}</span>
+                  </td>
+                  <td>
+                    <code style={{ fontSize: 12, color: 'var(--text-muted)' }}>{e.path}</code>
+                  </td>
+                  <td>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6 }}>
+                      {bindTarget?.extId === e.extension_id ? (
+                        <div style={{ display: 'flex', gap: 6 }}>
+                          <select
+                            className="select-input"
+                            value={bindTarget.profileId}
+                            onChange={(evt) =>
+                              setBindTarget({ extId: e.extension_id, profileId: evt.target.value })
+                            }
+                          >
+                            <option value="">Select Profile</option>
+                            {profiles.map((p) => (
+                              <option key={p.user_id} value={p.user_id}>
+                                {p.name || p.user_id}
+                              </option>
+                            ))}
+                          </select>
+                          <button
+                            className="btn primary"
+                            onClick={() => void bind()}
+                            disabled={busy || !bindTarget.profileId}
+                          >
+                            Save
+                          </button>
+                          <button className="btn" onClick={() => setBindTarget(null)}>
+                            Cancel
+                          </button>
+                        </div>
+                      ) : (
+                        <>
+                          <button
+                            className="btn"
+                            onClick={() => setBindTarget({ extId: e.extension_id, profileId: '' })}
+                          >
+                            Bind to Profile
+                          </button>
+                          <button
+                            className="btn-icon"
+                            style={{ color: 'var(--danger)' }}
+                            onClick={() => void remove(e.extension_id)}
+                            disabled={busy}
+                            title="Delete Extension"
+                          >
+                            <TrashIcon size={14} />
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
   );
 }

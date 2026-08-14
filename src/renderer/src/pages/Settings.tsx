@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { getApiBase } from '../api';
 import type { UpdateStatus } from '../global';
+import { SettingsIcon, RefreshIcon } from '../icons';
 
 function formatBytes(n: number): string {
   if (!Number.isFinite(n) || n <= 0) return '—';
@@ -52,15 +53,15 @@ export function Settings() {
       case 'checking':
         return <p className="hint">Checking for updates…</p>;
       case 'not-available':
-        return <p className="hint ok-text">You are on the latest version.</p>;
+        return <p className="hint" style={{ color: 'var(--ok)', fontWeight: 500 }}>✓ You are on the latest version.</p>;
       case 'available':
         return (
           <div className="setting-row">
             <span className="setting-label">
-              Update available{status.info.version ? ` v${status.info.version}` : ''}
+              New version available: <strong>{status.info.version ? `v${status.info.version}` : 'New build'}</strong>
             </span>
-            <button className="btn" onClick={onDownload} disabled={busy}>
-              Download
+            <button className="btn primary" onClick={onDownload} disabled={busy}>
+              Download Update
             </button>
           </div>
         );
@@ -76,49 +77,56 @@ export function Settings() {
       case 'downloaded':
         return (
           <div className="setting-row">
-            <span className="setting-label">Update ready{status.info.version ? ` v${status.info.version}` : ''}</span>
+            <span className="setting-label">
+              Update ready: <strong>{status.info.version ? `v${status.info.version}` : 'Ready to install'}</strong>
+            </span>
             <button className="btn primary" onClick={onRestart}>
               Restart &amp; install
             </button>
           </div>
         );
       case 'error':
-        return <p className="hint error-text">Update failed: {status.message}</p>;
+        return <p className="hint" style={{ color: 'var(--danger)' }}>Update check failed: {status.message}</p>;
     }
   };
 
   return (
-    <section>
-      <header className="page-header">
-        <h1>Settings</h1>
-      </header>
+    <div>
+      <div className="page-header-actions">
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <SettingsIcon size={20} style={{ color: 'var(--accent)' }} />
+          <h2 style={{ fontSize: 16, fontWeight: 700 }}>Settings &amp; Automation</h2>
+        </div>
+      </div>
 
       <div className="panel">
+        <div className="panel-header">Local REST API (AdsPower-Compatible)</div>
         <div className="setting-row">
-          <span className="setting-label">Local API base</span>
+          <span className="setting-label">Endpoint URL</span>
           <code>{getApiBase()}</code>
         </div>
         <div className="setting-row">
-          <span className="setting-label">API key</span>
+          <span className="setting-label">Bearer API Key</span>
           <code>{apiKey || '—'}</code>
         </div>
         <p className="hint">
-          Используйте ключ в заголовке <code>Authorization: Bearer &lt;key&gt;</code> для вызовов Local API из
-          ваших автоматизаций (Puppeteer / Playwright / Selenium / Python).
+          Pass this key in your HTTP header: <code>Authorization: Bearer &lt;key&gt;</code> when connecting Puppeteer, Playwright, Selenium, or custom Python bots to the Local API.
         </p>
       </div>
 
       {updaterAvailable && (
         <div className="panel">
+          <div className="panel-header">Software Updates</div>
           <div className="setting-row">
-            <span className="setting-label">Updates</span>
+            <span className="setting-label">Release Channel (GitHub Releases)</span>
             <button className="btn" onClick={onCheck} disabled={busy}>
-              Check for updates
+              <RefreshIcon size={14} />
+              <span>Check for updates</span>
             </button>
           </div>
           {renderStatus()}
         </div>
       )}
-    </section>
+    </div>
   );
 }

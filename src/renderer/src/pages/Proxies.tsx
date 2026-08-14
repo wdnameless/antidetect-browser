@@ -1,22 +1,24 @@
 import { useCallback, useEffect, useState } from 'react';
-import { api, type ProxyItem, type ProfileListItem } from '../api';
-
-const EMPTY_FORM = { type: 'http', host: '', port: '', username: '', password: '' };
+import { api, type ProxyItem } from '../api';
+import { ProxiesIcon, PlusIcon, TrashIcon, RefreshIcon, CheckIcon } from '../icons';
 
 export function Proxies() {
   const [proxies, setProxies] = useState<ProxyItem[]>([]);
-  const [profiles, setProfiles] = useState<ProfileListItem[]>([]);
   const [error, setError] = useState('');
-  const [form, setForm] = useState({ ...EMPTY_FORM });
-  const [showForm, setShowForm] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [bindTarget, setBindTarget] = useState<{ proxyId: string; profileId: string } | null>(null);
+  const [showModal, setShowModal] = useState(false);
+  const [type, setType] = useState('http');
+  const [host, setHost] = useState('');
+  const [port, setPort] = useState('');
+  const [user, setUser] = useState('');
+  const [pass, setPass] = useState('');
+  const [privateKey, setPrivateKey] = useState('');
+  const [checkResult, setCheckResult] = useState<Record<string, { ok: boolean; ip?: string; latencyMs?: number; error?: string }>>({});
 
   const load = useCallback(async () => {
     try {
-      const [p, pr] = await Promise.all([api.proxyList(), api.list()]);
-      if (p.code === 0) setProxies(p.data.list);
-      if (pr.code === 0) setProfiles(pr.data.list);
+      const res = await api.proxyList();
+      if (res.code === 0) setProxies(res.data.list);
     } catch (err) {
       setError((err as Error).message);
     }
@@ -30,17 +32,42 @@ export function Proxies() {
     setBusy(true);
     setError('');
     try {
-      const res = await api.proxyCreate({
-        type: form.type,
-        host: form.host,
-        port: Number(form.port),
-        username: form.username || undefined,
-        password: form.password || undefined,
-      });
-      if (res.code !== 0) setError(res.msg);
-      setForm({ ...EMPTY_FORM });
-      setShowForm(false);
-      await load();
+      const body: Record<string, unknown> = {
+        type,
+        host: host.trim(),
+        port: Number(port) || 0,
+      };
+      if (user.trim()) body.username = user.trim();
+      if (pass.trim()) body.password = pass.trim();
+      if (type === 'ssh' && privateKey.trim()) body.privateKey = privateKey.trim();
+
+      const res = await api.proxyCreate(body);
+      if (res.code === 0) {
+        setShowModal(false);
+        setHost('');
+        setPort('');
+        setUser('');
+        setPass('');
+        setPrivateKey('');
+        await load();
+      } else {
+        setError(res.msg);
+      }
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const remove = async (id: string) => {
+    if (!confirm('Are you sure you want to delete this proxy?')) return;
+    setBusy(true);
+    setError('');
+    try {
+      const res = await api.proxyDelete(id);
+      if (res.code === 0) await load();
+      else setError(res.msg);
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -54,45 +81,11 @@ export function Proxies() {
     try {
       const res = await api.proxyCheck(id);
       if (res.code === 0) {
-        const d = res.data;
-        alert(
-          d.ok
-            ? `Proxy OK\nIP: ${d.ip}\nCountry: ${d.country}\nTimezone: ${d.timezone}\nLatency: ${d.latencyMs}ms`
-            : `Proxy FAIL: ${d.error}`
-        );
+        setCheckResult((prev) => ({ ...prev, [id]: res.data }));
+        await load();
       } else {
         setError(res.msg);
       }
-      await load();
-    } catch (err) {
-      setError((err as Error).message);
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const remove = async (id: string) => {
-    setBusy(true);
-    setError('');
-    try {
-      const res = await api.proxyDelete(id);
-      if (res.code !== 0) setError(res.msg);
-      await load();
-    } catch (err) {
-      setError((err as Error).message);
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const bind = async () => {
-    if (!bindTarget) return;
-    setBusy(true);
-    setError('');
-    try {
-      const res = await api.profileUpdate({ user_id: bindTarget.profileId, proxy_id: bindTarget.proxyId });
-      if (res.code !== 0) setError(res.msg);
-      setBindTarget(null);
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -101,123 +94,161 @@ export function Proxies() {
   };
 
   return (
-    <section>
-      <header className="page-header">
-        <h1>Proxies</h1>
-        <button className="primary" onClick={() => setShowForm((v) => !v)}>
-          {showForm ? 'Cancel' : '+ New proxy'}
+    <div>
+      <div className="page-header-actions">
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <ProxiesIcon size={20} style={{ color: 'var(--accent)' }} />
+          <h2 style={{ fontSize: 16, fontWeight: 700 }}>Proxy Manager</h2>
+          <span className="hint" style={{ margin: 0 }}>({proxies.length} proxies configured)</span>
+        </div>
+
+        <button className="btn primary" onClick={() => setShowModal(true)}>
+          <PlusIcon size={15} />
+          <span>Add Proxy</span>
         </button>
-      </header>
+      </div>
 
-      {error ? <div className="error">{error}</div> : null}
+      {error ? <div className="error-banner">{error}</div> : null}
 
-      {showForm ? (
-        <div className="panel">
-          <div className="form-row">
-            <select value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value })}>
-              <option value="http">HTTP</option>
-              <option value="https">HTTPS</option>
-              <option value="socks5">SOCKS5</option>
-              <option value="ssh">SSH</option>
-            </select>
-            <input
-              placeholder="host"
-              value={form.host}
-              onChange={(e) => setForm({ ...form, host: e.target.value })}
-            />
-            <input
-              placeholder="port"
-              value={form.port}
-              onChange={(e) => setForm({ ...form, port: e.target.value })}
-            />
-            <input
-              placeholder="username (optional)"
-              value={form.username}
-              onChange={(e) => setForm({ ...form, username: e.target.value })}
-            />
-            <input
-              placeholder="password (optional)"
-              type="password"
-              value={form.password}
-              onChange={(e) => setForm({ ...form, password: e.target.value })}
-            />
-            <button className="primary" onClick={() => void create()} disabled={busy}>
-              Save
-            </button>
+      {/* Add Proxy Modal */}
+      {showModal ? (
+        <div className="modal-overlay" onClick={() => setShowModal(false)}>
+          <div className="modal-card" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>Add Proxy Server</h3>
+              <button className="btn-icon" onClick={() => setShowModal(false)}>✕</button>
+            </div>
+            <div className="modal-body">
+              <div className="form-group">
+                <label>Protocol</label>
+                <select value={type} onChange={(e) => setType(e.target.value)}>
+                  <option value="http">HTTP</option>
+                  <option value="https">HTTPS</option>
+                  <option value="socks5">SOCKS5</option>
+                  <option value="ssh">SSH Tunnel</option>
+                </select>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 12 }}>
+                <div className="form-group">
+                  <label>Host / IP</label>
+                  <input placeholder="192.168.1.1 or proxy.example.com" value={host} onChange={(e) => setHost(e.target.value)} autoFocus />
+                </div>
+                <div className="form-group">
+                  <label>Port</label>
+                  <input placeholder="8080" value={port} onChange={(e) => setPort(e.target.value)} />
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                <div className="form-group">
+                  <label>Username (optional)</label>
+                  <input placeholder="Username" value={user} onChange={(e) => setUser(e.target.value)} />
+                </div>
+                <div className="form-group">
+                  <label>Password (optional)</label>
+                  <input type="password" placeholder="Password" value={pass} onChange={(e) => setPass(e.target.value)} />
+                </div>
+              </div>
+
+              {type === 'ssh' ? (
+                <div className="form-group">
+                  <label>SSH Private Key (OpenSSH PEM format)</label>
+                  <textarea
+                    rows={4}
+                    placeholder="-----BEGIN OPENSSH PRIVATE KEY-----&#10;..."
+                    value={privateKey}
+                    onChange={(e) => setPrivateKey(e.target.value)}
+                    style={{ fontFamily: 'var(--font-mono)', fontSize: 12 }}
+                  />
+                </div>
+              ) : null}
+            </div>
+            <div className="modal-footer">
+              <button className="btn" onClick={() => setShowModal(false)}>Cancel</button>
+              <button className="btn primary" onClick={() => void create()} disabled={busy || !host.trim() || !port.trim()}>
+                Save Proxy
+              </button>
+            </div>
           </div>
         </div>
       ) : null}
 
-      <table className="table">
-        <thead>
-          <tr>
-            <th>Type</th>
-            <th>Host</th>
-            <th>Port</th>
-            <th>User</th>
-            <th>Country</th>
-            <th>Timezone</th>
-            <th>Status</th>
-            <th>Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          {proxies.length === 0 ? (
+      <div className="table-container">
+        <table className="table">
+          <thead>
             <tr>
-              <td colSpan={8} className="empty">
-                No proxies yet.
-              </td>
+              <th style={{ width: '12%' }}>Type</th>
+              <th style={{ width: '30%' }}>Host : Port</th>
+              <th style={{ width: '22%' }}>Username</th>
+              <th style={{ width: '20%' }}>Location / IP</th>
+              <th style={{ width: '16%', textAlign: 'right' }}>Actions</th>
             </tr>
-          ) : (
-            proxies.map((p) => (
-              <tr key={p.proxy_id}>
-                <td>{p.type}</td>
-                <td className="mono">{p.host}</td>
-                <td>{p.port}</td>
-                <td>{p.username ?? '—'}</td>
-                <td>{p.country ?? '—'}</td>
-                <td>{p.timezone ?? '—'}</td>
-                <td>
-                  <span className={p.status === 'ok' ? 'badge running' : 'badge'}>{p.status}</span>
-                </td>
-                <td className="actions">
-                  <button onClick={() => void check(p.proxy_id)} disabled={busy}>
-                    Check
-                  </button>
-                  <button onClick={() => setBindTarget({ proxyId: p.proxy_id, profileId: profiles[0]?.user_id ?? '' })}>
-                    Bind
-                  </button>
-                  <button onClick={() => void remove(p.proxy_id)} disabled={busy}>
-                    Delete
-                  </button>
+          </thead>
+          <tbody>
+            {proxies.length === 0 ? (
+              <tr>
+                <td colSpan={5} className="empty-cell">
+                  No proxies configured yet. Click "+ Add Proxy" to configure one.
                 </td>
               </tr>
-            ))
-          )}
-        </tbody>
-      </table>
-
-      {bindTarget ? (
-        <div className="panel">
-          <div className="form-row">
-            <span>Bind proxy to profile:</span>
-            <select
-              value={bindTarget.profileId}
-              onChange={(e) => setBindTarget({ ...bindTarget, profileId: e.target.value })}
-            >
-              {profiles.map((pr) => (
-                <option key={pr.user_id} value={pr.user_id}>
-                  {pr.name ?? pr.user_id}
-                </option>
-              ))}
-            </select>
-            <button className="primary" onClick={() => void bind()} disabled={busy}>
-              Bind
-            </button>
-            <button onClick={() => setBindTarget(null)}>Cancel</button>
-          </div>
-        </div>
-      ) : null}
-    </section>
+            ) : (
+              proxies.map((p) => {
+                const res = checkResult[p.proxy_id];
+                return (
+                  <tr key={p.proxy_id}>
+                    <td>
+                      <span className="proxy-type-badge">{p.type.toUpperCase()}</span>
+                    </td>
+                    <td>
+                      <code style={{ fontSize: 13, color: 'var(--text)' }}>{p.host}:{p.port}</code>
+                    </td>
+                    <td>
+                      <span style={{ color: p.username ? 'var(--text-secondary)' : 'var(--text-muted)', fontSize: 13 }}>
+                        {p.username || '—'}
+                      </span>
+                    </td>
+                    <td>
+                      {res ? (
+                        <span style={{ fontSize: 12, color: res.ok ? 'var(--ok)' : 'var(--danger)' }}>
+                          {res.ok ? `✓ ${res.ip} (${res.latencyMs}ms)` : `✕ ${res.error || 'Failed'}`}
+                        </span>
+                      ) : p.country ? (
+                        <span style={{ fontSize: 12.5, color: 'var(--text-secondary)' }}>
+                          {p.country} ({p.timezone || 'UTC'})
+                        </span>
+                      ) : (
+                        <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Not tested</span>
+                      )}
+                    </td>
+                    <td>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6 }}>
+                        <button
+                          className="btn-icon"
+                          onClick={() => void check(p.proxy_id)}
+                          disabled={busy}
+                          title="Test Connection"
+                        >
+                          <RefreshIcon size={14} />
+                        </button>
+                        <button
+                          className="btn-icon"
+                          style={{ color: 'var(--danger)' }}
+                          onClick={() => void remove(p.proxy_id)}
+                          disabled={busy}
+                          title="Delete Proxy"
+                        >
+                          <TrashIcon size={14} />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
   );
 }

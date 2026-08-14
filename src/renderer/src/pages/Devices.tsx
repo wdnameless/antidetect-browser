@@ -1,115 +1,73 @@
-import { useCallback, useEffect, useState } from 'react';
-import { api, type DeviceItem, type ProfileListItem } from '../api';
+import { useEffect, useState } from 'react';
+import { api, type DeviceItem } from '../api';
+import { DevicesIcon } from '../icons';
 
 export function Devices() {
   const [devices, setDevices] = useState<DeviceItem[]>([]);
-  const [profiles, setProfiles] = useState<ProfileListItem[]>([]);
   const [error, setError] = useState('');
-  const [bindTarget, setBindTarget] = useState<{ deviceId: string; profileId: string } | null>(null);
-  const [busy, setBusy] = useState(false);
-
-  const load = useCallback(async () => {
-    try {
-      const [d, p] = await Promise.all([api.deviceList(), api.list()]);
-      if (d.code === 0) setDevices(d.data.list);
-      if (p.code === 0) setProfiles(p.data.list);
-    } catch (err) {
-      setError((err as Error).message);
-    }
-  }, []);
 
   useEffect(() => {
-    void load();
-  }, [load]);
-
-  const bind = async () => {
-    if (!bindTarget) return;
-    setBusy(true);
-    setError('');
-    try {
-      const res = await api.profileUpdate({ user_id: bindTarget.profileId, device_id: bindTarget.deviceId });
-      if (res.code !== 0) setError(res.msg);
-      setBindTarget(null);
-    } catch (err) {
-      setError((err as Error).message);
-    } finally {
-      setBusy(false);
-    }
-  };
+    void api.deviceList().then((res) => {
+      if (res.code === 0) setDevices(res.data.list);
+      else setError(res.msg);
+    }).catch((err) => setError((err as Error).message));
+  }, []);
 
   return (
-    <section>
-      <header className="page-header">
-        <h1>Devices</h1>
-      </header>
+    <div>
+      <div className="page-header-actions">
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <DevicesIcon size={20} style={{ color: 'var(--accent)' }} />
+          <h2 style={{ fontSize: 16, fontWeight: 700 }}>Device &amp; OS Presets</h2>
+        </div>
+      </div>
 
-      {error ? <div className="error">{error}</div> : null}
+      {error ? <div className="error-banner">{error}</div> : null}
 
-      <table className="table">
-        <thead>
-          <tr>
-            <th>Name</th>
-            <th>Platform</th>
-            <th>Details</th>
-            <th>Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          {devices.length === 0 ? (
+      <div className="table-container">
+        <table className="table">
+          <thead>
             <tr>
-              <td colSpan={4} className="empty">
-                No device presets.
-              </td>
+              <th style={{ width: '22%' }}>Preset Name</th>
+              <th style={{ width: '18%' }}>Platform</th>
+              <th style={{ width: '60%' }}>Configuration Details</th>
             </tr>
-          ) : (
-            devices.map((d) => (
+          </thead>
+          <tbody>
+            {devices.map((d) => (
               <tr key={d.device_id}>
-                <td>{d.name}</td>
-                <td>{d.platform}</td>
-                <td className="mono">
-                  {d.config.mobile
-                    ? (() => {
-                        const s = d.config.screen as { width?: number; height?: number; deviceScaleFactor?: number } | undefined;
-                        return `mobile · ${s?.width ?? '?'}x${s?.height ?? '?'}@${s?.deviceScaleFactor ?? 1}x`;
-                      })()
-                    : `${String(d.config.platform ?? '')} ${String(d.config.platformVersion ?? '')} · ${String(d.config.hardwareConcurrency ?? '?')} cores`}
+                <td>
+                  <strong style={{ fontSize: 13.5 }}>{d.name}</strong>
                 </td>
-                <td className="actions">
-                  <button
-                    onClick={() =>
-                      setBindTarget({ deviceId: d.device_id, profileId: profiles[0]?.user_id ?? '' })
-                    }
-                  >
-                    Bind to profile
-                  </button>
+                <td>
+                  <span className="proxy-type-badge" style={{ color: d.platform === 'ios' || d.platform === 'android' ? 'var(--ok)' : 'var(--accent)' }}>
+                    {d.platform.toUpperCase()}
+                  </span>
+                </td>
+                <td>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                    {Object.entries(d.config || {}).map(([k, v]) => (
+                      <span
+                        key={k}
+                        style={{
+                          background: 'var(--panel-2)',
+                          padding: '2px 8px',
+                          borderRadius: 4,
+                          fontSize: 11.5,
+                          color: 'var(--text-secondary)',
+                          fontFamily: typeof v === 'number' || typeof v === 'boolean' ? 'var(--font-mono)' : 'inherit',
+                        }}
+                      >
+                        <strong style={{ color: 'var(--text-muted)' }}>{k}:</strong> {String(typeof v === 'object' ? JSON.stringify(v) : v)}
+                      </span>
+                    ))}
+                  </div>
                 </td>
               </tr>
-            ))
-          )}
-        </tbody>
-      </table>
-
-      {bindTarget ? (
-        <div className="panel">
-          <div className="form-row">
-            <span>Bind device to profile:</span>
-            <select
-              value={bindTarget.profileId}
-              onChange={(e) => setBindTarget({ ...bindTarget, profileId: e.target.value })}
-            >
-              {profiles.map((pr) => (
-                <option key={pr.user_id} value={pr.user_id}>
-                  {pr.name ?? pr.user_id}
-                </option>
-              ))}
-            </select>
-            <button className="primary" onClick={() => void bind()} disabled={busy}>
-              Bind
-            </button>
-            <button onClick={() => setBindTarget(null)}>Cancel</button>
-          </div>
-        </div>
-      ) : null}
-    </section>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
   );
 }

@@ -227,7 +227,13 @@ export function setStatus(id: string, status: string): void {
 
 export function updateProfile(
   id: string,
-  updates: { name?: string; group_id?: string | null; proxy_id?: string | null; device_id?: string | null }
+  updates: {
+    name?: string;
+    group_id?: string | null;
+    proxy_id?: string | null;
+    device_id?: string | null;
+    geolocation?: string | null;
+  }
 ): boolean {
   const db = getDb();
   const profile = getProfile(id);
@@ -251,6 +257,10 @@ export function updateProfile(
   if (updates.device_id !== undefined) {
     sets.push('device_id = ?');
     params.push(updates.device_id);
+  }
+  if (updates.geolocation !== undefined) {
+    sets.push('geolocation = ?');
+    params.push(updates.geolocation);
   }
 
   if (sets.length === 0) return true;

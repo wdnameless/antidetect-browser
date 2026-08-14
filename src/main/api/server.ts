@@ -1,4 +1,4 @@
-import express, { Express } from 'express';
+import express, { Express, Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import { API_HOST, API_PORT } from '../config';
 import { authMiddleware } from './auth';
@@ -27,6 +27,17 @@ export function startApi(): Promise<void> {
   app.use(cookiesRoutes);
   app.use(extensionsRoutes);
   app.use(batchRoutes);
+
+  // JSON 404 for unknown routes (Express default would return HTML).
+  app.use((_req: Request, res: Response) => {
+    res.status(404).json({ code: -1, msg: 'not found', data: {} });
+  });
+
+  // Central error handler: always answer JSON, never the Express HTML error page.
+  app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
+    console.error('[antidetect] API error:', err);
+    res.status(500).json({ code: -1, msg: err?.message ?? 'internal error', data: {} });
+  });
 
   return new Promise((resolve) => {
     app.listen(API_PORT, API_HOST, () => {
