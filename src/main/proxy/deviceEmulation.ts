@@ -34,5 +34,16 @@ export async function applyDeviceEmulation(
     await session.send('Emulation.setUserAgentOverride', { userAgent: cfg.ua });
   }
 
+  // The kernel's WebUI newtab page drops touch emulation on the first navigation away from
+  // chrome://newtab. Navigating the target to about:blank and reloading makes the emulation
+  // stick for all subsequent navigations (verified empirically).
+  try {
+    await session.send('Page.navigate', { url: 'about:blank' });
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    await session.send('Page.reload', { ignoreCache: true });
+  } catch {
+    // ignore — emulation still applies to future documents
+  }
+
   return () => browser.disconnect();
 }

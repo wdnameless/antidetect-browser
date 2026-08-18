@@ -6,6 +6,7 @@ import type { LaunchConfig } from '../profiles/profileManager';
 import { createSshTunnel, SshTunnel } from '../proxy/sshTunnel';
 import { installProxyAuth } from '../proxy/proxyAuth';
 import { applyDeviceEmulation } from '../proxy/deviceEmulation';
+import { applyStealth, writeStealthExtension, LogicalPlatform } from '../proxy/stealthInjection';
 import { applyGeolocation } from '../proxy/geoEmulation';
 import { injectCookies } from '../proxy/cookieInjector';
 import { detectMachineTimezone } from '../util/ipInfo';
@@ -20,6 +21,7 @@ interface RunningProfile {
   cleanupAuth?: () => void;
   cleanupEmulation?: () => void;
   cleanupGeo?: () => void;
+  cleanupStealth?: () => void;
 }
 
 export interface StartResult {
@@ -73,6 +75,13 @@ function cleanup(rec: RunningProfile): void {
   if (rec.cleanupGeo) {
     try {
       rec.cleanupGeo();
+    } catch {
+      // ignore
+    }
+  }
+  if (rec.cleanupStealth) {
+    try {
+      rec.cleanupStealth();
     } catch {
       // ignore
     }
@@ -142,6 +151,19 @@ export async function startProfile(cfg: LaunchConfig): Promise<StartResult> {
     args.push(`--load-extension=${joined}`);
   }
 
+  // Stealth layer: per-profile MV3 extension (MAIN world, document_start).
+  // CDP script injection is broken in this kernel, so the stealth script ships as an
+  // extension loaded via --load-extension (kernel supports it, verified in Sprint B).
+  let stealthExtDir: string | undefined;
+  if (cfg.stealth) {
+    stealthExtDir = path.join(cfg.userDataDir, 'stealth-ext');
+    writeStealthExtension(stealthExtDir, cfg.stealth);
+    const extArgs = cfg.extensionPaths && cfg.extensionPaths.length
+      ? [...cfg.extensionPaths, stealthExtDir]
+      : [stealthExtDir];
+    args.push(`--load-extension=${extArgs.join(',')}`);
+  }
+
   let child: ChildProcess;
   try {
     if (!fs.existsSync(executable) && executable !== 'chrome.exe') {
@@ -179,6 +201,12 @@ export async function startProfile(cfg: LaunchConfig): Promise<StartResult> {
       cleanupEmulation = await applyDeviceEmulation(wsPuppeteer, cfg.deviceEmulation);
     }
 
+    // Stealth layer: Client Hints + headless-trace fixes (always applied).
+    let cleanupStealth: (() => void) | undefined;
+    if (cfg.stealth) {
+      cleanupStealth = await applyStealth(wsPuppeteer, cfg.stealth);
+    }
+
     // Geolocation spoofing via CDP (Sprint A).
     let cleanupGeo: (() => void) | undefined;
     if (cfg.geolocation) {
@@ -200,6 +228,7 @@ export async function startProfile(cfg: LaunchConfig): Promise<StartResult> {
       cleanupAuth,
       cleanupEmulation,
       cleanupGeo,
+      cleanupStealth,
     };
     running.set(cfg.profileId, rec);
     child.on('exit', () => {
@@ -222,6 +251,13 @@ export async function startProfile(cfg: LaunchConfig): Promise<StartResult> {
       if (rec.cleanupGeo) {
         try {
           rec.cleanupGeo();
+        } catch {
+          // ignore
+        }
+      }
+      if (rec.cleanupStealth) {
+        try {
+          rec.cleanupStealth();
         } catch {
           // ignore
         }

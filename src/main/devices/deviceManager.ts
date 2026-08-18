@@ -13,6 +13,8 @@ export interface DeviceScreen {
 export interface DeviceConfig {
   /** Kernel --fingerprint-platform (desktop OS spoofing). */
   platform: 'windows' | 'linux' | 'macos';
+  /** Logical platform for the stealth layer (Client Hints, navigator.platform, sensors). */
+  logicalPlatform?: 'windows' | 'macos' | 'linux' | 'android' | 'ios';
   platformVersion?: string;
   brand?: string;
   hardwareConcurrency?: number;
@@ -21,6 +23,7 @@ export interface DeviceConfig {
   /** Mobile presets are emulated at the CDP layer (kernel has no mobile platform). */
   mobile?: boolean;
   ua?: string;
+  model?: string;
   screen?: DeviceScreen;
   touch?: boolean;
   maxTouchPoints?: number;
@@ -135,8 +138,10 @@ export function seedDevices(): void {
       platform: 'android',
       config: {
         platform: 'windows',
+        logicalPlatform: 'android',
         mobile: true,
         ua: 'Mozilla/5.0 (Linux; Android 14; Pixel 8 Build/AP1A.240505.005) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Mobile Safari/537.36',
+        model: 'Pixel 8',
         screen: { width: 412, height: 915, deviceScaleFactor: 2.625 },
         touch: true,
         maxTouchPoints: 5,
@@ -148,8 +153,10 @@ export function seedDevices(): void {
       platform: 'ios',
       config: {
         platform: 'windows',
+        logicalPlatform: 'ios',
         mobile: true,
         ua: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1',
+        model: 'iPhone',
         screen: { width: 393, height: 852, deviceScaleFactor: 3 },
         touch: true,
         maxTouchPoints: 5,
@@ -157,7 +164,8 @@ export function seedDevices(): void {
     },
   ];
   const insert = db.prepare(
-    'INSERT OR IGNORE INTO devices (id, name, platform, config_json) VALUES (?, ?, ?, ?)'
+    'INSERT INTO devices (id, name, platform, config_json) VALUES (?, ?, ?, ?) ' +
+      'ON CONFLICT(id) DO UPDATE SET name = excluded.name, platform = excluded.platform, config_json = excluded.config_json'
   );
   for (const p of presets) {
     insert.run(p.id, p.name, p.platform, JSON.stringify(p.config));

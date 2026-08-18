@@ -82,6 +82,17 @@ export interface DeviceEmulationConfig {
   maxTouchPoints?: number;
 }
 
+export interface StealthConfig {
+  mobile: boolean;
+  logicalPlatform: 'windows' | 'macos' | 'linux' | 'android' | 'ios';
+  ua?: string;
+  model?: string;
+  platformVersion?: string;
+  hardwareConcurrency?: number;
+  deviceMemory?: number;
+  maxTouchPoints?: number;
+}
+
 export interface SshTunnelConfig {
   host: string;
   port: number;
@@ -101,6 +112,7 @@ export interface LaunchConfig {
   fingerprintSeed: number;
   fingerprint?: FingerprintLaunch;
   deviceEmulation?: DeviceEmulationConfig;
+  stealth?: StealthConfig;
   geolocation?: { latitude: number; longitude: number; accuracy?: number };
   cookies?: Array<Record<string, unknown>>;
   extensionPaths?: string[];
@@ -578,6 +590,7 @@ export function resolveLaunchConfig(id: string): LaunchConfig {
   // Device preset (Phase 4): desktop presets override kernel fingerprint parameters;
   // mobile presets are emulated at the CDP layer.
   let deviceEmulation: DeviceEmulationConfig | undefined;
+  let stealth: StealthConfig | undefined;
   if (profile.device_id) {
     const dev = db
       .prepare('SELECT config_json FROM devices WHERE id = ?')
@@ -601,6 +614,35 @@ export function resolveLaunchConfig(id: string): LaunchConfig {
         };
       }
 
+      // Stealth layer: Client Hints + headless-trace fixes, consistent with the device.
+      const logicalPlatform =
+        typeof devCfg.logicalPlatform === 'string'
+          ? (devCfg.logicalPlatform as StealthConfig['logicalPlatform'])
+          : devCfg.platform === 'macos'
+            ? 'macos'
+            : devCfg.platform === 'linux'
+              ? 'linux'
+              : devCfg.mobile === true
+                ? (devCfg.platform as string) === 'ios'
+                  ? 'ios'
+                  : 'android'
+                : 'windows';
+      stealth = {
+        mobile: devCfg.mobile === true,
+        logicalPlatform,
+        ua: typeof devCfg.ua === 'string' ? devCfg.ua : undefined,
+        model: typeof devCfg.model === 'string' ? devCfg.model : undefined,
+        platformVersion:
+          typeof devCfg.platformVersion === 'string' ? devCfg.platformVersion : undefined,
+        hardwareConcurrency:
+          typeof devCfg.hardwareConcurrency === 'number'
+            ? devCfg.hardwareConcurrency
+            : undefined,
+        deviceMemory: typeof devCfg.deviceMemory === 'number' ? devCfg.deviceMemory : undefined,
+        maxTouchPoints:
+          typeof devCfg.maxTouchPoints === 'number' ? devCfg.maxTouchPoints : undefined,
+      };
+
       if (fingerprint) {
         if (typeof devCfg.platform === 'string') {
           fingerprint.platform = devCfg.platform;
@@ -616,6 +658,19 @@ export function resolveLaunchConfig(id: string): LaunchConfig {
         if (typeof devCfg.timezone === 'string') fingerprint.timezone = devCfg.timezone;
       }
     }
+  }
+
+  // Stealth layer applies to every profile (headless-trace fixes are universal);
+  // device presets above refine it for mobile/desktop consistency.
+  if (!stealth) {
+    stealth = {
+      mobile: false,
+      logicalPlatform: 'windows',
+      hardwareConcurrency:
+        typeof fingerprint?.hardwareConcurrency === 'number'
+          ? fingerprint.hardwareConcurrency
+          : undefined,
+    };
   }
 
   let proxyServer: string | undefined;
@@ -668,17 +723,15 @@ export function resolveLaunchConfig(id: string): LaunchConfig {
 
   // Cookies (Sprint A)
   let cookies: Array<Record<string, unknown>> | undefined;
-  const cookieRows = db
-    .prepare('SELECT cookie_json FROM cookies WHERE profile_id = ?')
-    .all(id) as Array<{ cookie_json: string }>;
-  if (cookieRows.length > 0) {
-    cookies = [];
-    for (const r of cookieRows) {
-      try {
-        cookies.push(JSON.parse(r.cookie_json));
-      } catch {
-        // ignore malformed rows
-      }
+  const cookieRow = db
+    .prepare('SELECT cookies_json FROM profiles WHERE id = ?')
+    .get(id) as { cookies_json: string | null } | undefined;
+  if (cookieRow?.cookies_json) {
+    try {
+      const parsed = JSON.parse(cookieRow.cookies_json);
+      if (Array.isArray(parsed)) cookies = parsed;
+    } catch {
+      // ignore malformed json
     }
   }
 
@@ -696,6 +749,7 @@ export function resolveLaunchConfig(id: string): LaunchConfig {
     fingerprintSeed,
     fingerprint,
     deviceEmulation,
+    stealth,
     geolocation,
     cookies,
     extensionPaths: extPaths.length ? extPaths : undefined,
