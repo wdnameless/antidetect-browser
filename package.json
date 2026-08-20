@@ -1,6 +1,6 @@
 {
   "name": "antidetect-browser",
-  "version": "0.2.5",
+  "version": "0.2.6",
   "private": true,
   "description": "Personal antidetect browser with an AdsPower-compatible Local API.",
   "main": "dist/electron/main.js",
@@ -18,7 +18,8 @@
     "service": "tsx src/main/index.ts",
     "install-chromium": "node scripts/install-chromium.mjs",
     "ensure-kernel": "node scripts/ensure-kernel.mjs",
-    "predist": "npm run ensure-kernel",
+    "ensure-chromedriver": "node scripts/ensure-chromedriver.mjs",
+    "predist": "npm run ensure-kernel && npm run ensure-chromedriver",
     "dist": "npm run build && electron-builder --win",
     "publish": "npm run build && electron-builder --win --publish always"
   },
@@ -75,6 +76,13 @@
         "to": "kernel/fingerprint-chromium",
         "filter": [
           "**/*"
+        ]
+      },
+      {
+        "from": "data/chromedriver",
+        "to": "chromedriver",
+        "filter": [
+          "chromedriver.exe"
         ]
       }
     ],

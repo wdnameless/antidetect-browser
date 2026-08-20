@@ -1,7 +1,8 @@
 import { spawn, ChildProcess } from 'child_process';
 import * as path from 'path';
 import * as fs from 'fs';
-import { getChromiumPath } from '../config';
+import puppeteer from 'puppeteer-core';
+import { getChromiumPath, getChromedriverPath } from '../config';
 import type { LaunchConfig } from '../profiles/profileManager';
 import { createSshTunnel, SshTunnel } from '../proxy/sshTunnel';
 import { installProxyAuth } from '../proxy/proxyAuth';
@@ -45,8 +46,8 @@ function toResult(r: RunningProfile): StartResult {
   return {
     ws: { puppeteer: r.wsPuppeteer, selenium: r.wsSelenium },
     debug_port: r.port,
-    // AdsPower returns a chromedriver path here for Selenium. In MVP callers supply their own driver.
-    webdriver: '',
+    // Selenium via debuggerAddress: path to chromedriver matching the kernel (Chromium 148).
+    webdriver: getChromedriverPath() ?? '',
     pid: r.pid,
   };
 }
@@ -216,6 +217,23 @@ export async function startProfile(cfg: LaunchConfig): Promise<StartResult> {
     // Cookie injection via CDP (Sprint A).
     if (cfg.cookies && cfg.cookies.length) {
       await injectCookies(wsPuppeteer, cfg.cookies);
+    }
+
+    // Start URLs (v0.2.6): open on start (first in current tab, rest in new tabs).
+    if (cfg.startUrls && cfg.startUrls.length) {
+      try {
+        const sBrowser = await puppeteer.connect({ browserWSEndpoint: wsPuppeteer, defaultViewport: null });
+        const pages = await sBrowser.pages();
+        const first = pages[0] ?? (await sBrowser.newPage());
+        await first.goto(cfg.startUrls[0], { waitUntil: 'domcontentloaded', timeout: 20000 }).catch(() => {});
+        for (const url of cfg.startUrls.slice(1)) {
+          const p = await sBrowser.newPage();
+          await p.goto(url, { waitUntil: 'domcontentloaded', timeout: 20000 }).catch(() => {});
+        }
+        sBrowser.disconnect();
+      } catch {
+        // start_urls are convenience; not fatal if a navigation fails
+      }
     }
 
     const rec: RunningProfile = {

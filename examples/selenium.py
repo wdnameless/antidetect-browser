@@ -1,5 +1,6 @@
 # Example: drive a profile with Selenium via the AdsPower-compatible Local API.
 # Usage: API_KEY=<key> python examples/selenium.py <profileId>
+# Requires: pip install selenium  (chromedriver is bundled with the app and returned in data.webdriver)
 import os
 import sys
 import json
@@ -25,14 +26,19 @@ if data["code"] != 0:
     sys.exit(1)
 
 ws = data["data"]["ws"]
+webdriver_path = data["data"].get("webdriver", "")
 print("CDP (puppeteer):", ws["puppeteer"])
 print("debuggerAddress (selenium):", ws["selenium"])
+print("chromedriver:", webdriver_path or "(not bundled)")
 
-# Selenium connection (requires selenium + a matching chromedriver):
-#   from selenium import webdriver
-#   from selenium.webdriver.chrome.options import Options
-#   opts = Options()
-#   opts.add_experimental_option("debuggerAddress", ws["selenium"])
-#   driver = webdriver.Chrome(options=opts)  # supply matching chromedriver
-#   driver.get("https://whoer.net")
-#   print(driver.title)
+# Selenium connection via debuggerAddress:
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.chrome.service import Service
+
+opts = Options()
+opts.add_experimental_option("debuggerAddress", ws["selenium"])
+svc = Service(executable_path=webdriver_path) if webdriver_path else None
+driver = webdriver.Chrome(service=svc, options=opts)
+driver.get("https://whoer.net")
+print("title:", driver.title)

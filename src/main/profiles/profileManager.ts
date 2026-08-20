@@ -29,6 +29,7 @@ export interface CreateProfileInput {
   timezone?: string;
   browser_type?: BrowserType;
   geolocation?: string;
+  start_urls?: string[];
 }
 
 export interface ProfileRow {
@@ -116,6 +117,7 @@ export interface LaunchConfig {
   geolocation?: { latitude: number; longitude: number; accuracy?: number };
   cookies?: Array<Record<string, unknown>>;
   extensionPaths?: string[];
+  startUrls?: string[];
   userAgent?: string;
   timezone?: string;
 }
@@ -212,9 +214,9 @@ export function createProfile(input: CreateProfileInput): string {
   db.prepare(
     `INSERT INTO profiles (
        id, name, group_id, proxy_id, fingerprint_id, device_id,
-       browser_type, user_agent, timezone, geolocation, status,
+       browser_type, user_agent, timezone, geolocation, start_urls, status,
        created_at, updated_at
-     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'closed', ?, ?)`
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'closed', ?, ?)`
   ).run(
     profileId,
     input.name ?? null,
@@ -226,6 +228,7 @@ export function createProfile(input: CreateProfileInput): string {
     input.user_agent ?? null,
     input.timezone ?? null,
     input.geolocation ?? null,
+    input.start_urls && input.start_urls.length ? JSON.stringify(input.start_urls) : null,
     now,
     now
   );
@@ -379,6 +382,7 @@ export function updateProfile(
     device_id?: string | null;
     user_agent?: string | null;
     timezone?: string | null;
+    start_urls?: string[] | null;
   }
 ): boolean {
   const db = getDb();
@@ -434,6 +438,10 @@ export function updateProfile(
   if (updates.timezone !== undefined) {
     sets.push('timezone = ?');
     params.push(updates.timezone);
+  }
+  if (updates.start_urls !== undefined) {
+    sets.push('start_urls = ?');
+    params.push(updates.start_urls && updates.start_urls.length ? JSON.stringify(updates.start_urls) : null);
   }
 
   if (sets.length === 0) return true;
@@ -738,6 +746,20 @@ export function resolveLaunchConfig(id: string): LaunchConfig {
   // Extensions (Sprint B): on-disk paths of bound extensions.
   const extPaths = getEnabledExtensionPaths(id);
 
+  // Start URLs (v0.2.6): opened on start (first in current tab, rest in new tabs).
+  let startUrls: string[] | undefined;
+  const startUrlsRow = db
+    .prepare('SELECT start_urls FROM profiles WHERE id = ?')
+    .get(id) as { start_urls: string | null } | undefined;
+  if (startUrlsRow?.start_urls) {
+    try {
+      const parsed = JSON.parse(startUrlsRow.start_urls);
+      if (Array.isArray(parsed)) startUrls = parsed.filter((u) => typeof u === 'string');
+    } catch {
+      // ignore malformed json
+    }
+  }
+
   return {
     profileId: id,
     userDataDir: path.join(PROFILES_DIR, id),
@@ -753,6 +775,7 @@ export function resolveLaunchConfig(id: string): LaunchConfig {
     geolocation,
     cookies,
     extensionPaths: extPaths.length ? extPaths : undefined,
+    startUrls: startUrls && startUrls.length ? startUrls : undefined,
     userAgent: profile.user_agent ?? undefined,
     timezone: profile.timezone ?? undefined,
   };

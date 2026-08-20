@@ -13,6 +13,7 @@ function resolveDataDir(): string {
 export const DATA_DIR = resolveDataDir();
 export const PROFILES_DIR = path.join(DATA_DIR, 'profiles');
 export const CHROMIUM_DIR = path.join(DATA_DIR, 'chromium');
+export const CHROMEDRIVER_DIR = path.join(DATA_DIR, 'chromedriver');
 export const EXTENSIONS_DIR = path.join(DATA_DIR, 'extensions');
 export const DB_PATH = path.join(DATA_DIR, 'antidetect.db');
 
@@ -125,4 +126,19 @@ export function getCamoufoxPath(): string | null {
     return process.env.CAMOUFOX_PATH;
   }
   return findCamoufox();
+}
+
+/**
+ * Locate chromedriver matching the kernel (Chromium 148) for Selenium via debuggerAddress.
+ * Priority: CHROMEDRIVER_PATH env -> packaged resources -> data/chromedriver. Null if absent.
+ */
+export function getChromedriverPath(): string | null {
+  if (process.env.CHROMEDRIVER_PATH && process.env.CHROMEDRIVER_PATH.length > 0) {
+    return process.env.CHROMEDRIVER_PATH;
+  }
+  const candidates: string[] = [];
+  if (process.resourcesPath) candidates.push(path.join(process.resourcesPath, 'chromedriver', 'chromedriver.exe'));
+  candidates.push(path.join(CHROMEDRIVER_DIR, 'chromedriver.exe'));
+  candidates.push(path.join(CHROMEDRIVER_DIR, 'chromedriver-win64', 'chromedriver.exe'));
+  return candidates.find((c) => fs.existsSync(c)) ?? null;
 }

@@ -164,6 +164,7 @@ const updateProfileSchema = z.object({
   device_id: z.string().nullable().optional(),
   user_agent: z.string().nullable().optional(),
   timezone: z.string().nullable().optional(),
+  start_urls: z.array(z.string()).nullable().optional(),
 });
 
 router.post('/api/v1/browser-profile/update', (req, res) => {
@@ -180,6 +181,7 @@ router.post('/api/v1/browser-profile/update', (req, res) => {
     device_id: parsed.data.device_id,
     user_agent: parsed.data.user_agent,
     timezone: parsed.data.timezone,
+    start_urls: parsed.data.start_urls,
   });
   res.json(ok ? { code: 0, msg: 'success', data: {} } : { code: -1, msg: 'profile update failed', data: {} });
 });
@@ -268,6 +270,7 @@ const createSchema = z.object({
   device_id: z.string().optional(),
   fingerprint_seed: z.number().optional(),
   proxy: proxyInputSchema.optional(),
+  start_urls: z.array(z.string()).optional(),
 });
 
 router.post('/api/v1/browser-profile/create', (req, res) => {
@@ -286,6 +289,7 @@ router.post('/api/v1/browser-profile/create', (req, res) => {
     proxy_id: parsed.data.proxy_id,
     fingerprint_seed: parsed.data.fingerprint_seed,
     proxy: parsed.data.proxy ? (parsed.data.proxy as pm.ProxyInput) : undefined,
+    start_urls: parsed.data.start_urls,
   };
   try {
     const id = pm.createProfile(input);
