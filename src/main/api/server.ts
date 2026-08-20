@@ -2,6 +2,7 @@ import express, { Express, Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import { API_HOST, API_PORT } from '../config';
 import { authMiddleware } from './auth';
+import { rateLimitMiddleware } from './rateLimit';
 import browserRoutes from './routes/browser';
 import proxyRoutes from './routes/proxy';
 import deviceRoutes from './routes/device';
@@ -21,6 +22,8 @@ export function startApi(): Promise<void> {
 
   // Everything below requires Bearer auth
   app.use(authMiddleware);
+  // AdsPower-parity rate limits (1 req/s on list/cookies endpoints).
+  app.use(rateLimitMiddleware);
   app.use(browserRoutes);
   app.use(proxyRoutes);
   app.use(deviceRoutes);
