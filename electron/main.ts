@@ -1,5 +1,6 @@
-import { app, BrowserWindow, ipcMain } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, shell } from 'electron';
 import * as path from 'path';
+import * as fs from 'fs';
 import { autoUpdater } from 'electron-updater';
 
 const isDev = process.env.NODE_ENV === 'development';
@@ -16,11 +17,34 @@ autoUpdater.autoInstallOnAppQuit = true;
  * and can also run standalone via `npm run service`.
  */
 async function bootstrap(): Promise<void> {
-  process.env.ANTIDETECT_DATA_DIR = app.getPath('userData');
-  const { getApiKey } = await import('../src/main/config');
+  // Settings (settings.json) live in userData; the data directory itself is
+  // user-configurable and persisted in settings.json (see src/main/config.ts).
+  process.env.ANTIDETECT_SETTINGS_DIR = app.getPath('userData');
+  const { getApiKey, getDataDir, setDataDir } = await import('../src/main/config');
   const { startService } = await import('../src/main/index');
   await startService();
   ipcMain.handle('antidetect:getApiKey', () => getApiKey());
+
+  // Data directory management (profiles, kernel, extensions, DB).
+  ipcMain.handle('data:get-dir', () => getDataDir());
+  ipcMain.handle('data:set-dir', async () => {
+    const win = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0];
+    const result = await dialog.showOpenDialog(win, {
+      title: 'Select data folder (profiles, cache, kernel)',
+      properties: ['openDirectory', 'createDirectory'],
+    });
+    if (result.canceled || result.filePaths.length === 0) {
+      return { ok: false, dir: getDataDir() };
+    }
+    const dir = result.filePaths[0];
+    setDataDir(dir);
+    return { ok: true, dir };
+  });
+  ipcMain.handle('data:open-dir', () => {
+    const dir = getDataDir();
+    if (fs.existsSync(dir)) void shell.openPath(dir);
+    return dir;
+  });
 }
 
 function createWindow(): void {

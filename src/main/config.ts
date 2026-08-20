@@ -3,11 +3,48 @@ import * as fs from 'fs';
 import * as os from 'os';
 import { randomUUID } from 'crypto';
 
+// Base directory for app settings (settings.json). Electron sets ANTIDETECT_SETTINGS_DIR
+// to app.getPath('userData'); standalone service falls back to ~/.antidetect.
+function settingsBase(): string {
+  if (process.env.ANTIDETECT_SETTINGS_DIR && process.env.ANTIDETECT_SETTINGS_DIR.length > 0) {
+    return process.env.ANTIDETECT_SETTINGS_DIR;
+  }
+  return path.join(os.homedir(), '.antidetect');
+}
+
+function settingsFile(): string {
+  return path.join(settingsBase(), 'settings.json');
+}
+
+function readSettings(): Record<string, unknown> {
+  try {
+    return JSON.parse(fs.readFileSync(settingsFile(), 'utf8')) as Record<string, unknown>;
+  } catch {
+    return {};
+  }
+}
+
+function writeSettings(s: Record<string, unknown>): void {
+  try {
+    fs.mkdirSync(settingsBase(), { recursive: true });
+    fs.writeFileSync(settingsFile(), JSON.stringify(s, null, 2), 'utf8');
+  } catch {
+    // ignore — settings are best-effort
+  }
+}
+
 function resolveDataDir(): string {
+  // 1) Explicit env override (used by tests and CI).
   if (process.env.ANTIDETECT_DATA_DIR && process.env.ANTIDETECT_DATA_DIR.length > 0) {
     return process.env.ANTIDETECT_DATA_DIR;
   }
-  return path.join(process.cwd(), 'data');
+  // 2) User-chosen directory persisted in settings.json.
+  const saved = readSettings().dataDir;
+  if (typeof saved === 'string' && saved.length > 0) {
+    return saved;
+  }
+  // 3) Default: <settingsBase>/data (writable, stable across updates).
+  return path.join(settingsBase(), 'data');
 }
 
 export const DATA_DIR = resolveDataDir();
@@ -22,6 +59,22 @@ export const API_PORT = Number(process.env.API_PORT || 50325);
 
 for (const dir of [DATA_DIR, PROFILES_DIR, CHROMIUM_DIR, EXTENSIONS_DIR]) {
   fs.mkdirSync(dir, { recursive: true });
+}
+
+/** Current data directory (profiles, kernel, extensions, DB). */
+export function getDataDir(): string {
+  return DATA_DIR;
+}
+
+/**
+ * Persist a new data directory. The change takes effect after the app restarts
+ * (the backend resolves DATA_DIR at import time). Returns the new path.
+ */
+export function setDataDir(dir: string): string {
+  const s = readSettings();
+  s.dataDir = dir;
+  writeSettings(s);
+  return dir;
 }
 
 let cachedApiKey: string | null = null;

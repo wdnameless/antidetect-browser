@@ -19,6 +19,11 @@ declare global {
   interface Window {
     antidetect?: {
       getApiKey: () => Promise<string>;
+      data: {
+        getDir: () => Promise<string>;
+        setDir: () => Promise<{ ok: boolean; dir: string }>;
+        openDir: () => Promise<string>;
+      };
       update: {
         check: () => Promise<void>;
         download: () => Promise<void>;

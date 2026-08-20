@@ -9,6 +9,11 @@ export interface UpdateInfo {
 
 contextBridge.exposeInMainWorld('antidetect', {
   getApiKey: (): Promise<string> => ipcRenderer.invoke('antidetect:getApiKey'),
+  data: {
+    getDir: (): Promise<string> => ipcRenderer.invoke('data:get-dir'),
+    setDir: (): Promise<{ ok: boolean; dir: string }> => ipcRenderer.invoke('data:set-dir'),
+    openDir: (): Promise<string> => ipcRenderer.invoke('data:open-dir'),
+  },
   update: {
     check: (): Promise<void> => ipcRenderer.invoke('update:check'),
     download: (): Promise<void> => ipcRenderer.invoke('update:download'),

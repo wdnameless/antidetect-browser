@@ -18,10 +18,15 @@ function formatBytes(n: number): string {
 export function Settings() {
   const [apiKey, setApiKey] = useState('');
   const [status, setStatus] = useState<UpdateStatus | null>(null);
+  const [dataDir, setDataDir] = useState('');
+  const [dataDirMsg, setDataDirMsg] = useState('');
 
   useEffect(() => {
     if (window.antidetect?.getApiKey) {
       void window.antidetect.getApiKey().then(setApiKey).catch(() => undefined);
+    }
+    if (window.antidetect?.data?.getDir) {
+      void window.antidetect.data.getDir().then(setDataDir).catch(() => undefined);
     }
     if (window.antidetect?.update?.onStatus) {
       const off = window.antidetect.update.onStatus(setStatus);
@@ -31,6 +36,18 @@ export function Settings() {
 
   const busy = status?.state === 'checking' || status?.state === 'downloading';
   const updaterAvailable = Boolean(window.antidetect?.update);
+  const dataApiAvailable = Boolean(window.antidetect?.data);
+
+  const onChangeDataDir = (): void => {
+    void window.antidetect?.data.setDir().then((r) => {
+      setDataDir(r.dir);
+      setDataDirMsg(r.ok ? 'Folder changed. Restart the app to apply.' : '');
+    }).catch(() => setDataDirMsg('Failed to change folder.'));
+  };
+
+  const onOpenDataDir = (): void => {
+    void window.antidetect?.data.openDir();
+  };
 
   const onCheck = (): void => {
     setStatus({ state: 'checking' });
@@ -113,6 +130,32 @@ export function Settings() {
           Pass this key in your HTTP header: <code>Authorization: Bearer &lt;key&gt;</code> when connecting Puppeteer, Playwright, Selenium, or custom Python bots to the Local API.
         </p>
       </div>
+
+      {dataApiAvailable && (
+        <div className="panel">
+          <div className="panel-header">Data Folder (Profiles, Cache, Kernel)</div>
+          <div className="setting-row">
+            <span className="setting-label">Current folder</span>
+            <code style={{ wordBreak: 'break-all', maxWidth: '60%' }}>{dataDir || '—'}</code>
+          </div>
+          <div className="setting-row">
+            <span className="setting-label">Actions</span>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button className="btn" onClick={onChangeDataDir}>
+                Change Folder…
+              </button>
+              <button className="btn" onClick={onOpenDataDir}>
+                Open in Explorer
+              </button>
+            </div>
+          </div>
+          {dataDirMsg ? <p className="hint" style={{ color: 'var(--warn)' }}>{dataDirMsg}</p> : null}
+          <p className="hint">
+            All browser profiles, cookies, extensions, the Chromium kernel and the database are stored here.
+            Changing the folder takes effect after restarting the app.
+          </p>
+        </div>
+      )}
 
       {updaterAvailable && (
         <div className="panel">
