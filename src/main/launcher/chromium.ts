@@ -95,6 +95,13 @@ export async function startProfile(cfg: LaunchConfig): Promise<StartResult> {
 
   const executable = getChromiumPath();
   fs.mkdirSync(cfg.userDataDir, { recursive: true });
+  // Remove a stale DevToolsActivePort from a previous run: otherwise waitForDevToolsPort
+  // may read the old (dead) port before the new process writes its own.
+  try {
+    fs.rmSync(path.join(cfg.userDataDir, 'DevToolsActivePort'), { force: true });
+  } catch {
+    // ignore
+  }
 
   // SSH proxies are tunneled to a local SOCKS5 endpoint first.
   let tunnel: SshTunnel | undefined;

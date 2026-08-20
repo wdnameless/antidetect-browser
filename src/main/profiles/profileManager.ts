@@ -4,6 +4,7 @@ import { getDb } from '../db';
 import { PROFILES_DIR } from '../config';
 import { getEnabledExtensionPaths } from '../extensions/extensionManager';
 import { checkProxy, type ProxyCheckResult } from '../proxy/proxyManager';
+import { pickMobilePreset, buildMobileUa, type MobilePreset } from '../devices/mobilePresets';
 
 export type ProxyType = 'http' | 'https' | 'socks5' | 'ssh';
 
@@ -611,17 +612,6 @@ export function resolveLaunchConfig(id: string): LaunchConfig {
         devCfg = {};
       }
 
-      if (devCfg.mobile === true) {
-        deviceEmulation = {
-          mobile: true,
-          ua: typeof devCfg.ua === 'string' ? devCfg.ua : undefined,
-          screen: devCfg.screen as DeviceEmulationConfig['screen'],
-          touch: typeof devCfg.touch === 'boolean' ? devCfg.touch : true,
-          maxTouchPoints:
-            typeof devCfg.maxTouchPoints === 'number' ? devCfg.maxTouchPoints : 5,
-        };
-      }
-
       // Stealth layer: Client Hints + headless-trace fixes, consistent with the device.
       const logicalPlatform =
         typeof devCfg.logicalPlatform === 'string'
@@ -635,17 +625,42 @@ export function resolveLaunchConfig(id: string): LaunchConfig {
                   ? 'ios'
                   : 'android'
                 : 'windows';
+
+      if (devCfg.mobile === true) {
+        // Мобильный профиль v2: детерминированный «телефон» из пула по seed — только для Android.
+        // Один профиль = одна модель при каждом запуске (важно для долгоживущих аккаунтов).
+        const isAndroid = logicalPlatform === 'android';
+        const preset = isAndroid ? pickMobilePreset(fingerprintSeed) : undefined;
+        deviceEmulation = {
+          mobile: true,
+          ua: preset ? buildMobileUa(preset) : typeof devCfg.ua === 'string' ? devCfg.ua : undefined,
+          screen: preset ? preset.screen : (devCfg.screen as DeviceEmulationConfig['screen']),
+          touch: typeof devCfg.touch === 'boolean' ? devCfg.touch : true,
+          maxTouchPoints:
+            typeof devCfg.maxTouchPoints === 'number' ? devCfg.maxTouchPoints : 5,
+        };
+        // Сохраняем пресет для stealth-слоя (модель/версия Android/GPU).
+        if (preset) devCfg._preset = preset;
+      }
+
+      const preset = (devCfg._preset as MobilePreset | undefined) ?? undefined;
       stealth = {
         mobile: devCfg.mobile === true,
         logicalPlatform,
-        ua: typeof devCfg.ua === 'string' ? devCfg.ua : undefined,
-        model: typeof devCfg.model === 'string' ? devCfg.model : undefined,
+        ua: preset ? buildMobileUa(preset) : typeof devCfg.ua === 'string' ? devCfg.ua : undefined,
+        model: preset ? preset.model : typeof devCfg.model === 'string' ? devCfg.model : undefined,
         platformVersion:
-          typeof devCfg.platformVersion === 'string' ? devCfg.platformVersion : undefined,
+          preset
+            ? `${preset.androidVersion}.0.0`
+            : typeof devCfg.platformVersion === 'string'
+              ? devCfg.platformVersion
+              : undefined,
         hardwareConcurrency:
-          typeof devCfg.hardwareConcurrency === 'number'
-            ? devCfg.hardwareConcurrency
-            : undefined,
+          preset
+            ? preset.hardwareConcurrency
+            : typeof devCfg.hardwareConcurrency === 'number'
+              ? devCfg.hardwareConcurrency
+              : undefined,
         deviceMemory: typeof devCfg.deviceMemory === 'number' ? devCfg.deviceMemory : undefined,
         maxTouchPoints:
           typeof devCfg.maxTouchPoints === 'number' ? devCfg.maxTouchPoints : undefined,

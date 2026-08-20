@@ -106,7 +106,7 @@ async function main(): Promise<void> {
     ['desktop webdriver false', desktop.webdriver === false],
     ['android uaData platform Android', JSON.parse(android.uaData).platform === 'Android'],
     ['android uaData mobile true', JSON.parse(android.uaData).mobile === true],
-    ['android high-entropy model Pixel 8', JSON.parse(android.uaDataHighEntropy).model === 'Pixel 8'],
+    ['android high-entropy model non-empty', (JSON.parse(android.uaDataHighEntropy).model || '').length > 0],
     ['android platform Linux armv8l', android.platform === 'Linux armv8l'],
     ['android plugins empty', android.plugins === 0],
     ['android deviceMemory undefined', android.deviceMemory === 'undefined'],
