@@ -9,8 +9,26 @@
 //   const browser = await ad.connectPuppeteer(user_id);   // puppeteer-core
 //   const browser = await ad.connectPlaywright(user_id); // playwright
 //
-// Rate limits: list/cookies endpoints are 1 req/s (AdsPower parity). The SDK retries
-// automatically, honoring `retry_after_ms` from the 429 response.
+// Rate limits (AdsPower parity): ALL endpoints are rate-limited per (client, path).
+// list/cookies = 1 req/s, start/stop = 5 req/s, everything else = 10 req/s.
+// The SDK retries automatically on HTTP 429, honoring `retry_after_ms` from the response.
+
+// Mirrors src/main/api/rateLimit.ts (requests per second per path).
+export const RATE_LIMITS = {
+  '/api/v1/browser/list': 1,
+  '/api/v2/browser-profile/list': 1,
+  '/api/v1/proxy/list': 1,
+  '/api/v1/device/list': 1,
+  '/api/v1/extension/list': 1,
+  '/api/v1/group/list': 1,
+  '/api/v1/browser-profile/cookies/import': 1,
+  '/api/v1/browser-profile/cookies/export': 1,
+  '/api/v1/browser/start': 5,
+  '/api/v1/browser/stop': 5,
+  '/api/v2/browser-profile/start': 5,
+  '/api/v2/browser-profile/stop': 5,
+  default: 10,
+};
 
 export class Antidetect {
   constructor({ apiKey = '', base = 'http://127.0.0.1:50325', maxRetries = 5 } = {}) {
