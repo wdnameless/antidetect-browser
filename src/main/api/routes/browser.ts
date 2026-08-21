@@ -196,11 +196,30 @@ const deleteProfileSchema = z.object({
 router.post('/api/v1/browser-profile/delete', (req, res) => {
   const parsed = deleteProfileSchema.safeParse(req.body);
   if (!parsed.success) {
-    res.json({ code: -1, msg: 'user_id is required', data: {} });
+    res.json({ code: -1, msg: 'invalid body', data: { errors: parsed.error.flatten() } });
     return;
   }
   const ok = pm.deleteProfile(parsed.data.user_id);
-  res.json(ok ? { code: 0, msg: 'success', data: {} } : { code: -1, msg: 'profile delete failed', data: {} });
+  res.json(ok ? { code: 0, msg: 'success', data: {} } : { code: -1, msg: 'profile not found', data: {} });
+});
+
+const duplicateProfileSchema = z.object({
+  user_id: z.string(),
+  name: z.string().optional(),
+});
+
+router.post('/api/v1/browser-profile/duplicate', (req, res) => {
+  const parsed = duplicateProfileSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.json({ code: -1, msg: 'invalid body', data: { errors: parsed.error.flatten() } });
+    return;
+  }
+  const newId = pm.duplicateProfile(parsed.data.user_id, parsed.data.name);
+  if (!newId) {
+    res.json({ code: -1, msg: 'source profile not found', data: {} });
+    return;
+  }
+  res.json({ code: 0, msg: 'success', data: { user_id: newId } });
 });
 
 const randomizeFpSchema = z.object({

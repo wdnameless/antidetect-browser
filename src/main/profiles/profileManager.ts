@@ -286,6 +286,25 @@ export function updateProfileFingerprint(userId: string, config: Record<string, 
   return true;
 }
 
+export function duplicateProfile(userId: string, newName?: string): string | null {
+  const source = getProfile(userId);
+  if (!source) return null;
+
+  const targetName = newName?.trim() || (source.name ? `${source.name} (Copy)` : 'Profile (Copy)');
+
+  return createProfile({
+    name: targetName,
+    group_id: source.group_id || undefined,
+    proxy_id: source.proxy_id || undefined,
+    device_id: source.device_id || undefined,
+    browser_type: (source.browser_type as BrowserType) || 'chromium',
+    user_agent: source.user_agent || undefined,
+    timezone: source.timezone || undefined,
+    geolocation: source.geolocation || undefined,
+    mobile_model_id: source.mobile_model_id || undefined,
+  });
+}
+
 export function getProfile(id: string): ProfileRow | undefined {
   return getDb()
     .prepare('SELECT * FROM profiles WHERE id = ?')

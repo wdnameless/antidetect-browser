@@ -27,21 +27,21 @@ import {
   DevicesIcon,
 } from '../icons';
 
-export function Profiles() {
+export function Profiles({ initialGroupId }: { initialGroupId?: string | null } = {}) {
   const [profiles, setProfiles] = useState<ProfileListItem[]>([]);
   const [groups, setGroups] = useState<GroupItem[]>([]);
   const [proxies, setProxies] = useState<ProxyItem[]>([]);
   const [devices, setDevices] = useState<DeviceItem[]>([]);
   const [extensions, setExtensions] = useState<ExtensionItem[]>([]);
   const [mobilePresets, setMobilePresets] = useState<Array<{ id: string; name: string; model: string; androidVersion: string; gpu: string }>>([]);
-
+  const [selectedGroupFilter, setSelectedGroupFilter] = useState<string>(initialGroupId || '');
+  const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedGroupFilter, setSelectedGroupFilter] = useState<string>('');
-
-  const [error, setError] = useState('');
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [endpoint, setEndpoint] = useState<{ id: string; ws: string } | null>(null);
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
 
   // Modal tab: 'general' | 'proxy' | 'fingerprint'
   const [modalTab, setModalTab] = useState<'general' | 'proxy' | 'fingerprint'>('general');
@@ -101,6 +101,12 @@ export function Profiles() {
       if (res.code === 0) setProxies(res.data.list);
     } catch { /* ignore */ }
   }, []);
+
+  useEffect(() => {
+    if (initialGroupId !== undefined) {
+      setSelectedGroupFilter(initialGroupId || '');
+    }
+  }, [initialGroupId]);
 
   const loadDevices = useCallback(async () => {
     try {
@@ -332,6 +338,23 @@ export function Profiles() {
       if (res.code === 0) {
         await loadProfiles();
         await loadGroups();
+      } else {
+        setError(res.msg);
+      }
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleDuplicateProfile = async (id: string) => {
+    setBusy(true);
+    setError('');
+    try {
+      const res = await api.profileDuplicate(id);
+      if (res.code === 0) {
+        await loadProfiles();
       } else {
         setError(res.msg);
       }
@@ -706,20 +729,31 @@ export function Profiles() {
                     </span>
                   </td>
                   <td>
-                    <span
-                      style={{
-                        background: 'rgba(99, 102, 241, 0.1)',
-                        border: '1px solid rgba(99, 102, 241, 0.25)',
-                        padding: '2px 8px',
-                        borderRadius: 4,
-                        fontSize: 11.5,
-                        color: '#a5b4fc',
-                        fontFamily: 'var(--font-mono)',
-                      }}
-                      title="Fingerprint Seed"
-                    >
-                      🎲 {p.fingerprint_seed ? String(p.fingerprint_seed).slice(0, 7) + '..' : 'Auto'}
-                    </span>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                      <span
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 4,
+                          fontSize: 12,
+                          fontWeight: 600,
+                          color: p.platform === 'android' || p.platform === 'ios' ? '#38bdf8' : '#e2e8f0',
+                        }}
+                      >
+                        {p.platform === 'android' ? '📱 Android' : p.platform === 'ios' ? '📱 iOS' : p.platform === 'macos' ? '💻 macOS' : '💻 Windows'}
+                        {p.device_name ? <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>({p.device_name})</span> : null}
+                      </span>
+                      <span
+                        style={{
+                          fontSize: 11,
+                          color: 'var(--text-muted)',
+                          fontFamily: 'var(--font-mono)',
+                        }}
+                        title={`Seed: ${p.fingerprint_seed ?? 'auto'}`}
+                      >
+                        seed: {p.fingerprint_seed ? String(p.fingerprint_seed).slice(0, 8) + '..' : 'auto'}
+                      </span>
+                    </div>
                   </td>
                   <td>
                     <span className={`badge ${p.status}`}>
@@ -727,9 +761,10 @@ export function Profiles() {
                     </span>
                   </td>
                   <td>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6, position: 'relative' }}>
                       {p.status === 'running' ? (
                         <button
+                          type="button"
                           className="btn-icon stop-btn"
                           onClick={() => void stop(p.user_id)}
                           disabled={busy}
@@ -739,6 +774,7 @@ export function Profiles() {
                         </button>
                       ) : (
                         <button
+                          type="button"
                           className="btn-icon play-btn"
                           onClick={() => void start(p.user_id)}
                           disabled={busy}
@@ -749,55 +785,198 @@ export function Profiles() {
                       )}
 
                       <button
+                        type="button"
                         className="btn-icon"
                         onClick={() => void openEditModal(p)}
+                        disabled={busy}
                         title="Edit Profile Settings (Proxy / Fingerprint)"
                       >
                         <EditIcon size={14} />
                       </button>
 
-                      <button
-                        className="btn-icon"
-                        onClick={() => void handleRandomizeFingerprint(p.user_id)}
-                        disabled={busy}
-                        title="🎲 Randomize Fingerprint Seed"
-                      >
-                        <DiceIcon size={14} />
-                      </button>
+                      {/* Kebab Action Menu */}
+                      <div style={{ position: 'relative' }}>
+                        <button
+                          type="button"
+                          className={`btn-icon ${activeMenuId === p.user_id ? 'active' : ''}`}
+                          onClick={() => setActiveMenuId(activeMenuId === p.user_id ? null : p.user_id)}
+                          title="More actions"
+                          style={{ fontWeight: 800, fontSize: 13, padding: '0 6px' }}
+                        >
+                          ⋯
+                        </button>
 
-                      <button
-                        className="btn-icon"
-                        onClick={() => void openManage(p.user_id, 'cookies')}
-                        title="Manage Cookies"
-                      >
-                        <CookieIcon size={14} />
-                      </button>
+                        {activeMenuId === p.user_id ? (
+                          <>
+                            <div
+                              style={{ position: 'fixed', inset: 0, zIndex: 99 }}
+                              onClick={() => setActiveMenuId(null)}
+                            />
+                            <div
+                              style={{
+                                position: 'absolute',
+                                right: 0,
+                                top: 'calc(100% + 4px)',
+                                zIndex: 100,
+                                minWidth: 165,
+                                background: 'var(--panel)',
+                                border: '1px solid var(--border)',
+                                borderRadius: 6,
+                                boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
+                                padding: '4px 0',
+                                display: 'flex',
+                                flexDirection: 'column',
+                              }}
+                            >
+                              <button
+                                type="button"
+                                style={{
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: 8,
+                                  padding: '7px 12px',
+                                  background: 'transparent',
+                                  border: 'none',
+                                  color: 'var(--text)',
+                                  fontSize: 12,
+                                  cursor: 'pointer',
+                                  textAlign: 'left',
+                                  width: '100%',
+                                }}
+                                onClick={() => {
+                                  setActiveMenuId(null);
+                                  void handleDuplicateProfile(p.user_id);
+                                }}
+                              >
+                                <CopyIcon size={13} />
+                                <span>Duplicate Profile</span>
+                              </button>
 
-                      <button
-                        className="btn-icon"
-                        onClick={() => void openManage(p.user_id, 'fingerprint')}
-                        title="Fingerprint Overrides"
-                      >
-                        <FingerprintIcon size={14} />
-                      </button>
+                              <button
+                                type="button"
+                                style={{
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: 8,
+                                  padding: '7px 12px',
+                                  background: 'transparent',
+                                  border: 'none',
+                                  color: 'var(--text)',
+                                  fontSize: 12,
+                                  cursor: 'pointer',
+                                  textAlign: 'left',
+                                  width: '100%',
+                                }}
+                                onClick={() => {
+                                  setActiveMenuId(null);
+                                  void handleRandomizeFingerprint(p.user_id);
+                                }}
+                              >
+                                <DiceIcon size={13} />
+                                <span>Randomize Seed</span>
+                              </button>
 
-                      <button
-                        className="btn-icon"
-                        onClick={() => void openManage(p.user_id, 'extensions')}
-                        title="Bind Extensions"
-                      >
-                        <ExtensionsIcon size={14} />
-                      </button>
+                              <button
+                                type="button"
+                                style={{
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: 8,
+                                  padding: '7px 12px',
+                                  background: 'transparent',
+                                  border: 'none',
+                                  color: 'var(--text)',
+                                  fontSize: 12,
+                                  cursor: 'pointer',
+                                  textAlign: 'left',
+                                  width: '100%',
+                                }}
+                                onClick={() => {
+                                  setActiveMenuId(null);
+                                  void openManage(p.user_id, 'cookies');
+                                }}
+                              >
+                                <CookieIcon size={13} />
+                                <span>Manage Cookies</span>
+                              </button>
 
-                      <button
-                        className="btn-icon"
-                        style={{ color: 'var(--danger)' }}
-                        onClick={() => void deleteProfilePrompt(p.user_id)}
-                        disabled={busy}
-                        title="Delete Profile"
-                      >
-                        <TrashIcon size={13} />
-                      </button>
+                              <button
+                                type="button"
+                                style={{
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: 8,
+                                  padding: '7px 12px',
+                                  background: 'transparent',
+                                  border: 'none',
+                                  color: 'var(--text)',
+                                  fontSize: 12,
+                                  cursor: 'pointer',
+                                  textAlign: 'left',
+                                  width: '100%',
+                                }}
+                                onClick={() => {
+                                  setActiveMenuId(null);
+                                  void openManage(p.user_id, 'fingerprint');
+                                }}
+                              >
+                                <FingerprintIcon size={13} />
+                                <span>Fingerprint Config</span>
+                              </button>
+
+                              <button
+                                type="button"
+                                style={{
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: 8,
+                                  padding: '7px 12px',
+                                  background: 'transparent',
+                                  border: 'none',
+                                  color: 'var(--text)',
+                                  fontSize: 12,
+                                  cursor: 'pointer',
+                                  textAlign: 'left',
+                                  width: '100%',
+                                }}
+                                onClick={() => {
+                                  setActiveMenuId(null);
+                                  void openManage(p.user_id, 'extensions');
+                                }}
+                              >
+                                <ExtensionsIcon size={13} />
+                                <span>Bind Extensions</span>
+                              </button>
+
+                              <div style={{ height: 1, background: 'var(--border)', margin: '4px 0' }} />
+
+                              <button
+                                type="button"
+                                style={{
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: 8,
+                                  padding: '7px 12px',
+                                  background: 'transparent',
+                                  border: 'none',
+                                  color: 'var(--danger)',
+                                  fontSize: 12,
+                                  cursor: 'pointer',
+                                  textAlign: 'left',
+                                  width: '100%',
+                                }}
+                                onClick={() => {
+                                  setActiveMenuId(null);
+                                  void deleteProfilePrompt(p.user_id);
+                                }}
+                              >
+                                <TrashIcon size={13} />
+                                <span>Delete Profile</span>
+                              </button>
+                            </div>
+                          </>
+                        ) : null}
+                      </div>
                     </div>
                   </td>
                 </tr>

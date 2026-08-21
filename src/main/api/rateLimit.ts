@@ -1,31 +1,31 @@
-// AdsPower-parity rate limiting for the Local API.
-// All endpoints are rate-limited per (client, method, path); list/cookies are 1 req/s
-// (AdsPower parity), heavy operations (start/stop) allow modest parallelism, everything
-// else defaults to 10 req/s. Throttled responses: HTTP 429 with
-// { code: -1, msg: 'rate limit exceeded', data: { retry_after_ms } }.
+// Rate limiting for the Local API.
+// Default limits provide protection against runaway loops while preventing
+// UI blocking during regular desktop usage (filtering, rapid navigation).
+// Throttled responses: HTTP 429 with { code: -1, msg: 'rate limit exceeded', data: { retry_after_ms } }.
 import { Request, Response, NextFunction } from 'express';
 
 const WINDOW_MS = 1000;
 
-// Per-path limits (requests per second). Paths not listed use DEFAULT_LIMIT.
+// Per-path limits (requests per second).
 const LIMITS: Record<string, number> = {
-  // AdsPower parity: 1 req/s on list/cookies endpoints.
-  '/api/v1/browser/list': 1,
-  '/api/v2/browser-profile/list': 1,
-  '/api/v1/proxy/list': 1,
-  '/api/v1/device/list': 1,
-  '/api/v1/extension/list': 1,
-  '/api/v1/group/list': 1,
-  '/api/v1/browser-profile/cookies/import': 1,
-  '/api/v1/browser-profile/cookies/export': 1,
-  // Heavy operations: allow modest parallelism (5 req/s).
-  '/api/v1/browser/start': 5,
-  '/api/v1/browser/stop': 5,
-  '/api/v2/browser-profile/start': 5,
-  '/api/v2/browser-profile/stop': 5,
+  // Lists and queries: high throughput for responsive UI navigation (20 req/s)
+  '/api/v1/browser/list': 20,
+  '/api/v2/browser-profile/list': 20,
+  '/api/v1/proxy/list': 20,
+  '/api/v1/device/list': 20,
+  '/api/v1/extension/list': 20,
+  '/api/v1/group/list': 20,
+  '/api/v1/device/mobile-presets': 20,
+  '/api/v1/browser-profile/cookies/import': 5,
+  '/api/v1/browser-profile/cookies/export': 5,
+  // Heavy operations: allow moderate concurrency (10 req/s).
+  '/api/v1/browser/start': 10,
+  '/api/v1/browser/stop': 10,
+  '/api/v1/browser/active': 20,
+  '/status': 50,
 };
 
-const DEFAULT_LIMIT = 10;
+const DEFAULT_LIMIT = 20;
 
 interface Bucket {
   count: number;

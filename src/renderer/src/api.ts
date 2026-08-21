@@ -125,7 +125,7 @@ export function getApiBase(): string {
   return 'http://127.0.0.1:50325';
 }
 
-async function request<T>(path: string, options: RequestInit = {}): Promise<ApiEnvelope<T>> {
+async function request<T>(path: string, options: RequestInit = {}, retries = 3): Promise<ApiEnvelope<T>> {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     ...(options.headers as Record<string, string>),
@@ -133,10 +133,26 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<ApiE
   if (apiKey) {
     headers['Authorization'] = `Bearer ${apiKey}`;
   }
+
   const res = await fetch(`${getApiBase()}${path}`, {
     ...options,
     headers,
   });
+
+  if (res.status === 429 && retries > 0) {
+    let delayMs = 250;
+    try {
+      const data = (await res.clone().json()) as { data?: { retry_after_ms?: number } };
+      if (typeof data?.data?.retry_after_ms === 'number') {
+        delayMs = Math.max(data.data.retry_after_ms + 50, 100);
+      }
+    } catch {
+      // fallback delay
+    }
+    await new Promise((r) => setTimeout(r, delayMs));
+    return request<T>(path, options, retries - 1);
+  }
+
   return (await res.json()) as ApiEnvelope<T>;
 }
 
@@ -198,6 +214,11 @@ export const api = {
     request<Record<string, never>>('/api/v1/browser-profile/delete', {
       method: 'POST',
       body: JSON.stringify({ user_id }),
+    }),
+  profileDuplicate: (user_id: string, name?: string) =>
+    request<{ user_id: string }>('/api/v1/browser-profile/duplicate', {
+      method: 'POST',
+      body: JSON.stringify({ user_id, name }),
     }),
   randomizeFingerprint: (user_id: string) =>
     request<{ seed: number }>('/api/v1/browser-profile/randomize-fingerprint', {
