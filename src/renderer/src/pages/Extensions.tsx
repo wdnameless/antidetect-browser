@@ -145,7 +145,16 @@ export function Extensions() {
             {extensions.length === 0 ? (
               <tr>
                 <td colSpan={4} className="empty-cell">
-                  No extensions imported yet. Click "+ Import Extension" to register an unpacked extension folder.
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, padding: '24px 0' }}>
+                    <ExtensionsIcon size={32} style={{ opacity: 0.3 }} />
+                    <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-secondary)' }}>
+                      No extensions imported yet
+                    </div>
+                    <p style={{ fontSize: 12, color: 'var(--text-muted)', maxWidth: 420, margin: 0 }}>
+                      Import an unpacked extension folder (e.g. MetaMask, EditThisCookie) to load it into your
+                      profiles. Click <strong>+ Import Extension</strong> to get started.
+                    </p>
+                  </div>
                 </td>
               </tr>
             ) : (

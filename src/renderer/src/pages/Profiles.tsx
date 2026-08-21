@@ -25,6 +25,7 @@ import {
   ProxiesIcon,
   RefreshIcon,
   DevicesIcon,
+  ProfilesIcon,
 } from '../icons';
 
 export function Profiles({ initialGroupId }: { initialGroupId?: string | null } = {}) {
@@ -689,7 +690,20 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
             {filteredProfiles.length === 0 ? (
               <tr>
                 <td colSpan={6} className="empty-cell">
-                  {searchQuery ? 'No profiles match your search criteria.' : 'No profiles found. Click "+ New Profile" to create one.'}
+                  {searchQuery ? (
+                    'No profiles match your search criteria.'
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, padding: '24px 0' }}>
+                      <ProfilesIcon size={32} style={{ opacity: 0.3 }} />
+                      <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-secondary)' }}>
+                        No profiles yet
+                      </div>
+                      <p style={{ fontSize: 12, color: 'var(--text-muted)', maxWidth: 420, margin: 0 }}>
+                        Create your first browser profile — each profile gets a unique fingerprint,
+                        device, and proxy. Click <strong>+ New Profile</strong> to get started.
+                      </p>
+                    </div>
+                  )}
                 </td>
               </tr>
             ) : (
@@ -1251,8 +1265,8 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
                       <span className="fp-item-val">{cores} Logical Cores</span>
                     </div>
                     <div className="fp-item">
-                      <span className="fp-item-label">WebGL Renderer</span>
-                      <span className="fp-item-val">ANGLE (Intel / NVIDIA Direct3D11)</span>
+                      <span className="fp-item-label">GPU (WebGL)</span>
+                      <span className="fp-item-val">Intel / NVIDIA (Direct3D11)</span>
                     </div>
                     <div className="fp-item">
                       <span className="fp-item-label">WebRTC Protection</span>

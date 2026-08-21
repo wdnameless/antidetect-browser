@@ -117,7 +117,7 @@ export function Settings() {
       </div>
 
       <div className="panel">
-        <div className="panel-header">Local REST API (AdsPower-Compatible)</div>
+        <div className="panel-header">Automation API (for your scripts)</div>
         <div className="setting-row">
           <span className="setting-label">Endpoint URL</span>
           <code>{getApiBase()}</code>
@@ -127,7 +127,8 @@ export function Settings() {
           <code>{apiKey || '—'}</code>
         </div>
         <p className="hint">
-          Pass this key in your HTTP header: <code>Authorization: Bearer &lt;key&gt;</code> when connecting Puppeteer, Playwright, Selenium, or custom Python bots to the Local API.
+          Use this key to connect your own bots and scripts (Puppeteer, Playwright, Selenium, Python) to the
+          local API. Pass it in the HTTP header: <code>Authorization: Bearer &lt;key&gt;</code>.
         </p>
       </div>
 
