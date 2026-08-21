@@ -739,7 +739,7 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
                   </td>
                   <td>
                     <span className="proxy-type-badge" style={{ color: p.platform === 'ios' || p.platform === 'android' ? 'var(--ok)' : 'var(--text-secondary)' }}>
-                      {(p.device_name || p.platform || 'Windows 11').toUpperCase()}
+                      {(p.platform || 'windows').toUpperCase()}
                     </span>
                   </td>
                   <td>
@@ -754,8 +754,16 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
                           color: p.platform === 'android' || p.platform === 'ios' ? '#38bdf8' : '#e2e8f0',
                         }}
                       >
-                        {p.platform === 'android' ? '📱 Android' : p.platform === 'ios' ? '📱 iOS' : p.platform === 'macos' ? '💻 macOS' : '💻 Windows'}
-                        {p.device_name ? <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>({p.device_name})</span> : null}
+                        {p.device_name ? (
+                          <>
+                            {p.platform === 'android' ? '📱' : p.platform === 'ios' ? '📱' : p.platform === 'macos' ? '💻' : '💻'}
+                            <span>{p.device_name}</span>
+                          </>
+                        ) : (
+                          <>
+                            {p.platform === 'android' ? '📱 Android' : p.platform === 'ios' ? '📱 iOS' : p.platform === 'macos' ? '💻 macOS' : '💻 Windows'}
+                          </>
+                        )}
                       </span>
                       <span
                         style={{

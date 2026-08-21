@@ -189,7 +189,16 @@ export function Proxies() {
             {proxies.length === 0 ? (
               <tr>
                 <td colSpan={5} className="empty-cell">
-                  No proxies configured yet. Click "+ Add Proxy" to configure one.
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, padding: '24px 0' }}>
+                    <ProxiesIcon size={32} style={{ opacity: 0.3 }} />
+                    <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-secondary)' }}>
+                      No proxies configured yet
+                    </div>
+                    <p style={{ fontSize: 12, color: 'var(--text-muted)', maxWidth: 440, margin: 0 }}>
+                      Proxies give each profile its own IP address — essential for running many accounts safely.
+                      Click <strong>+ Add Proxy</strong> to configure one.
+                    </p>
+                  </div>
                 </td>
               </tr>
             ) : (
@@ -248,6 +257,37 @@ export function Proxies() {
             )}
           </tbody>
         </table>
+      </div>
+
+      {/* Proxy Type Guide */}
+      <div
+        className="panel"
+        style={{
+          marginTop: 20,
+          padding: '14px 16px',
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+          gap: 16,
+        }}
+      >
+        <div>
+          <div style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--text)' }}>HTTP / HTTPS</div>
+          <p style={{ fontSize: 12, color: 'var(--text-muted)', margin: '4px 0 0' }}>
+            Best for most tasks (browsing, social networks). Easy to set up, widely supported.
+          </p>
+        </div>
+        <div>
+          <div style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--text)' }}>SOCKS5</div>
+          <p style={{ fontSize: 12, color: 'var(--text-muted)', margin: '4px 0 0' }}>
+            Handles all traffic types (TCP/UDP). Recommended for banking, crypto and heavy anti-detection.
+          </p>
+        </div>
+        <div>
+          <div style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--text)' }}>SSH Tunnel</div>
+          <p style={{ fontSize: 12, color: 'var(--text-muted)', margin: '4px 0 0' }}>
+            Routes traffic through a Linux server you own — free and stable if you have one.
+          </p>
+        </div>
       </div>
     </div>
   );
