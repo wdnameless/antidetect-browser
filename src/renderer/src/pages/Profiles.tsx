@@ -33,6 +33,7 @@ export function Profiles() {
   const [proxies, setProxies] = useState<ProxyItem[]>([]);
   const [devices, setDevices] = useState<DeviceItem[]>([]);
   const [extensions, setExtensions] = useState<ExtensionItem[]>([]);
+  const [mobilePresets, setMobilePresets] = useState<Array<{ id: string; name: string; model: string; androidVersion: string; gpu: string }>>([]);
 
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedGroupFilter, setSelectedGroupFilter] = useState<string>('');
@@ -52,6 +53,7 @@ export function Profiles() {
   const [groupId, setGroupId] = useState('');
   const [deviceId, setDeviceId] = useState('');
   const [seed, setSeed] = useState<number>(0);
+  const [mobileModelId, setMobileModelId] = useState('');
   const [userAgent, setUserAgent] = useState('');
   const [cores, setCores] = useState<number>(8);
 
@@ -107,6 +109,13 @@ export function Profiles() {
     } catch { /* ignore */ }
   }, []);
 
+  const loadMobilePresets = useCallback(async () => {
+    try {
+      const res = await api.mobilePresets();
+      if (res.code === 0) setMobilePresets(res.data.list);
+    } catch { /* ignore */ }
+  }, []);
+
   const loadExtensions = useCallback(async () => {
     try {
       const res = await api.extensionList();
@@ -132,8 +141,9 @@ export function Profiles() {
     void loadGroups();
     void loadProxies();
     void loadDevices();
+    void loadMobilePresets();
     void loadExtensions();
-  }, [loadProfiles, loadGroups, loadProxies, loadDevices, loadExtensions]);
+  }, [loadProfiles, loadGroups, loadProxies, loadDevices, loadMobilePresets, loadExtensions]);
 
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text);
@@ -149,6 +159,7 @@ export function Profiles() {
     setGroupId('');
     setDeviceId('');
     setSeed(Math.floor(Math.random() * 2000000000) + 100000000);
+    setMobileModelId('');
     setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36');
     setCores(8);
     setProxyMode('none');
@@ -178,6 +189,7 @@ export function Profiles() {
         setGroupId(d.group_id || '');
         setDeviceId(d.device_id || '');
         setSeed(d.fingerprint?.seed || p.fingerprint_seed || 123456789);
+        setMobileModelId((d as any).mobile_model_id || '');
         setCores(d.fingerprint?.hardwareConcurrency || 8);
         setUserAgent(d.user_agent || 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36');
 
@@ -272,6 +284,7 @@ export function Profiles() {
           group_id: groupId || undefined,
           device_id: deviceId || undefined,
           fingerprint_seed: seed,
+          mobile_model_id: mobileModelId || undefined,
           user_agent: userAgent.trim() || undefined,
           proxy_id: proxyIdPayload || undefined,
           proxy: proxyPayload,
@@ -290,6 +303,7 @@ export function Profiles() {
           name: name.trim() || undefined,
           group_id: groupId || null,
           device_id: deviceId || null,
+          mobile_model_id: mobileModelId || null,
           user_agent: userAgent.trim() || undefined,
           proxy_id: proxyIdPayload,
           proxy: proxyPayload,
@@ -864,6 +878,23 @@ export function Profiles() {
                       ))}
                     </select>
                   </div>
+
+                  {deviceId === 'dev_android' ? (
+                    <div className="form-group">
+                      <label>Phone Model (fixed)</label>
+                      <select value={mobileModelId} onChange={(e) => setMobileModelId(e.target.value)}>
+                        <option value="">Auto (from seed)</option>
+                        {mobilePresets.map((m) => (
+                          <option key={m.id} value={m.id}>
+                            {m.name} — Android {m.androidVersion} · {m.gpu}
+                          </option>
+                        ))}
+                      </select>
+                      <p className="hint">
+                        Pick a specific phone to fix it for this profile (long-lived accounts). "Auto" derives the phone from the seed.
+                      </p>
+                    </div>
+                  ) : null}
                 </>
               ) : null}
 
@@ -1006,6 +1037,21 @@ export function Profiles() {
                       <DiceIcon size={14} />
                       <span>Randomize Seed</span>
                     </button>
+                  </div>
+
+                  <div className="form-group">
+                    <label>Fingerprint Seed (manual)</label>
+                    <input
+                      type="number"
+                      min="1"
+                      max="2147483647"
+                      placeholder="e.g. 123456789 — same seed = same phone & fingerprint"
+                      value={seed || ''}
+                      onChange={(e) => setSeed(Number(e.target.value) || 0)}
+                    />
+                    <p className="hint">
+                      Fix the seed to keep the same device &amp; fingerprint across restarts (recommended for long-lived accounts).
+                    </p>
                   </div>
 
                   <div className="fingerprint-grid">

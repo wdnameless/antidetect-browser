@@ -89,6 +89,28 @@ async function main(): Promise<void> {
   console.log('LIVE DIFFERENT MODELS:', ua1 !== ua2 ? 'PASS' : 'FAIL');
   console.log('LIVE SAME MODEL ON RESTART:', ua1b === ua1c ? 'PASS' : 'FAIL');
 
+  // 5) Fixed model: create with explicit mobile_model_id -> UA must contain that model,
+  //    regardless of seed.
+  const fixed = await fetch(`${base}/api/v1/browser-profile/create`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ name: 'mobile-fixed', device_id: 'dev_android', fingerprint_seed: 111111, mobile_model_id: 'pixel_9' }),
+  }).then((r) => r.json());
+  const fid: string = fixed?.data?.user_id;
+  const fstart = await fetch(`${base}/api/v1/browser/start?user_id=${fid}`, { headers }).then((r) => r.json());
+  if (fstart?.code !== 0) throw new Error('fixed start failed: ' + fstart?.msg);
+  const fua = await readUa(fstart.data.ws.puppeteer);
+  await fetch(`${base}/api/v1/browser/stop?user_id=${fid}`, { headers });
+  console.log('fixed model UA:', fua.slice(0, 70));
+  console.log('FIXED MODEL (pixel_9):', fua.includes('Pixel 9') ? 'PASS' : 'FAIL');
+
+  // 6) Manual seed: same seed + no model -> same phone across two profiles.
+  const s1 = await launchAndReadUa('mobile-seed-a', base, headers, 555555);
+  const s2 = await launchAndReadUa('mobile-seed-b', base, headers, 555555);
+  console.log('seed 555555 UA1:', s1.slice(0, 70));
+  console.log('seed 555555 UA2:', s2.slice(0, 70));
+  console.log('MANUAL SEED (same phone):', s1 === s2 ? 'PASS' : 'FAIL');
+
   process.exit(0);
 }
 

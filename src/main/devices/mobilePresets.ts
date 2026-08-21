@@ -50,6 +50,11 @@ export const MOBILE_PRESETS: MobilePreset[] = [
   { id: 'vivo_x100', name: 'vivo X100', model: 'V2308A', androidVersion: '14', build: 'UP1A.231005.007', screen: { width: 412, height: 915, deviceScaleFactor: 2.625 }, gpu: 'Mali-G720', hardwareConcurrency: 8 },
 ];
 
+/** Find a preset by its id, or undefined. */
+export function getMobilePreset(id: string): MobilePreset | undefined {
+  return MOBILE_PRESETS.find((p) => p.id === id);
+}
+
 /** Deterministic selection from the pool by fingerprint seed (one profile = one "phone"). */
 export function pickMobilePreset(seed: number): MobilePreset {
   let h = seed >>> 0;

@@ -161,6 +161,7 @@ export const api = {
     };
     device_id?: string;
     fingerprint_seed?: number;
+    mobile_model_id?: string;
     user_agent?: string;
     timezone?: string;
   }) =>
@@ -185,6 +186,7 @@ export const api = {
       password?: string;
     } | null;
     device_id?: string | null;
+    mobile_model_id?: string | null;
     user_agent?: string | null;
     timezone?: string | null;
   }) =>
@@ -225,6 +227,10 @@ export const api = {
       body: JSON.stringify({ proxy_id }),
     }),
   deviceList: () => request<{ list: DeviceItem[]; total: number }>('/api/v1/device/list'),
+  mobilePresets: () =>
+    request<{ list: Array<{ id: string; name: string; model: string; androidVersion: string; gpu: string }> }>(
+      '/api/v1/device/mobile-presets'
+    ),
   extensionList: () => request<{ list: ExtensionItem[]; total: number }>('/api/v1/extension/list'),
   extensionImport: (name: string, path: string) =>
     request<{ extension_id: string }>('/api/v1/extension/import', {

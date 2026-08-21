@@ -4,7 +4,7 @@ import { getDb } from '../db';
 import { PROFILES_DIR } from '../config';
 import { getEnabledExtensionPaths } from '../extensions/extensionManager';
 import { checkProxy, type ProxyCheckResult } from '../proxy/proxyManager';
-import { pickMobilePreset, buildMobileUa, type MobilePreset } from '../devices/mobilePresets';
+import { pickMobilePreset, buildMobileUa, getMobilePreset, type MobilePreset } from '../devices/mobilePresets';
 
 export type ProxyType = 'http' | 'https' | 'socks5' | 'ssh';
 
@@ -31,6 +31,8 @@ export interface CreateProfileInput {
   browser_type?: BrowserType;
   geolocation?: string;
   start_urls?: string[];
+  /** Explicit mobile model from the pool (fixed "phone" for long-lived accounts). */
+  mobile_model_id?: string;
 }
 
 export interface ProfileRow {
@@ -44,6 +46,7 @@ export interface ProfileRow {
   user_agent: string | null;
   timezone: string | null;
   geolocation: string | null;
+  mobile_model_id: string | null;
   status: string;
   created_at: number;
   updated_at: number;
@@ -215,9 +218,9 @@ export function createProfile(input: CreateProfileInput): string {
   db.prepare(
     `INSERT INTO profiles (
        id, name, group_id, proxy_id, fingerprint_id, device_id,
-       browser_type, user_agent, timezone, geolocation, start_urls, status,
+       browser_type, user_agent, timezone, geolocation, start_urls, mobile_model_id, status,
        created_at, updated_at
-     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'closed', ?, ?)`
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'closed', ?, ?)`
   ).run(
     profileId,
     input.name ?? null,
@@ -230,6 +233,7 @@ export function createProfile(input: CreateProfileInput): string {
     input.timezone ?? null,
     input.geolocation ?? null,
     input.start_urls && input.start_urls.length ? JSON.stringify(input.start_urls) : null,
+    input.mobile_model_id ?? null,
     now,
     now
   );
@@ -384,6 +388,7 @@ export function updateProfile(
     user_agent?: string | null;
     timezone?: string | null;
     start_urls?: string[] | null;
+    mobile_model_id?: string | null;
   }
 ): boolean {
   const db = getDb();
@@ -443,6 +448,10 @@ export function updateProfile(
   if (updates.start_urls !== undefined) {
     sets.push('start_urls = ?');
     params.push(updates.start_urls && updates.start_urls.length ? JSON.stringify(updates.start_urls) : null);
+  }
+  if (updates.mobile_model_id !== undefined) {
+    sets.push('mobile_model_id = ?');
+    params.push(updates.mobile_model_id);
   }
 
   if (sets.length === 0) return true;
@@ -628,9 +637,14 @@ export function resolveLaunchConfig(id: string): LaunchConfig {
 
       if (devCfg.mobile === true) {
         // Мобильный профиль v2: детерминированный «телефон» из пула по seed — только для Android.
-        // Один профиль = одна модель при каждом запуске (важно для долгоживущих аккаунтов).
+        // Если пользователь зафиксировал модель (mobile_model_id) — используем её, иначе
+        // детерминированный выбор от seed (один профиль = один телефон при каждом запуске).
         const isAndroid = logicalPlatform === 'android';
-        const preset = isAndroid ? pickMobilePreset(fingerprintSeed) : undefined;
+        const preset = isAndroid
+          ? profile.mobile_model_id
+            ? getMobilePreset(profile.mobile_model_id)
+            : pickMobilePreset(fingerprintSeed)
+          : undefined;
         deviceEmulation = {
           mobile: true,
           ua: preset ? buildMobileUa(preset) : typeof devCfg.ua === 'string' ? devCfg.ua : undefined,

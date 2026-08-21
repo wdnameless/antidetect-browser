@@ -88,4 +88,5 @@ export function migrate(db: Database): void {
   ensureColumn(db, 'proxies', 'latitude', 'REAL');
   ensureColumn(db, 'proxies', 'longitude', 'REAL');
   ensureColumn(db, 'profiles', 'browser_type', 'TEXT DEFAULT \'chromium\'');
+  ensureColumn(db, 'profiles', 'mobile_model_id', 'TEXT');
 }

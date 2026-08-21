@@ -4,6 +4,7 @@ import * as pm from '../../profiles/profileManager';
 import * as launcher from '../../launcher/chromium';
 import * as firefox from '../../launcher/firefox';
 import { checkProxy, type ProxyInput } from '../../proxy/proxyManager';
+import { MOBILE_PRESETS as mobilePresets } from '../../devices/mobilePresets';
 
 const router = Router();
 
@@ -165,6 +166,7 @@ const updateProfileSchema = z.object({
   user_agent: z.string().nullable().optional(),
   timezone: z.string().nullable().optional(),
   start_urls: z.array(z.string()).nullable().optional(),
+  mobile_model_id: z.string().nullable().optional(),
 });
 
 router.post('/api/v1/browser-profile/update', (req, res) => {
@@ -182,6 +184,7 @@ router.post('/api/v1/browser-profile/update', (req, res) => {
     user_agent: parsed.data.user_agent,
     timezone: parsed.data.timezone,
     start_urls: parsed.data.start_urls,
+    mobile_model_id: parsed.data.mobile_model_id,
   });
   res.json(ok ? { code: 0, msg: 'success', data: {} } : { code: -1, msg: 'profile update failed', data: {} });
 });
@@ -271,6 +274,7 @@ const createSchema = z.object({
   fingerprint_seed: z.number().optional(),
   proxy: proxyInputSchema.optional(),
   start_urls: z.array(z.string()).optional(),
+  mobile_model_id: z.string().optional(),
 });
 
 router.post('/api/v1/browser-profile/create', (req, res) => {
@@ -290,6 +294,7 @@ router.post('/api/v1/browser-profile/create', (req, res) => {
     fingerprint_seed: parsed.data.fingerprint_seed,
     proxy: parsed.data.proxy ? (parsed.data.proxy as pm.ProxyInput) : undefined,
     start_urls: parsed.data.start_urls,
+    mobile_model_id: parsed.data.mobile_model_id,
   };
   try {
     const id = pm.createProfile(input);
@@ -355,6 +360,11 @@ router.get('/api/v1/browser/firefox/title', async (req, res) => {
   const id = String(req.query.user_id || '');
   const result = await firefox.getTitle(id);
   res.json(result.ok ? { code: 0, msg: 'success', data: { title: result.title } } : { code: -1, msg: result.error ?? 'title failed', data: {} });
+});
+
+// Mobile preset pool (fixed "phone" for long-lived accounts).
+router.get('/api/v1/device/mobile-presets', (_req, res) => {
+  res.json({ code: 0, msg: 'success', data: { list: mobilePresets } });
 });
 
 export default router;
