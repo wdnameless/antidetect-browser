@@ -36,12 +36,17 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
   const [extensions, setExtensions] = useState<ExtensionItem[]>([]);
   const [mobilePresets, setMobilePresets] = useState<Array<{ id: string; name: string; model: string; androidVersion: string; gpu: string }>>([]);
   const [selectedGroupFilter, setSelectedGroupFilter] = useState<string>(initialGroupId || '');
+  const [selectedPlatformFilter, setSelectedPlatformFilter] = useState<string>('');
+  const [selectedStatusFilter, setSelectedStatusFilter] = useState<string>('');
   const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [copiedSeed, setCopiedSeed] = useState<number | null>(null);
   const [endpoint, setEndpoint] = useState<{ id: string; ws: string } | null>(null);
   const [busy, setBusy] = useState(false);
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const [bulkTargetGroup, setBulkTargetGroup] = useState<string>('');
   const [error, setError] = useState('');
 
   // Modal tab: 'general' | 'proxy' | 'fingerprint'
@@ -608,6 +613,12 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
   };
 
   const filteredProfiles = profiles.filter((p) => {
+    if (selectedPlatformFilter && (p.platform || 'windows').toLowerCase() !== selectedPlatformFilter.toLowerCase()) {
+      return false;
+    }
+    if (selectedStatusFilter && p.status.toLowerCase() !== selectedStatusFilter.toLowerCase()) {
+      return false;
+    }
     if (!searchQuery) return true;
     const query = searchQuery.toLowerCase();
     const nameMatch = (p.name || '').toLowerCase().includes(query);
@@ -615,6 +626,101 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
     const proxyMatch = (p.proxy_host || '').toLowerCase().includes(query);
     return nameMatch || idMatch || proxyMatch;
   });
+
+  const toggleSelectAll = () => {
+    if (selectedIds.size === filteredProfiles.length && filteredProfiles.length > 0) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(filteredProfiles.map((p) => p.user_id)));
+    }
+  };
+
+  const toggleSelectProfile = (id: string) => {
+    const next = new Set(selectedIds);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    setSelectedIds(next);
+  };
+
+  const copySeedToClipboard = (seedNum: number | null | undefined) => {
+    if (!seedNum) return;
+    void navigator.clipboard.writeText(String(seedNum));
+    setCopiedSeed(seedNum);
+    setTimeout(() => setCopiedSeed(null), 1500);
+  };
+
+  const handleBulkStart = async () => {
+    if (selectedIds.size === 0) return;
+    setBulkBusy(true);
+    setError('');
+    try {
+      for (const id of Array.from(selectedIds)) {
+        await api.start(id);
+        await new Promise((r) => setTimeout(r, 200));
+      }
+      await loadProfiles();
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBulkBusy(false);
+    }
+  };
+
+  const handleBulkStop = async () => {
+    if (selectedIds.size === 0) return;
+    setBulkBusy(true);
+    setError('');
+    try {
+      for (const id of Array.from(selectedIds)) {
+        await api.stop(id);
+        await new Promise((r) => setTimeout(r, 100));
+      }
+      await loadProfiles();
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBulkBusy(false);
+    }
+  };
+
+  const handleBulkMoveGroup = async () => {
+    if (selectedIds.size === 0) return;
+    setBulkBusy(true);
+    setError('');
+    try {
+      for (const id of Array.from(selectedIds)) {
+        await api.profileUpdate({ user_id: id, group_id: bulkTargetGroup || null });
+      }
+      await loadProfiles();
+      await loadGroups();
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBulkBusy(false);
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    if (selectedIds.size === 0) return;
+    const count = selectedIds.size;
+    if (!window.confirm(`Are you sure you want to delete ${count} selected profile(s)? This action cannot be undone.`)) {
+      return;
+    }
+    setBulkBusy(true);
+    setError('');
+    try {
+      for (const id of Array.from(selectedIds)) {
+        await api.profileDelete(id);
+      }
+      setSelectedIds(new Set());
+      await loadProfiles();
+      await loadGroups();
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBulkBusy(false);
+    }
+  };
 
   return (
     <div>
@@ -640,6 +746,29 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
                 {g.name} ({g.profile_count})
               </option>
             ))}
+          </select>
+
+          <select
+            className="select-input"
+            value={selectedPlatformFilter}
+            onChange={(e) => setSelectedPlatformFilter(e.target.value)}
+          >
+            <option value="">All Platforms</option>
+            <option value="windows">Windows</option>
+            <option value="macos">macOS</option>
+            <option value="android">Android</option>
+            <option value="ios">iOS</option>
+            <option value="linux">Linux</option>
+          </select>
+
+          <select
+            className="select-input"
+            value={selectedStatusFilter}
+            onChange={(e) => setSelectedStatusFilter(e.target.value)}
+          >
+            <option value="">All Statuses</option>
+            <option value="running">Running</option>
+            <option value="closed">Closed</option>
           </select>
         </div>
 
@@ -678,10 +807,18 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
         <table className="table">
           <thead>
             <tr>
+              <th style={{ width: 40, textAlign: 'center' }}>
+                <input
+                  type="checkbox"
+                  checked={selectedIds.size === filteredProfiles.length && filteredProfiles.length > 0}
+                  onChange={toggleSelectAll}
+                  style={{ cursor: 'pointer' }}
+                />
+              </th>
               <th style={{ width: '22%' }}>Profile Name</th>
-              <th style={{ width: '22%' }}>Proxy</th>
+              <th style={{ width: '20%' }}>Proxy</th>
               <th style={{ width: '15%' }}>Device / OS</th>
-              <th style={{ width: '13%' }}>Fingerprint</th>
+              <th style={{ width: '15%' }}>Fingerprint</th>
               <th style={{ width: '10%' }}>Status</th>
               <th style={{ width: '18%', textAlign: 'right' }}>Actions</th>
             </tr>
@@ -689,7 +826,7 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
           <tbody>
             {filteredProfiles.length === 0 ? (
               <tr>
-                <td colSpan={6} className="empty-cell">
+                <td colSpan={7} className="empty-cell">
                   {searchQuery ? (
                     'No profiles match your search criteria.'
                   ) : (
@@ -708,7 +845,15 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
               </tr>
             ) : (
               filteredProfiles.map((p) => (
-                <tr key={p.user_id}>
+                <tr key={p.user_id} className={selectedIds.has(p.user_id) ? 'selected-row' : ''}>
+                  <td style={{ textAlign: 'center' }}>
+                    <input
+                      type="checkbox"
+                      checked={selectedIds.has(p.user_id)}
+                      onChange={() => toggleSelectProfile(p.user_id)}
+                      style={{ cursor: 'pointer' }}
+                    />
+                  </td>
                   <td>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
                       <strong style={{ fontSize: 14, color: '#f3f4f6' }}>{p.name || 'Unnamed Profile'}</strong>
@@ -768,12 +913,21 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
                       <span
                         style={{
                           fontSize: 11,
-                          color: 'var(--text-muted)',
+                          color: copiedSeed === p.fingerprint_seed ? 'var(--ok)' : 'var(--text-muted)',
                           fontFamily: 'var(--font-mono)',
+                          cursor: 'pointer',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 4,
                         }}
-                        title={`Seed: ${p.fingerprint_seed ?? 'auto'}`}
+                        onClick={() => copySeedToClipboard(p.fingerprint_seed)}
+                        title="Click to copy full Seed"
                       >
-                        seed: {p.fingerprint_seed ? String(p.fingerprint_seed).slice(0, 8) + '..' : 'auto'}
+                        {copiedSeed === p.fingerprint_seed ? (
+                          '✓ Copied!'
+                        ) : (
+                          <>🎲 {p.fingerprint_seed ? String(p.fingerprint_seed).slice(0, 8) + '..' : 'auto'}</>
+                        )}
                       </span>
                     </div>
                   </td>
@@ -1007,6 +1161,124 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
           </tbody>
         </table>
       </div>
+
+      {/* Floating Bulk Actions Bar */}
+      {selectedIds.size > 0 ? (
+        <div
+          style={{
+            position: 'fixed',
+            bottom: 24,
+            left: '50%',
+            transform: 'translateX(-50%)',
+            background: 'var(--panel)',
+            border: '1px solid var(--accent)',
+            boxShadow: '0 12px 36px rgba(0,0,0,0.6)',
+            borderRadius: 10,
+            padding: '10px 18px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 14,
+            zIndex: 900,
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>
+            <span
+              style={{
+                background: 'var(--accent)',
+                color: '#fff',
+                borderRadius: '50%',
+                width: 22,
+                height: 22,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: 11.5,
+              }}
+            >
+              {selectedIds.size}
+            </span>
+            <span>Selected</span>
+          </div>
+
+          <div style={{ height: 18, width: 1, background: 'var(--border)' }} />
+
+          <button
+            type="button"
+            className="btn btn-sm"
+            onClick={() => void handleBulkStart()}
+            disabled={bulkBusy}
+            title="Start selected profiles"
+            style={{ background: 'rgba(34, 197, 94, 0.15)', color: '#4ade80', borderColor: 'rgba(34, 197, 94, 0.3)' }}
+          >
+            <PlayIcon size={12} />
+            <span>Start</span>
+          </button>
+
+          <button
+            type="button"
+            className="btn btn-sm"
+            onClick={() => void handleBulkStop()}
+            disabled={bulkBusy}
+            title="Stop selected profiles"
+            style={{ background: 'rgba(239, 68, 68, 0.15)', color: '#f87171', borderColor: 'rgba(239, 68, 68, 0.3)' }}
+          >
+            <StopIcon size={12} />
+            <span>Stop</span>
+          </button>
+
+          <div style={{ height: 18, width: 1, background: 'var(--border)' }} />
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <select
+              className="select-input"
+              style={{ fontSize: 12, padding: '4px 8px' }}
+              value={bulkTargetGroup}
+              onChange={(e) => setBulkTargetGroup(e.target.value)}
+              disabled={bulkBusy}
+            >
+              <option value="">Move to Group...</option>
+              <option value="">(No Group / Ungrouped)</option>
+              {groups.map((g) => (
+                <option key={g.id} value={g.id}>
+                  {g.name}
+                </option>
+              ))}
+            </select>
+            <button
+              type="button"
+              className="btn btn-sm"
+              onClick={() => void handleBulkMoveGroup()}
+              disabled={bulkBusy}
+            >
+              Apply
+            </button>
+          </div>
+
+          <div style={{ height: 18, width: 1, background: 'var(--border)' }} />
+
+          <button
+            type="button"
+            className="btn btn-sm btn-danger"
+            onClick={() => void handleBulkDelete()}
+            disabled={bulkBusy}
+            title="Delete selected profiles"
+          >
+            <TrashIcon size={12} />
+            <span>Delete</span>
+          </button>
+
+          <button
+            type="button"
+            className="btn btn-sm"
+            onClick={() => setSelectedIds(new Set())}
+            disabled={bulkBusy}
+            title="Deselect all"
+            style={{ color: 'var(--text-muted)' }}
+          >
+            ✕
+          </button>
+        </div>
+      ) : null}
 
       {/* AdsPower-Style Tabbed Profile Modal (Create / Edit) */}
       {modalMode ? (
