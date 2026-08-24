@@ -1,11 +1,12 @@
 {
   "name": "antidetect-browser",
-  "version": "0.2.16",
+  "version": "0.2.17",
   "private": true,
   "description": "Personal antidetect browser with an AdsPower-compatible Local API.",
   "main": "dist/electron/main.js",
   "scripts": {
     "typecheck": "npm run typecheck:main && npm run typecheck:renderer",
+    "test": "vitest run",
     "typecheck:main": "tsc -p tsconfig.main.json --noEmit",
     "typecheck:renderer": "tsc -p src/renderer/tsconfig.json --noEmit",
     "build:main": "tsc -p tsconfig.main.json",
@@ -58,6 +59,7 @@
     "tsx": "^4.19.1",
     "typescript": "^5.6.2",
     "vite": "^5.4.8",
+    "vitest": "^4.1.11",
     "wait-on": "^8.0.1"
   },
   "build": {
