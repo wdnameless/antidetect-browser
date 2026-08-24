@@ -47,6 +47,8 @@ export interface ProfileRow {
   timezone: string | null;
   geolocation: string | null;
   mobile_model_id: string | null;
+  start_urls: string | null;
+  cookies_json: string | null;
   status: string;
   created_at: number;
   updated_at: number;
@@ -406,6 +408,183 @@ export function recoverStaleRunning(): number {
     .prepare("UPDATE profiles SET status = 'closed', updated_at = ? WHERE status = 'running'")
     .run(Date.now());
   return res.changes;
+}
+
+// ---------------------------------------------------------------------------
+// Profile bundles (v0.2.19): portable export/import of a full profile —
+// fingerprint, device, proxy (incl. credentials) and cookies — as one JSON.
+// ---------------------------------------------------------------------------
+
+export interface ProfileBundle {
+  version: 1;
+  exported_at: number;
+  profile: {
+    name: string | null;
+    browser_type: string;
+    user_agent: string | null;
+    timezone: string | null;
+    geolocation: string | null;
+    start_urls: string[];
+    mobile_model_id: string | null;
+    fingerprint: { seed: number; config: Record<string, unknown> } | null;
+    device: { device_id: string; name: string; platform: string; config: Record<string, unknown> } | null;
+    proxy: {
+      type: string;
+      host: string;
+      port: number;
+      username?: string;
+      password?: string;
+      private_key?: string;
+    } | null;
+    cookies: Array<Record<string, unknown>>;
+  };
+}
+
+export function exportProfileBundle(id: string): ProfileBundle | null {
+  const p = getProfile(id);
+  if (!p) return null;
+  const db = getDb();
+
+  let fingerprint: ProfileBundle['profile']['fingerprint'] = null;
+  if (p.fingerprint_id) {
+    const fp = db
+      .prepare('SELECT seed, config_json FROM fingerprints WHERE id = ?')
+      .get(p.fingerprint_id) as { seed: number; config_json: string } | undefined;
+    if (fp) {
+      let config: Record<string, unknown> = {};
+      try { config = JSON.parse(fp.config_json || '{}'); } catch { /* ignore */ }
+      fingerprint = { seed: fp.seed, config };
+    }
+  }
+
+  let device: ProfileBundle['profile']['device'] = null;
+  if (p.device_id) {
+    const dev = db
+      .prepare('SELECT id, name, platform, config_json FROM devices WHERE id = ?')
+      .get(p.device_id) as { id: string; name: string; platform: string; config_json: string } | undefined;
+    if (dev) {
+      let config: Record<string, unknown> = {};
+      try { config = JSON.parse(dev.config_json || '{}'); } catch { /* ignore */ }
+      device = { device_id: dev.id, name: dev.name, platform: dev.platform, config };
+    }
+  }
+
+  let proxy: ProfileBundle['profile']['proxy'] = null;
+  if (p.proxy_id) {
+    const px = db.prepare('SELECT * FROM proxies WHERE id = ?').get(p.proxy_id) as ProxyRow | undefined;
+    if (px) {
+      proxy = {
+        type: px.type,
+        host: px.host,
+        port: px.port,
+        username: px.username || undefined,
+        password: px.password || undefined,
+        private_key: px.private_key || undefined,
+      };
+    }
+  }
+
+  let cookies: Array<Record<string, unknown>> = [];
+  if (p.cookies_json) {
+    try {
+      const parsed = JSON.parse(p.cookies_json);
+      if (Array.isArray(parsed)) cookies = parsed;
+    } catch { /* ignore */ }
+  }
+
+  let startUrls: string[] = [];
+  if (p.start_urls) {
+    try {
+      const parsed = JSON.parse(p.start_urls);
+      if (Array.isArray(parsed)) startUrls = parsed as string[];
+    } catch { /* ignore */ }
+  }
+
+  return {
+    version: 1,
+    exported_at: Date.now(),
+    profile: {
+      name: p.name,
+      browser_type: p.browser_type || 'chromium',
+      user_agent: p.user_agent,
+      timezone: p.timezone,
+      geolocation: p.geolocation,
+      start_urls: startUrls,
+      mobile_model_id: p.mobile_model_id,
+      fingerprint,
+      device,
+      proxy,
+      cookies,
+    },
+  };
+}
+
+/**
+ * Import a previously exported bundle as a NEW profile. The device preset is
+ * re-linked by id when it exists on this machine (presets are seeded with
+ * stable ids); otherwise the profile falls back to the default device.
+ * Returns the new profile id.
+ */
+export function importProfileBundle(bundle: ProfileBundle): string {
+  if (!bundle || bundle.version !== 1 || !bundle.profile) {
+    throw new Error('invalid bundle: expected { version: 1, profile }');
+  }
+  const db = getDb();
+  const src = bundle.profile;
+
+  let deviceId: string | undefined;
+  if (src.device?.device_id) {
+    const dev = db.prepare('SELECT id FROM devices WHERE id = ?').get(src.device.device_id) as
+      | { id: string }
+      | undefined;
+    deviceId = dev?.id;
+  }
+
+  const newId = createProfile({
+    name: src.name ? `${src.name} (imported)` : undefined,
+    browser_type: src.browser_type === 'firefox' ? 'firefox' : 'chromium',
+    user_agent: src.user_agent || undefined,
+    timezone: src.timezone || undefined,
+    geolocation: src.geolocation || undefined,
+    start_urls: src.start_urls?.length ? src.start_urls : undefined,
+    mobile_model_id: src.mobile_model_id || undefined,
+    device_id: deviceId,
+    fingerprint_seed: src.fingerprint?.seed,
+    proxy: src.proxy
+      ? {
+          type: src.proxy.type as ProxyType,
+          host: src.proxy.host,
+          port: src.proxy.port,
+          username: src.proxy.username,
+          password: src.proxy.password,
+          privateKey: src.proxy.private_key,
+        }
+      : undefined,
+  });
+
+  // Restore the full fingerprint config (platform/brand/cores/lang/...).
+  if (src.fingerprint?.config) {
+    const row = db.prepare('SELECT fingerprint_id FROM profiles WHERE id = ?').get(newId) as
+      | { fingerprint_id: string }
+      | undefined;
+    if (row?.fingerprint_id) {
+      db.prepare('UPDATE fingerprints SET config_json = ? WHERE id = ?').run(
+        JSON.stringify(src.fingerprint.config),
+        row.fingerprint_id
+      );
+    }
+  }
+
+  // Restore cookies.
+  if (src.cookies?.length) {
+    db.prepare('UPDATE profiles SET cookies_json = ?, updated_at = ? WHERE id = ?').run(
+      JSON.stringify(src.cookies),
+      Date.now(),
+      newId
+    );
+  }
+
+  return newId;
 }
 
 export function updateProfile(

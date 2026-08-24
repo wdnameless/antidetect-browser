@@ -45,6 +45,13 @@ async function bootstrap(): Promise<void> {
     if (fs.existsSync(dir)) void shell.openPath(dir);
     return dir;
   });
+
+  ipcMain.handle('logs:open-dir', async () => {
+    const { LOG_DIR } = await import('../src/main/util/logger');
+    fs.mkdirSync(LOG_DIR, { recursive: true });
+    await shell.openPath(LOG_DIR);
+    return LOG_DIR;
+  });
 }
 
 function createWindow(): void {

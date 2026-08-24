@@ -6,6 +6,7 @@ import { getApiKey, API_HOST, API_PORT, DATA_DIR } from './config';
 import { seedDevices } from './devices/deviceManager';
 import { recoverStaleRunning } from './profiles/profileManager';
 import { stopAll } from './launcher/chromium';
+import { logger, initLogger, flushLogs } from './util/logger';
 
 // ---------------------------------------------------------------------------
 // Single-instance lock: two service instances would race on the DB file.
@@ -61,6 +62,7 @@ let shuttingDown = false;
 export function shutdown(reason: string, code = 0): void {
   if (shuttingDown) return;
   shuttingDown = true;
+  logger.info('shutdown', { reason });
   console.log(`[antidetect] ${reason} received — shutting down...`);
   try {
     stopAll();
@@ -73,6 +75,7 @@ export function shutdown(reason: string, code = 0): void {
   } catch {
     // ignore
   }
+  flushLogs();
   releaseInstanceLock();
   process.exit(code);
 }
@@ -81,6 +84,8 @@ process.on('SIGINT', () => shutdown('SIGINT'));
 process.on('SIGTERM', () => shutdown('SIGTERM'));
 
 export async function startService(): Promise<void> {
+  initLogger();
+  logger.info('service starting', { pid: process.pid, dataDir: DATA_DIR, port: API_PORT });
   acquireInstanceLock();
   await initDb();
   seedDevices();
@@ -88,10 +93,12 @@ export async function startService(): Promise<void> {
   // Crash recovery: profiles stuck in "running" from a previous session.
   const recovered = recoverStaleRunning();
   if (recovered > 0) {
+    logger.warn('crash recovery applied', { recovered });
     console.log(`[antidetect] crash recovery: ${recovered} stale running profile(s) marked closed`);
   }
 
   await startApi();
+  logger.info('service ready', { apiKey: getApiKey() });
   console.log(`[antidetect] ready. API key: ${getApiKey()}`);
   console.log(`[antidetect] try: curl http://${API_HOST}:${API_PORT}/status`);
 }

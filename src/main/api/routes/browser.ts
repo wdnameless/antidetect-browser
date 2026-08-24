@@ -263,6 +263,37 @@ router.post('/api/v1/browser-profile/bulk-group', (req, res) => {
   res.json({ code: 0, msg: 'success', data: { succeeded, failed, total: parsed.data.user_ids.length } });
 });
 
+// ---------------------------------------------------------------------------
+// Profile bundles (v0.2.19): portable export/import of a full profile.
+// ---------------------------------------------------------------------------
+
+// GET /api/v1/browser-profile/export?user_id=<id>
+router.get('/api/v1/browser-profile/export', (req, res) => {
+  const id = String(req.query.user_id || '');
+  const bundle = pm.exportProfileBundle(id);
+  if (!bundle) {
+    res.json({ code: -1, msg: 'profile not found', data: {} });
+    return;
+  }
+  res.json({ code: 0, msg: 'success', data: { bundle } });
+});
+
+const importBundleSchema = z.object({ bundle: z.unknown() });
+
+router.post('/api/v1/browser-profile/import-bundle', (req, res) => {
+  const parsed = importBundleSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.json({ code: -1, msg: 'invalid body', data: { errors: parsed.error.flatten() } });
+    return;
+  }
+  try {
+    const newId = pm.importProfileBundle(parsed.data.bundle as pm.ProfileBundle);
+    res.json({ code: 0, msg: 'success', data: { user_id: newId } });
+  } catch (err) {
+    res.json({ code: -1, msg: (err as Error).message, data: {} });
+  }
+});
+
 router.get('/api/v1/browser-profile/detail', (req, res) => {
   const id = String(req.query.user_id || '');
   if (!id) {

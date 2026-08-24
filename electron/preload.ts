@@ -14,6 +14,9 @@ contextBridge.exposeInMainWorld('antidetect', {
     setDir: (): Promise<{ ok: boolean; dir: string }> => ipcRenderer.invoke('data:set-dir'),
     openDir: (): Promise<string> => ipcRenderer.invoke('data:open-dir'),
   },
+  logs: {
+    openDir: (): Promise<string> => ipcRenderer.invoke('logs:open-dir'),
+  },
   update: {
     check: (): Promise<void> => ipcRenderer.invoke('update:check'),
     download: (): Promise<void> => ipcRenderer.invoke('update:download'),

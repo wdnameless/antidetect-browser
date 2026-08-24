@@ -24,6 +24,9 @@ declare global {
         setDir: () => Promise<{ ok: boolean; dir: string }>;
         openDir: () => Promise<string>;
       };
+      logs?: {
+        openDir: () => Promise<string>;
+      };
       update: {
         check: () => Promise<void>;
         download: () => Promise<void>;

@@ -397,6 +397,45 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
     }
   };
 
+  const handleExportProfile = async (id: string, label: string) => {
+    setError('');
+    try {
+      const res = await api.profileExport(id);
+      if (res.code === 0) {
+        const blob = new Blob([JSON.stringify(res.data.bundle, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `antidetect-profile-${label.replace(/[^a-zA-Z0-9-_]/g, '_')}.json`;
+        a.click();
+        URL.revokeObjectURL(url);
+      } else {
+        setError(res.msg);
+      }
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  };
+
+  const handleImportBundle = async (file: File) => {
+    setBusy(true);
+    setError('');
+    try {
+      const text = await file.text();
+      const bundle = JSON.parse(text);
+      const res = await api.profileImportBundle(bundle);
+      if (res.code === 0) {
+        await loadProfiles();
+      } else {
+        setError(`Import failed: ${res.msg}`);
+      }
+    } catch (err) {
+      setError(`Import failed: ${(err as Error).message}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const handleRandomizeFingerprint = async (id: string) => {
     setBusy(true);
     setError('');
@@ -809,6 +848,20 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
           <button className="btn" onClick={() => setShowCsv(true)}>
             Import CSV
           </button>
+          <button className="btn" onClick={() => document.getElementById('import-bundle-input')?.click()} disabled={busy} title="Import a profile bundle (.json) exported from this or another machine">
+            Import Bundle
+          </button>
+          <input
+            id="import-bundle-input"
+            type="file"
+            accept="application/json,.json"
+            style={{ display: 'none' }}
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (f) void handleImportBundle(f);
+              e.target.value = '';
+            }}
+          />
           <button className="btn primary" onClick={openCreateModal} disabled={busy}>
             <PlusIcon size={15} />
             <span>New Profile</span>
@@ -1052,6 +1105,30 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
                               >
                                 <CopyIcon size={13} />
                                 <span>Duplicate Profile</span>
+                              </button>
+
+                              <button
+                                type="button"
+                                style={{
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: 8,
+                                  padding: '7px 12px',
+                                  background: 'transparent',
+                                  border: 'none',
+                                  color: 'var(--text)',
+                                  fontSize: 12,
+                                  cursor: 'pointer',
+                                  textAlign: 'left',
+                                  width: '100%',
+                                }}
+                                onClick={() => {
+                                  setActiveMenuId(null);
+                                  void handleExportProfile(p.user_id, p.name || p.user_id);
+                                }}
+                              >
+                                <CopyIcon size={13} />
+                                <span>Export Profile (bundle)</span>
                               </button>
 
                               <button

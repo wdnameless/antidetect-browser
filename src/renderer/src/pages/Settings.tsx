@@ -20,6 +20,8 @@ export function Settings() {
   const [status, setStatus] = useState<UpdateStatus | null>(null);
   const [dataDir, setDataDir] = useState('');
   const [dataDirMsg, setDataDirMsg] = useState('');
+  const [logDir, setLogDir] = useState('');
+  const [logFiles, setLogFiles] = useState<Array<{ name: string; size: number; modified: number }>>([]);
 
   useEffect(() => {
     if (window.antidetect?.getApiKey) {
@@ -28,6 +30,14 @@ export function Settings() {
     if (window.antidetect?.data?.getDir) {
       void window.antidetect.data.getDir().then(setDataDir).catch(() => undefined);
     }
+    void import('../api').then(({ api }) => {
+      api.logsList().then((res) => {
+        if (res.code === 0) {
+          setLogDir(res.data.dir);
+          setLogFiles(res.data.list.slice(0, 3));
+        }
+      }).catch(() => undefined);
+    });
     if (window.antidetect?.update?.onStatus) {
       const off = window.antidetect.update.onStatus(setStatus);
       return off;
@@ -47,6 +57,14 @@ export function Settings() {
 
   const onOpenDataDir = (): void => {
     void window.antidetect?.data.openDir();
+  };
+
+  const onOpenLogsDir = (): void => {
+    if (window.antidetect?.logs?.openDir) {
+      void window.antidetect.logs.openDir();
+    } else {
+      void window.open(`file:///${logDir.replace(/\\/g, '/')}`);
+    }
   };
 
   const onCheck = (): void => {
@@ -171,6 +189,35 @@ export function Settings() {
           {renderStatus()}
         </div>
       )}
+
+      <div className="panel">
+        <div className="panel-header">Diagnostics &amp; Logs</div>
+        <div className="setting-row">
+          <span className="setting-label">Log folder</span>
+          <code style={{ wordBreak: 'break-all', maxWidth: '55%' }}>{logDir || '—'}</code>
+        </div>
+        <div className="setting-row">
+          <span className="setting-label">Actions</span>
+          <button className="btn" onClick={onOpenLogsDir}>
+            Open Logs Folder
+          </button>
+        </div>
+        {logFiles.length > 0 ? (
+          <div style={{ padding: '4px 0' }}>
+            <p className="hint" style={{ marginBottom: 6 }}>Recent log files (kept 14 days):</p>
+            {logFiles.map((f) => (
+              <div key={f.name} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, padding: '3px 0', color: 'var(--text-secondary)' }}>
+                <code>{f.name}</code>
+                <span style={{ color: 'var(--text-muted)' }}>{formatBytes(f.size)}</span>
+              </div>
+            ))}
+          </div>
+        ) : null}
+        <p className="hint">
+          Logs include service lifecycle, profile start/stop errors, backups and crash recovery events.
+          Send the newest <code>app-*.log</code> file when reporting an issue.
+        </p>
+      </div>
     </div>
   );
 }

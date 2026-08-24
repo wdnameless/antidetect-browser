@@ -229,6 +229,23 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ user_id, name }),
     }),
+  profileExport: (user_id: string) =>
+    request<{ bundle: Record<string, unknown> }>(
+      `/api/v1/browser-profile/export?user_id=${encodeURIComponent(user_id)}`
+    ),
+  profileImportBundle: (bundle: Record<string, unknown>) =>
+    request<{ user_id: string }>('/api/v1/browser-profile/import-bundle', {
+      method: 'POST',
+      body: JSON.stringify({ bundle }),
+    }),
+  logsList: () =>
+    request<{ dir: string; list: Array<{ name: string; size: number; modified: number }> }>(
+      '/api/v1/logs/list'
+    ),
+  logsGet: (name: string, tail = 500) =>
+    request<{ name: string; content: string }>(
+      `/api/v1/logs/get?name=${encodeURIComponent(name)}&tail=${tail}`
+    ),
   bulkStart: (user_ids: string[]) =>
     request<{ succeeded: Array<{ user_id: string }>; failed: Array<{ user_id: string; error: string }>; total: number }>(
       '/api/v1/browser-profile/bulk-start',
