@@ -25,6 +25,22 @@ async function bootstrap(): Promise<void> {
   await startService();
   ipcMain.handle('antidetect:getApiKey', () => getApiKey());
 
+  // Secret protection: proxy passwords/keys are encrypted at rest via DPAPI
+  // (electron.safeStorage) when available; the backend falls back to a
+  // "plain:" marker when running standalone outside Electron.
+  try {
+    const { safeStorage } = await import('electron');
+    if (safeStorage.isEncryptionAvailable()) {
+      const { setSecretCipher } = await import('../src/main/util/secretStore');
+      setSecretCipher({
+        encrypt: (s) => safeStorage.encryptString(s),
+        decrypt: (b) => safeStorage.decryptString(b),
+      });
+    }
+  } catch {
+    // encryption unavailable — secrets fall back to the "plain:" marker
+  }
+
   // Data directory management (profiles, kernel, extensions, DB).
   ipcMain.handle('data:get-dir', () => getDataDir());
   ipcMain.handle('data:set-dir', async () => {

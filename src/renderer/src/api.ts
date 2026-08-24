@@ -246,6 +246,11 @@ export const api = {
     request<{ name: string; content: string }>(
       `/api/v1/logs/get?name=${encodeURIComponent(name)}&tail=${tail}`
     ),
+  kernelInfo: () => request<{ installed: string | null }>('/api/v1/kernel/info'),
+  kernelCheckUpdate: () =>
+    request<{ installed: string | null; latest: string | null; updateAvailable: boolean; releaseUrl?: string; error?: string }>(
+      '/api/v1/kernel/check-update'
+    ),
   bulkStart: (user_ids: string[]) =>
     request<{ succeeded: Array<{ user_id: string }>; failed: Array<{ user_id: string; error: string }>; total: number }>(
       '/api/v1/browser-profile/bulk-start',

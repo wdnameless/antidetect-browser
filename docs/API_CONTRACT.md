@@ -206,3 +206,49 @@ driver.get("https://whoer.net")
 - `ws.selenium` = `127.0.0.1:<port>` (для `debuggerAddress`).
 - `webdriver` — путь к chromedriver соответствующей версии (для Selenium); в MVP может указывать на системный/скачанный драйвер.
 - Запущенные профили трекаются в памяти (Map profileId → {pid, port, ws}); статус пишется в БД.
+
+## Bulk-операции и пакеты (v0.2.18–19)
+
+#### `POST /api/v1/browser-profile/bulk-start` `{ user_ids: string[] }`
+Один запрос на запуск N профилей. Ответ: `{ succeeded: [{user_id, ws?, debug_port?}], failed: [{user_id, error}], total }`.
+#### `POST /api/v1/browser-profile/bulk-stop` / `bulk-delete` / `bulk-group` `{ user_ids, group_id? }`
+Аналогично, с отчётом по каждому профилю.
+
+#### `GET /api/v1/browser-profile/export?user_id=` → `{ bundle }`
+Пакет профиля: fingerprint (seed+config), proxy с кредами, cookies, timezone, start_urls, mobile_model_id, device.
+#### `POST /api/v1/browser-profile/import-bundle` `{ bundle }` → `{ user_id }`
+Создаёт новый профиль из пакета (перенос между машинами; пресет перелинковывается по стабильному id).
+
+#### `POST /api/v1/browser-profile/duplicate` `{ user_id, name? }` → `{ user_id }`
+Копия профиля с новым id/seed.
+
+## Cookies: форматы (v0.2.20)
+
+- Импорт: `POST /browser-profile/cookies/import` `{ user_id, cookies[] }` (CDP JSON) **или** `{ user_id, format: 'netscape', text }` (cookies.txt).
+- Экспорт: `GET /browser-profile/cookies/export?user_id=` (JSON, live/stored) **или** `&format=netscape` → готовый cookies.txt (text/plain).
+
+## Служебные (v0.2.19–20)
+
+#### `GET /api/v1/logs/list` / `GET /api/v1/logs/get?name=&tail=`
+Файлы `data/logs/app-YYYY-MM-DD.log` (ротация 14 дней). `name` — только `app-*.log` (path traversal защищён).
+#### `GET /api/v1/kernel/info` / `GET /api/v1/kernel/check-update`
+Версия установленного ядра; сравнение с последним релизом fingerprint-chromium (GitHub API).
+#### `GET /api/v1/device/mobile-presets`
+Пул 30 Android-моделей (id, name, model, androidVersion, gpu).
+
+## Rate limits (актуально)
+
+| Пути | Лимит |
+|---|---|
+| Списки (`/browser/list`, `/proxy/list`, `/group/list`, `/device/*`, `/extension/list`, `/logs/*` …) | 20 req/s |
+| `/browser/start`, `/browser/stop`, cookies import/export | 10 / 5 req/s |
+| `/status` | 50 req/s |
+| Остальное | 20 req/s |
+
+Превышение → HTTP 429 `{ code: -1, msg: 'rate limit exceeded', data: { retry_after_ms } }`. UI-клиент повторяет автоматически (до 3 попыток с backoff).
+
+## Безопасность
+
+- Bearer-ключ: сравнение timing-safe; хранится в `<data>/api_key`.
+- Host-заголовок: принимается только loopback (защита от DNS-rebinding).
+- Пароли прокси и SSH-ключи шифруются при записи (DPAPI через electron.safeStorage, префикс `enc:`; вне Electron — маркер `plain:`). В `/proxy/list` секреты не отдаются.

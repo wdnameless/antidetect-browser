@@ -8,6 +8,7 @@ import {
   type DeviceItem,
   type ProxyTestResult,
 } from '../api';
+import { useI18n } from '../i18n';
 import {
   PlayIcon,
   StopIcon,
@@ -29,6 +30,7 @@ import {
 } from '../icons';
 
 export function Profiles({ initialGroupId }: { initialGroupId?: string | null } = {}) {
+  const { t } = useI18n();
   const [profiles, setProfiles] = useState<ProfileListItem[]>([]);
   const [groups, setGroups] = useState<GroupItem[]>([]);
   const [proxies, setProxies] = useState<ProxyItem[]>([]);
@@ -795,7 +797,7 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
           <div className="search-box">
             <SearchIcon size={16} />
             <input
-              placeholder="Search profile name, ID, or proxy..."
+              placeholder={t('Search profile name, ID, or proxy...')}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
             />
@@ -805,7 +807,7 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
             value={selectedGroupFilter}
             onChange={(e) => setSelectedGroupFilter(e.target.value)}
           >
-            <option value="">All Groups ({groups.reduce((acc, g) => acc + g.profile_count, 0)})</option>
+            <option value="">{t('All Groups')} ({groups.reduce((acc, g) => acc + g.profile_count, 0)})</option>
             {groups.map((g) => (
               <option key={g.id} value={g.id}>
                 {g.name} ({g.profile_count})
@@ -818,12 +820,12 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
             value={selectedPlatformFilter}
             onChange={(e) => setSelectedPlatformFilter(e.target.value)}
           >
-            <option value="">All Platforms</option>
-            <option value="windows">Windows</option>
-            <option value="macos">macOS</option>
-            <option value="android">Android</option>
-            <option value="ios">iOS</option>
-            <option value="linux">Linux</option>
+            <option value="">{t('All Platforms')}</option>
+            <option value="windows">{t('Windows')}</option>
+            <option value="macos">{t('macOS')}</option>
+            <option value="android">{t('Android')}</option>
+            <option value="ios">{t('iOS')}</option>
+            <option value="linux">{t('Linux')}</option>
           </select>
 
           <select
@@ -831,9 +833,9 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
             value={selectedStatusFilter}
             onChange={(e) => setSelectedStatusFilter(e.target.value)}
           >
-            <option value="">All Statuses</option>
-            <option value="running">Running</option>
-            <option value="closed">Closed</option>
+            <option value="">{t('All Statuses')}</option>
+            <option value="running">{t('Running')}</option>
+            <option value="closed">{t('Closed')}</option>
           </select>
         </div>
 
@@ -843,13 +845,13 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
             <span>Groups</span>
           </button>
           <button className="btn" onClick={() => setShowBatch(true)}>
-            Batch Create
+            {t('Batch Create')}
           </button>
           <button className="btn" onClick={() => setShowCsv(true)}>
-            Import CSV
+            {t('Import CSV')}
           </button>
-          <button className="btn" onClick={() => document.getElementById('import-bundle-input')?.click()} disabled={busy} title="Import a profile bundle (.json) exported from this or another machine">
-            Import Bundle
+          <button className="btn" onClick={() => document.getElementById('import-bundle-input')?.click()} disabled={busy} title={t('Import a profile bundle (.json) exported from this or another machine')}>
+            {t('Import Bundle')}
           </button>
           <input
             id="import-bundle-input"
@@ -864,7 +866,7 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
           />
           <button className="btn primary" onClick={openCreateModal} disabled={busy}>
             <PlusIcon size={15} />
-            <span>New Profile</span>
+            <span>{t('New Profile')}</span>
           </button>
         </div>
       </div>
@@ -894,12 +896,12 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
                   style={{ cursor: 'pointer' }}
                 />
               </th>
-              <th style={{ width: '22%' }}>Profile Name</th>
-              <th style={{ width: '20%' }}>Proxy</th>
-              <th style={{ width: '15%' }}>Device / OS</th>
-              <th style={{ width: '15%' }}>Fingerprint</th>
-              <th style={{ width: '10%' }}>Status</th>
-              <th style={{ width: '18%', textAlign: 'right' }}>Actions</th>
+              <th style={{ width: '22%' }}>{t('Profile Name')}</th>
+              <th style={{ width: '20%' }}>{t('Proxy')}</th>
+              <th style={{ width: '15%' }}>{t('Device / OS')}</th>
+              <th style={{ width: '15%' }}>{t('Fingerprint')}</th>
+              <th style={{ width: '10%' }}>{t('Status')}</th>
+              <th style={{ width: '18%', textAlign: 'right' }}>{t('Actions')}</th>
             </tr>
           </thead>
           <tbody>
@@ -907,16 +909,15 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
               <tr>
                 <td colSpan={7} className="empty-cell">
                   {searchQuery ? (
-                    'No profiles match your search criteria.'
+                    t('No profiles match your search criteria.')
                   ) : (
                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, padding: '24px 0' }}>
                       <ProfilesIcon size={32} style={{ opacity: 0.3 }} />
                       <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-secondary)' }}>
-                        No profiles yet
+                        {t('No profiles yet')}
                       </div>
                       <p style={{ fontSize: 12, color: 'var(--text-muted)', maxWidth: 420, margin: 0 }}>
-                        Create your first browser profile — each profile gets a unique fingerprint,
-                        device, and proxy. Click <strong>+ New Profile</strong> to get started.
+                        {t('Create your first browser profile — each profile gets a unique fingerprint, device, and proxy. Click')} <strong>{t('+ New Profile')}</strong> {t('to get started.')}
                       </p>
                     </div>
                   )}
@@ -1012,7 +1013,7 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
                   </td>
                   <td>
                     <span className={`badge ${p.status}`}>
-                      {p.status === 'running' ? 'Running' : 'Closed'}
+                      {p.status === 'running' ? t('Running') : t('Closed')}
                     </span>
                   </td>
                   <td>
@@ -1279,7 +1280,7 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
           }}
         >
           <span style={{ fontSize: 12.5, color: 'var(--text-muted)' }}>
-            Total: <strong style={{ color: 'var(--text)' }}>{total}</strong> profile{total === 1 ? '' : 's'}
+            {t('Total')}: <strong style={{ color: 'var(--text)' }}>{total}</strong> {total === 1 ? t('profile') : t('profiles')}
           </span>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -1289,9 +1290,9 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
               value={pageSize}
               onChange={(e) => setPageSize(Number(e.target.value))}
             >
-              <option value={50}>50 / page</option>
-              <option value={100}>100 / page</option>
-              <option value={200}>200 / page</option>
+              <option value={50}>{t('50 / page')}</option>
+              <option value={100}>{t('100 / page')}</option>
+              <option value={200}>{t('200 / page')}</option>
             </select>
 
             <button
@@ -1300,10 +1301,10 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
               onClick={() => setPage((p) => Math.max(1, p - 1))}
               disabled={page <= 1}
             >
-              ← Prev
+              {t('← Prev')}
             </button>
             <span style={{ fontSize: 12.5, color: 'var(--text-secondary)' }}>
-              Page {page} of {Math.max(1, Math.ceil(total / pageSize))}
+              {t('Page')} {page} {t('of')} {Math.max(1, Math.ceil(total / pageSize))}
             </span>
             <button
               type="button"
@@ -1311,7 +1312,7 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
               onClick={() => setPage((p) => (p * pageSize < total ? p + 1 : p))}
               disabled={page * pageSize >= total}
             >
-              Next →
+              {t('Next →')}
             </button>
           </div>
         </div>
@@ -1352,7 +1353,7 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
             >
               {selectedIds.size}
             </span>
-            <span>Selected</span>
+            <span>{t('Selected')}</span>
           </div>
 
           <div style={{ height: 18, width: 1, background: 'var(--border)' }} />
@@ -1362,11 +1363,11 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
             className="btn btn-sm"
             onClick={() => void handleBulkStart()}
             disabled={bulkBusy}
-            title="Start selected profiles"
+            title={t('Start selected profiles')}
             style={{ background: 'rgba(34, 197, 94, 0.15)', color: '#4ade80', borderColor: 'rgba(34, 197, 94, 0.3)' }}
           >
             <PlayIcon size={12} />
-            <span>Start</span>
+            <span>{t('Start')}</span>
           </button>
 
           <button
@@ -1374,11 +1375,11 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
             className="btn btn-sm"
             onClick={() => void handleBulkStop()}
             disabled={bulkBusy}
-            title="Stop selected profiles"
+            title={t('Stop selected profiles')}
             style={{ background: 'rgba(239, 68, 68, 0.15)', color: '#f87171', borderColor: 'rgba(239, 68, 68, 0.3)' }}
           >
             <StopIcon size={12} />
-            <span>Stop</span>
+            <span>{t('Stop')}</span>
           </button>
 
           <div style={{ height: 18, width: 1, background: 'var(--border)' }} />
@@ -1391,8 +1392,8 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
               onChange={(e) => setBulkTargetGroup(e.target.value)}
               disabled={bulkBusy}
             >
-              <option value="">Move to Group...</option>
-              <option value="">(No Group / Ungrouped)</option>
+              <option value="">{t('Move to Group...')}</option>
+              <option value="">{t('(No Group / Ungrouped)')}</option>
               {groups.map((g) => (
                 <option key={g.id} value={g.id}>
                   {g.name}
@@ -1405,7 +1406,7 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
               onClick={() => void handleBulkMoveGroup()}
               disabled={bulkBusy}
             >
-              Apply
+              {t('Apply')}
             </button>
           </div>
 
@@ -1416,10 +1417,10 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
             className="btn btn-sm btn-danger"
             onClick={() => void handleBulkDelete()}
             disabled={bulkBusy}
-            title="Delete selected profiles"
+            title={t('Delete selected profiles')}
           >
             <TrashIcon size={12} />
-            <span>Delete</span>
+            <span>{t('Delete')}</span>
           </button>
 
           <button
@@ -1427,7 +1428,7 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
             className="btn btn-sm"
             onClick={() => setSelectedIds(new Set())}
             disabled={bulkBusy}
-            title="Deselect all"
+            title={t('Deselect all')}
             style={{ color: 'var(--text-muted)' }}
           >
             ✕

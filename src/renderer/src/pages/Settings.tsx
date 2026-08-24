@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { getApiBase } from '../api';
 import type { UpdateStatus } from '../global';
+import { useI18n, type Lang } from '../i18n';
 import { SettingsIcon, RefreshIcon } from '../icons';
 
 function formatBytes(n: number): string {
@@ -16,12 +17,25 @@ function formatBytes(n: number): string {
 }
 
 export function Settings() {
+  const { t, lang, setLang } = useI18n();
   const [apiKey, setApiKey] = useState('');
   const [status, setStatus] = useState<UpdateStatus | null>(null);
   const [dataDir, setDataDir] = useState('');
   const [dataDirMsg, setDataDirMsg] = useState('');
   const [logDir, setLogDir] = useState('');
   const [logFiles, setLogFiles] = useState<Array<{ name: string; size: number; modified: number }>>([]);
+  const [kernelInfo, setKernelInfo] = useState<{ installed: string | null; latest: string | null; updateAvailable: boolean; releaseUrl?: string; error?: string } | null>(null);
+  const [kernelChecking, setKernelChecking] = useState(false);
+
+  const checkKernel = (): void => {
+    setKernelChecking(true);
+    void import('../api').then(({ api }) => {
+      api.kernelCheckUpdate().then((res) => {
+        if (res.code === 0) setKernelInfo(res.data);
+        setKernelChecking(false);
+      }).catch(() => setKernelChecking(false));
+    });
+  };
 
   useEffect(() => {
     if (window.antidetect?.getApiKey) {
@@ -36,6 +50,9 @@ export function Settings() {
           setLogDir(res.data.dir);
           setLogFiles(res.data.list.slice(0, 3));
         }
+      }).catch(() => undefined);
+      api.kernelInfo().then((res) => {
+        if (res.code === 0) setKernelInfo({ installed: res.data.installed, latest: null, updateAvailable: false });
       }).catch(() => undefined);
     });
     if (window.antidetect?.update?.onStatus) {
@@ -135,7 +152,23 @@ export function Settings() {
       </div>
 
       <div className="panel">
-        <div className="panel-header">Automation API (for your scripts)</div>
+        <div className="panel-header">{t('Language')}</div>
+        <div className="setting-row">
+          <span className="setting-label">{t('Language')}</span>
+          <select
+            className="select-input"
+            value={lang}
+            onChange={(e) => setLang(e.target.value as Lang)}
+            style={{ minWidth: 140 }}
+          >
+            <option value="en">{t('English')}</option>
+            <option value="ru">{t('Russian')}</option>
+          </select>
+        </div>
+      </div>
+
+      <div className="panel">
+        <div className="panel-header">{t('Automation API (for your scripts)')}</div>
         <div className="setting-row">
           <span className="setting-label">Endpoint URL</span>
           <code>{getApiBase()}</code>
@@ -189,6 +222,41 @@ export function Settings() {
           {renderStatus()}
         </div>
       )}
+
+      <div className="panel">
+        <div className="panel-header">Browser Kernel (fingerprint-chromium)</div>
+        <div className="setting-row">
+          <span className="setting-label">Installed version</span>
+          <code>{kernelInfo?.installed ?? '—'}</code>
+        </div>
+        <div className="setting-row">
+          <span className="setting-label">Upstream check</span>
+          <button className="btn" onClick={checkKernel} disabled={kernelChecking}>
+            <RefreshIcon size={14} />
+            <span>{kernelChecking ? 'Checking…' : 'Check for kernel update'}</span>
+          </button>
+        </div>
+        {kernelInfo?.latest ? (
+          <p className="hint" style={{ color: kernelInfo.updateAvailable ? 'var(--warn)' : 'var(--ok)', fontWeight: 500 }}>
+            {kernelInfo.updateAvailable
+              ? `⚠ Update available: v${kernelInfo.latest} (installed v${kernelInfo.installed}). Download from the release page, then replace the folder in data/chromium.`
+              : `✓ You are on the latest kernel (v${kernelInfo.latest}).`}
+            {kernelInfo.releaseUrl ? (
+              <>
+                {' '}
+                <a href={kernelInfo.releaseUrl} target="_blank" rel="noreferrer" style={{ color: 'var(--accent)' }}>
+                  Open releases ↗
+                </a>
+              </>
+            ) : null}
+          </p>
+        ) : null}
+        {kernelInfo?.error ? <p className="hint" style={{ color: 'var(--danger)' }}>Check failed: {kernelInfo.error}</p> : null}
+        <p className="hint">
+          The kernel is intentionally pinned (stealth patches are version-specific). Updating is manual:
+          download the new Windows build, replace the folder under <code>data/chromium/fingerprint-chromium</code>.
+        </p>
+      </div>
 
       <div className="panel">
         <div className="panel-header">Diagnostics &amp; Logs</div>

@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react';
 import { api, type DeviceItem } from '../api';
 import { DevicesIcon } from '../icons';
+import { useI18n } from '../i18n';
 
 export function Devices() {
+  const { t } = useI18n();
   const [devices, setDevices] = useState<DeviceItem[]>([]);
   const [mobilePresets, setMobilePresets] = useState<Array<{ id: string; name: string; model: string; androidVersion: string; gpu: string }>>([]);
   const [error, setError] = useState('');
@@ -40,9 +42,9 @@ export function Devices() {
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <DevicesIcon size={22} style={{ color: 'var(--accent)' }} />
           <div>
-            <h2 style={{ fontSize: 16, fontWeight: 700 }}>Device &amp; Hardware Presets</h2>
+            <h2 style={{ fontSize: 16, fontWeight: 700 }}>{t('Device & Hardware Presets')}</h2>
             <p style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 2 }}>
-              Built-in device profiles and mobile phone pools for realistic hardware fingerprint spoofing.
+              {t('Built-in device profiles and mobile phone pools for realistic hardware fingerprint spoofing.')}
             </p>
           </div>
         </div>
@@ -50,10 +52,10 @@ export function Devices() {
 
       {error ? <div className="error-banner">{error}</div> : null}
 
-      {/* Main OS & Platform Presets */}
+      {/* Main OS & {t('Platform Presets')} */}
       <div style={{ marginBottom: 24 }}>
         <h3 style={{ fontSize: 14, fontWeight: 600, marginBottom: 12, color: 'var(--text)' }}>
-          Platform Presets
+          {t('Platform Presets')}
         </h3>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 12 }}>
           {devices.map((d) => {
@@ -83,7 +85,7 @@ export function Devices() {
 
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 4 }}>
                   <span className="badge badge-gray" style={{ fontSize: 11 }}>
-                    {isMobile ? 'Touch Enabled' : 'Mouse & Keyboard'}
+                    {isMobile ? t('Touch Enabled') : t('Mouse & Keyboard')}
                   </span>
                   {d.config.screen && typeof d.config.screen === 'object' ? (
                     <span className="badge badge-gray" style={{ fontSize: 11 }}>
@@ -96,7 +98,7 @@ export function Devices() {
                     </span>
                   ) : (
                     <span className="badge badge-gray" style={{ fontSize: 11 }}>
-                      🖥 Desktop Resolution
+                      🖥 t('Desktop Resolution')
                     </span>
                   )}
                 </div>

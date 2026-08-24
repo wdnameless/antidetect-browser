@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { initApiKey } from './api';
+import { useI18n } from './i18n';
 import { Profiles } from './pages/Profiles';
 import { Groups } from './pages/Groups';
 import { Proxies } from './pages/Proxies';
@@ -34,6 +35,7 @@ const NAV: NavItem[] = [
 ];
 
 export function App() {
+  const { t } = useI18n();
   const [page, setPage] = useState<Page>('profiles');
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
@@ -51,7 +53,6 @@ export function App() {
   }
 
   const activeNav = NAV.find((n) => n.key === page);
-
   const handleSelectGroupAndGoToProfiles = (groupId: string) => {
     setSelectedGroupId(groupId);
     setPage('profiles');
@@ -84,7 +85,7 @@ export function App() {
                   }}
                 >
                   <Icon size={16} />
-                  <span>{item.label}</span>
+                  <span>{t(item.label)}</span>
                 </button>
               );
             })}
@@ -101,7 +102,7 @@ export function App() {
 
       <div className="main">
         <header className="topbar">
-          <h2 className="page-title">{activeNav?.label || 'Dashboard'}</h2>
+          <h2 className="page-title">{activeNav ? t(activeNav.label) : 'Dashboard'}</h2>
         </header>
 
         <main className="content">

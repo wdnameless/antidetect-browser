@@ -5,6 +5,7 @@ import { PROFILES_DIR } from '../config';
 import { getEnabledExtensionPaths } from '../extensions/extensionManager';
 import { checkProxy, type ProxyCheckResult } from '../proxy/proxyManager';
 import { pickMobilePreset, buildMobileUa, getMobilePreset, type MobilePreset } from '../devices/mobilePresets';
+import { protectSecret, revealSecret } from '../util/secretStore';
 
 export type ProxyType = 'http' | 'https' | 'socks5' | 'ssh';
 
@@ -194,8 +195,8 @@ export function createProfile(input: CreateProfileInput): string {
       input.proxy.host,
       input.proxy.port,
       input.proxy.username ?? null,
-      input.proxy.password ?? null,
-      input.proxy.privateKey ?? null,
+      protectSecret(input.proxy.password),
+      protectSecret(input.proxy.privateKey),
       null,
       null,
       'unknown',
@@ -478,8 +479,9 @@ export function exportProfileBundle(id: string): ProfileBundle | null {
         host: px.host,
         port: px.port,
         username: px.username || undefined,
-        password: px.password || undefined,
-        private_key: px.private_key || undefined,
+        // bundles are explicit user exports — include the usable (decrypted) credentials
+        password: revealSecret(px.password),
+        private_key: revealSecret(px.private_key),
       };
     }
   }
@@ -617,8 +619,8 @@ export function updateProfile(
       updates.proxy.host,
       updates.proxy.port,
       updates.proxy.username ?? null,
-      updates.proxy.password ?? null,
-      updates.proxy.privateKey ?? null,
+      protectSecret(updates.proxy.password),
+      protectSecret(updates.proxy.privateKey),
       null,
       null,
       'unknown',
@@ -955,13 +957,14 @@ export function resolveLaunchConfig(id: string): LaunchConfig {
           host: px.host,
           port: px.port,
           username: px.username ?? undefined,
-          password: px.password ?? undefined,
-          privateKey: px.private_key ?? undefined,
+          password: revealSecret(px.password),
+          privateKey: revealSecret(px.private_key),
         };
       } else {
         proxyServer = `${px.type}://${px.host}:${px.port}`;
-        if (px.username && px.password) {
-          proxyAuth = { username: px.username, password: px.password };
+        const pxPass = revealSecret(px.password);
+        if (px.username && pxPass) {
+          proxyAuth = { username: px.username, password: pxPass };
         }
       }
     }

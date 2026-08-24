@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api, type GroupItem, type ProfileListItem } from '../api';
 import { FolderIcon, PlusIcon, EditIcon, TrashIcon, SearchIcon, ProfilesIcon } from '../icons';
+import { useI18n } from '../i18n';
 
 export function Groups({ onSelectGroup }: { onSelectGroup?: (groupId: string) => void }) {
+  const { t } = useI18n();
   const [groups, setGroups] = useState<GroupItem[]>([]);
   const [profiles, setProfiles] = useState<ProfileListItem[]>([]);
   const [error, setError] = useState('');
@@ -105,9 +107,9 @@ export function Groups({ onSelectGroup }: { onSelectGroup?: (groupId: string) =>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <FolderIcon size={22} style={{ color: 'var(--accent)' }} />
           <div>
-            <h2 style={{ fontSize: 16, fontWeight: 700 }}>Profile Groups</h2>
+            <h2 style={{ fontSize: 16, fontWeight: 700 }}>{t('Profile Groups')}</h2>
             <p style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 2 }}>
-              Organize your browser profiles by projects, clients, or account categories.
+              {t('Organize your browser profiles by projects, clients, or account categories.')}
             </p>
           </div>
         </div>
@@ -119,7 +121,7 @@ export function Groups({ onSelectGroup }: { onSelectGroup?: (groupId: string) =>
           disabled={busy}
         >
           <PlusIcon size={14} />
-          <span>New Group</span>
+          <span>{t('New Group')}</span>
         </button>
       </div>
 
@@ -130,7 +132,7 @@ export function Groups({ onSelectGroup }: { onSelectGroup?: (groupId: string) =>
           <SearchIcon size={14} />
           <input
             type="text"
-            placeholder="Search groups..."
+            placeholder={t('Search groups...')}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
@@ -142,10 +144,10 @@ export function Groups({ onSelectGroup }: { onSelectGroup?: (groupId: string) =>
           <thead>
             <tr>
               <th style={{ width: 40 }}>#</th>
-              <th>Group Name</th>
-              <th style={{ width: 140 }}>Profiles Count</th>
-              <th style={{ width: 180 }}>Group ID</th>
-              <th style={{ width: 180, textAlign: 'right' }}>Actions</th>
+              <th>{t('Group Name')}</th>
+              <th style={{ width: 140 }}>{t('Profiles Count')}</th>
+              <th style={{ width: 180 }}>{t('Group ID')}</th>
+              <th style={{ width: 180, textAlign: 'right' }}>{t('Actions')}</th>
             </tr>
           </thead>
           <tbody>
@@ -155,9 +157,9 @@ export function Groups({ onSelectGroup }: { onSelectGroup?: (groupId: string) =>
                   {groups.length === 0 ? (
                     <div>
                       <FolderIcon size={32} style={{ opacity: 0.3, marginBottom: 8 }} />
-                      <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-secondary)' }}>No groups yet</div>
+                      <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-secondary)' }}>{t('No groups yet')}</div>
                       <p style={{ fontSize: 12, marginTop: 4 }}>
-                        Create groups to keep dozens or hundreds of profiles neatly organized.
+                        {t('Create groups to keep dozens or hundreds of profiles neatly organized.')}
                       </p>
                       <button
                         type="button"
@@ -166,11 +168,11 @@ export function Groups({ onSelectGroup }: { onSelectGroup?: (groupId: string) =>
                         onClick={() => setShowCreateModal(true)}
                       >
                         <PlusIcon size={13} />
-                        <span>Create First Group</span>
+                        <span>{t('Create First Group')}</span>
                       </button>
                     </div>
                   ) : (
-                    'No groups matching search'
+                    t('No groups matching search')
                   )}
                 </td>
               </tr>
@@ -190,7 +192,7 @@ export function Groups({ onSelectGroup }: { onSelectGroup?: (groupId: string) =>
                     </td>
                     <td>
                       <span className="badge badge-gray" style={{ fontWeight: 600 }}>
-                        {count} profile{count === 1 ? '' : 's'}
+                        {count} {count === 1 ? t('profile') : t('profiles')}
                       </span>
                     </td>
                     <td>
@@ -204,7 +206,7 @@ export function Groups({ onSelectGroup }: { onSelectGroup?: (groupId: string) =>
                           <button
                             type="button"
                             className="btn btn-sm"
-                            title="View profiles in this group"
+                            title={t('View profiles in this group')}
                             onClick={() => onSelectGroup(g.id)}
                           >
                             <ProfilesIcon size={12} />
@@ -215,7 +217,7 @@ export function Groups({ onSelectGroup }: { onSelectGroup?: (groupId: string) =>
                         <button
                           type="button"
                           className="btn btn-sm"
-                          title="Rename group"
+                          title={t('Rename group')}
                           onClick={() => {
                             setEditingGroupId(g.id);
                             setEditGroupName(g.name);
@@ -227,7 +229,7 @@ export function Groups({ onSelectGroup }: { onSelectGroup?: (groupId: string) =>
                         <button
                           type="button"
                           className="btn btn-sm btn-danger"
-                          title="Delete group"
+                          title={t('Delete group')}
                           onClick={() => void handleDeleteGroup(g.id, g.name)}
                         >
                           <TrashIcon size={12} />
@@ -247,7 +249,7 @@ export function Groups({ onSelectGroup }: { onSelectGroup?: (groupId: string) =>
         <div className="modal-backdrop">
           <div className="modal" style={{ maxWidth: 420 }}>
             <div className="modal-header">
-              <h3>Create New Group</h3>
+              <h3>{t('Create New Group')}</h3>
               <button
                 type="button"
                 className="btn btn-sm"
@@ -259,7 +261,7 @@ export function Groups({ onSelectGroup }: { onSelectGroup?: (groupId: string) =>
             <form onSubmit={handleCreateGroup}>
               <div className="modal-body">
                 <div className="form-group">
-                  <label>Group Name *</label>
+                  <label>{t('Group Name')} *</label>
                   <input
                     type="text"
                     required
@@ -284,7 +286,7 @@ export function Groups({ onSelectGroup }: { onSelectGroup?: (groupId: string) =>
                   className="btn btn-primary"
                   disabled={busy || !newGroupName.trim()}
                 >
-                  {busy ? 'Creating...' : 'Create Group'}
+                  {busy ? t('Creating...') : t('Create Group')}
                 </button>
               </div>
             </form>
@@ -297,7 +299,7 @@ export function Groups({ onSelectGroup }: { onSelectGroup?: (groupId: string) =>
         <div className="modal-backdrop">
           <div className="modal" style={{ maxWidth: 420 }}>
             <div className="modal-header">
-              <h3>Rename Group</h3>
+              <h3>{t('Rename Group')}</h3>
               <button
                 type="button"
                 className="btn btn-sm"
@@ -309,7 +311,7 @@ export function Groups({ onSelectGroup }: { onSelectGroup?: (groupId: string) =>
             <form onSubmit={handleUpdateGroup}>
               <div className="modal-body">
                 <div className="form-group">
-                  <label>Group Name *</label>
+                  <label>{t('Group Name')} *</label>
                   <input
                     type="text"
                     required
@@ -333,7 +335,7 @@ export function Groups({ onSelectGroup }: { onSelectGroup?: (groupId: string) =>
                   className="btn btn-primary"
                   disabled={busy || !editGroupName.trim()}
                 >
-                  {busy ? 'Saving...' : 'Save Changes'}
+                  {busy ? t('Saving...') : t('Save Changes')}
                 </button>
               </div>
             </form>

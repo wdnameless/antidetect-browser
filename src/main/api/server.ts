@@ -10,6 +10,7 @@ import cookiesRoutes from './routes/cookies';
 import extensionsRoutes from './routes/extensions';
 import batchRoutes from './routes/batch';
 import logsRoutes from './routes/logs';
+import kernelRoutes from './routes/kernel';
 
 export function startApi(): Promise<void> {
   const app: Express = express();
@@ -44,6 +45,7 @@ export function startApi(): Promise<void> {
   app.use(extensionsRoutes);
   app.use(batchRoutes);
   app.use(logsRoutes);
+  app.use(kernelRoutes);
 
   // JSON 404 for unknown routes (Express default would return HTML).
   app.use((_req: Request, res: Response) => {

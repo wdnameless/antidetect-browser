@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api, type ProxyItem } from '../api';
 import { ProxiesIcon, PlusIcon, TrashIcon, RefreshIcon, CheckIcon } from '../icons';
+import { useI18n } from '../i18n';
 
 export function Proxies() {
+  const { t } = useI18n();
   const [proxies, setProxies] = useState<ProxyItem[]>([]);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -98,13 +100,13 @@ export function Proxies() {
       <div className="page-header-actions">
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <ProxiesIcon size={20} style={{ color: 'var(--accent)' }} />
-          <h2 style={{ fontSize: 16, fontWeight: 700 }}>Proxy Manager</h2>
-          <span className="hint" style={{ margin: 0 }}>({proxies.length} proxies configured)</span>
+          <h2 style={{ fontSize: 16, fontWeight: 700 }}>{t('Proxy Manager')}</h2>
+          <span className="hint" style={{ margin: 0 }}>({t('proxies configured')}: {proxies.length})</span>
         </div>
 
         <button className="btn primary" onClick={() => setShowModal(true)}>
           <PlusIcon size={15} />
-          <span>Add Proxy</span>
+          <span>{t('Add Proxy')}</span>
         </button>
       </div>
 
@@ -178,11 +180,11 @@ export function Proxies() {
         <table className="table">
           <thead>
             <tr>
-              <th style={{ width: '12%' }}>Type</th>
-              <th style={{ width: '30%' }}>Host : Port</th>
-              <th style={{ width: '22%' }}>Username</th>
-              <th style={{ width: '20%' }}>Location / IP</th>
-              <th style={{ width: '16%', textAlign: 'right' }}>Actions</th>
+              <th style={{ width: '12%' }}>{t('Type')}</th>
+              <th style={{ width: '30%' }}>{t('Host : Port')}</th>
+              <th style={{ width: '22%' }}>{t('Username')}</th>
+              <th style={{ width: '20%' }}>{t('Location / IP')}</th>
+              <th style={{ width: '16%', textAlign: 'right' }}>{t('Actions')}</th>
             </tr>
           </thead>
           <tbody>
@@ -192,10 +194,10 @@ export function Proxies() {
                   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, padding: '24px 0' }}>
                     <ProxiesIcon size={32} style={{ opacity: 0.3 }} />
                     <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-secondary)' }}>
-                      No proxies configured yet
+                      {t('No proxies configured yet')}
                     </div>
                     <p style={{ fontSize: 12, color: 'var(--text-muted)', maxWidth: 440, margin: 0 }}>
-                      Proxies give each profile its own IP address — essential for running many accounts safely.
+                      {t('Proxies give each profile its own IP address — essential for running many accounts safely.')}
                       Click <strong>+ Add Proxy</strong> to configure one.
                     </p>
                   </div>
@@ -227,7 +229,7 @@ export function Proxies() {
                           {p.country} ({p.timezone || 'UTC'})
                         </span>
                       ) : (
-                        <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Not tested</span>
+                        <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{t('Not tested')}</span>
                       )}
                     </td>
                     <td>
@@ -236,7 +238,7 @@ export function Proxies() {
                           className="btn-icon"
                           onClick={() => void check(p.proxy_id)}
                           disabled={busy}
-                          title="Test Connection"
+                          title={t('Test Connection')}
                         >
                           <RefreshIcon size={14} />
                         </button>
@@ -245,7 +247,7 @@ export function Proxies() {
                           style={{ color: 'var(--danger)' }}
                           onClick={() => void remove(p.proxy_id)}
                           disabled={busy}
-                          title="Delete Proxy"
+                          title={t('Delete Proxy')}
                         >
                           <TrashIcon size={14} />
                         </button>
@@ -273,19 +275,19 @@ export function Proxies() {
         <div>
           <div style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--text)' }}>HTTP / HTTPS</div>
           <p style={{ fontSize: 12, color: 'var(--text-muted)', margin: '4px 0 0' }}>
-            Best for most tasks (browsing, social networks). Easy to set up, widely supported.
+            {t('Best for most tasks (browsing, social networks). Easy to set up, widely supported.')}
           </p>
         </div>
         <div>
           <div style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--text)' }}>SOCKS5</div>
           <p style={{ fontSize: 12, color: 'var(--text-muted)', margin: '4px 0 0' }}>
-            Handles all traffic types (TCP/UDP). Recommended for banking, crypto and heavy anti-detection.
+            {t('Handles all traffic types (TCP/UDP). Recommended for banking, crypto and heavy anti-detection.')}
           </p>
         </div>
         <div>
           <div style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--text)' }}>SSH Tunnel</div>
           <p style={{ fontSize: 12, color: 'var(--text-muted)', margin: '4px 0 0' }}>
-            Routes traffic through a Linux server you own — free and stable if you have one.
+            {t('Routes traffic through a Linux server you own — free and stable if you have one.')}
           </p>
         </div>
       </div>

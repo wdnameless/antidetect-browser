@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api, type ExtensionItem, type ProfileListItem } from '../api';
 import { ExtensionsIcon, PlusIcon, TrashIcon } from '../icons';
+import { useI18n } from '../i18n';
 
 export function Extensions() {
+  const { t } = useI18n();
   const [extensions, setExtensions] = useState<ExtensionItem[]>([]);
   const [profiles, setProfiles] = useState<ProfileListItem[]>([]);
   const [error, setError] = useState('');
@@ -148,7 +150,7 @@ export function Extensions() {
                   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, padding: '24px 0' }}>
                     <ExtensionsIcon size={32} style={{ opacity: 0.3 }} />
                     <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-secondary)' }}>
-                      No extensions imported yet
+                      {t('No extensions imported yet')}
                     </div>
                     <p style={{ fontSize: 12, color: 'var(--text-muted)', maxWidth: 420, margin: 0 }}>
                       Import an unpacked extension folder (e.g. MetaMask, EditThisCookie) to load it into your
@@ -203,8 +205,9 @@ export function Extensions() {
                           <button
                             className="btn"
                             onClick={() => setBindTarget({ extId: e.extension_id, profileId: '' })}
+                            title="Расширение будет загружаться в этом профиле / The extension loads in this profile"
                           >
-                            Bind to Profile
+                            {t('Bind to Profile')}
                           </button>
                           <button
                             className="btn-icon"

@@ -7,6 +7,7 @@ import { HttpProxyAgent } from 'http-proxy-agent';
 import { SocksProxyAgent } from 'socks-proxy-agent';
 import fetch from 'node-fetch';
 import { createSshTunnel, SshTunnel } from './sshTunnel';
+import { protectSecret, revealSecret } from '../util/secretStore';
 
 export type ProxyType = 'http' | 'https' | 'socks5' | 'ssh';
 
@@ -64,8 +65,8 @@ export function createProxy(input: ProxyInput): string {
     input.host,
     input.port,
     input.username ?? null,
-    input.password ?? null,
-    input.privateKey ?? null,
+    protectSecret(input.password),
+    protectSecret(input.privateKey),
     null,
     null,
     'unknown',
@@ -95,8 +96,8 @@ export function updateProxy(id: string, input: Partial<ProxyInput>): boolean {
     input.host ?? existing.host,
     input.port ?? existing.port,
     input.username !== undefined ? input.username ?? null : existing.username,
-    input.password !== undefined ? input.password ?? null : existing.password,
-    input.privateKey !== undefined ? input.privateKey ?? null : existing.private_key,
+    input.password !== undefined ? protectSecret(input.password) : existing.password,
+    input.privateKey !== undefined ? protectSecret(input.privateKey) : existing.private_key,
     id
   );
   return true;
@@ -139,16 +140,16 @@ export async function checkProxy(proxy: ProxyRow): Promise<ProxyCheckResult> {
         host: proxy.host,
         port: proxy.port,
         username: proxy.username ?? undefined,
-        password: proxy.password ?? undefined,
-        privateKey: proxy.private_key ?? undefined,
+        password: revealSecret(proxy.password),
+        privateKey: revealSecret(proxy.private_key),
       });
       agent = new SocksProxyAgent(`socks5://127.0.0.1:${tunnel.port}`) as unknown as http.Agent;
     } else if (proxy.type === 'socks5') {
-      const auth = proxy.username ? `${encodeURIComponent(proxy.username)}:${encodeURIComponent(proxy.password ?? '')}@` : '';
+      const auth = proxy.username ? `${encodeURIComponent(proxy.username)}:${encodeURIComponent(revealSecret(proxy.password) ?? '')}@` : '';
       agent = new SocksProxyAgent(`socks5://${auth}${proxy.host}:${proxy.port}`) as unknown as http.Agent;
     } else {
       // http / https
-      const auth = proxy.username ? `${encodeURIComponent(proxy.username)}:${encodeURIComponent(proxy.password ?? '')}@` : '';
+      const auth = proxy.username ? `${encodeURIComponent(proxy.username)}:${encodeURIComponent(revealSecret(proxy.password) ?? '')}@` : '';
       agent = new HttpProxyAgent(`http://${auth}${proxy.host}:${proxy.port}`) as unknown as http.Agent;
     }
 
