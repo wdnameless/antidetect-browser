@@ -120,7 +120,10 @@ router.get('/api/v1/browser/list', (req, res) => {
   const page = Math.max(1, Number(req.query.page) || 1);
   const pageSize = Math.min(500, Math.max(1, Number(req.query.page_size) || 100));
   const groupId = typeof req.query.group_id === 'string' ? req.query.group_id : undefined;
-  const { list, total } = pm.listProfiles(page, pageSize, groupId);
+  const search = typeof req.query.search === 'string' ? req.query.search : undefined;
+  const platform = typeof req.query.platform === 'string' ? req.query.platform : undefined;
+  const status = typeof req.query.status === 'string' ? req.query.status : undefined;
+  const { list, total } = pm.listProfiles(page, pageSize, groupId, search, platform, status);
   res.json({ code: 0, msg: 'success', data: { list, page, page_size: pageSize, total } });
 });
 
@@ -129,8 +132,135 @@ router.post('/api/v2/browser-profile/list', (req, res) => {
   const page = Math.max(1, Number(req.body?.page) || 1);
   const pageSize = Math.min(500, Math.max(1, Number(req.body?.page_size) || 100));
   const groupId = typeof req.body?.group_id === 'string' ? req.body.group_id : undefined;
-  const { list, total } = pm.listProfiles(page, pageSize, groupId);
+  const search = typeof req.body?.search === 'string' ? req.body.search : undefined;
+  const platform = typeof req.body?.platform === 'string' ? req.body.platform : undefined;
+  const status = typeof req.body?.status === 'string' ? req.body.status : undefined;
+  const { list, total } = pm.listProfiles(page, pageSize, groupId, search, platform, status);
   res.json({ code: 0, msg: 'success', data: { list, page, page_size: pageSize, total } });
+});
+
+// ---------------------------------------------------------------------------
+// Server-side bulk operations (v0.2.18): one request per action, with a
+// per-item success/failure report instead of client-side request loops.
+// ---------------------------------------------------------------------------
+
+const bulkIdsSchema = z.object({
+  user_ids: z.array(z.string()).min(1).max(500),
+});
+
+router.post('/api/v1/browser-profile/bulk-start', async (req, res) => {
+  const parsed = bulkIdsSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.json({ code: -1, msg: 'invalid body', data: { errors: parsed.error.flatten() } });
+    return;
+  }
+  const succeeded: Array<{ user_id: string; ws?: unknown; debug_port?: string }> = [];
+  const failed: Array<{ user_id: string; error: string }> = [];
+  for (const id of parsed.data.user_ids) {
+    try {
+      const profile = pm.getProfile(id);
+      if (!profile) {
+        failed.push({ user_id: id, error: 'profile not found' });
+        continue;
+      }
+      const cfg = pm.resolveLaunchConfig(id);
+      if (cfg.browserType === 'firefox') {
+        const result = await firefox.startFirefox(cfg);
+        if (result.ok) {
+          pm.setStatus(id, 'running');
+          succeeded.push({ user_id: id });
+        } else {
+          failed.push({ user_id: id, error: result.error ?? 'firefox start failed' });
+        }
+      } else {
+        const startResult = await launcher.startProfile(cfg);
+        pm.setStatus(id, 'running');
+        succeeded.push({ user_id: id, ws: startResult.ws, debug_port: startResult.debug_port });
+      }
+    } catch (err) {
+      try { pm.setStatus(id, 'closed'); } catch { /* ignore */ }
+      failed.push({ user_id: id, error: (err as Error).message });
+    }
+  }
+  res.json({
+    code: 0,
+    msg: 'success',
+    data: { succeeded, failed, total: parsed.data.user_ids.length },
+  });
+});
+
+router.post('/api/v1/browser-profile/bulk-stop', async (req, res) => {
+  const parsed = bulkIdsSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.json({ code: -1, msg: 'invalid body', data: { errors: parsed.error.flatten() } });
+    return;
+  }
+  const succeeded: string[] = [];
+  const failed: Array<{ user_id: string; error: string }> = [];
+  for (const id of parsed.data.user_ids) {
+    try {
+      const profile = pm.getProfile(id);
+      if (profile?.browser_type === 'firefox') {
+        const result = await firefox.stopFirefox(id);
+        if (!result.ok) {
+          failed.push({ user_id: id, error: result.error ?? 'stop failed' });
+          continue;
+        }
+      } else {
+        launcher.stopProfile(id);
+      }
+      pm.setStatus(id, 'closed');
+      succeeded.push(id);
+    } catch (err) {
+      failed.push({ user_id: id, error: (err as Error).message });
+    }
+  }
+  res.json({ code: 0, msg: 'success', data: { succeeded, failed, total: parsed.data.user_ids.length } });
+});
+
+router.post('/api/v1/browser-profile/bulk-delete', async (req, res) => {
+  const parsed = bulkIdsSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.json({ code: -1, msg: 'invalid body', data: { errors: parsed.error.flatten() } });
+    return;
+  }
+  const succeeded: string[] = [];
+  const failed: Array<{ user_id: string; error: string }> = [];
+  for (const id of parsed.data.user_ids) {
+    try {
+      // pm.deleteProfile also cleans up fingerprints, bound extensions and files.
+      if (pm.deleteProfile(id)) succeeded.push(id);
+      else failed.push({ user_id: id, error: 'profile not found' });
+    } catch (err) {
+      failed.push({ user_id: id, error: (err as Error).message });
+    }
+  }
+  res.json({ code: 0, msg: 'success', data: { succeeded, failed, total: parsed.data.user_ids.length } });
+});
+
+const bulkGroupSchema = z.object({
+  user_ids: z.array(z.string()).min(1).max(500),
+  group_id: z.string().nullable(),
+});
+
+router.post('/api/v1/browser-profile/bulk-group', (req, res) => {
+  const parsed = bulkGroupSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.json({ code: -1, msg: 'invalid body', data: { errors: parsed.error.flatten() } });
+    return;
+  }
+  const succeeded: string[] = [];
+  const failed: Array<{ user_id: string; error: string }> = [];
+  for (const id of parsed.data.user_ids) {
+    try {
+      const ok = pm.updateProfile(id, { group_id: parsed.data.group_id });
+      if (ok) succeeded.push(id);
+      else failed.push({ user_id: id, error: 'profile not found' });
+    } catch (err) {
+      failed.push({ user_id: id, error: (err as Error).message });
+    }
+  }
+  res.json({ code: 0, msg: 'success', data: { succeeded, failed, total: parsed.data.user_ids.length } });
 });
 
 router.get('/api/v1/browser-profile/detail', (req, res) => {

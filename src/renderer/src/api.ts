@@ -158,9 +158,18 @@ async function request<T>(path: string, options: RequestInit = {}, retries = 3):
 
 export const api = {
   status: () => request<{ status: string; version: string }>('/status'),
-  list: (groupId?: string | null) => {
-    const url = groupId ? `/api/v1/browser/list?group_id=${encodeURIComponent(groupId)}` : '/api/v1/browser/list';
-    return request<{ list: ProfileListItem[]; total: number; page: number; page_size: number }>(url);
+  list: (opts?: { groupId?: string | null; page?: number; pageSize?: number; search?: string | null; platform?: string | null; status?: string | null }) => {
+    const q = new URLSearchParams();
+    if (opts?.groupId) q.set('group_id', opts.groupId);
+    if (opts?.page) q.set('page', String(opts.page));
+    if (opts?.pageSize) q.set('page_size', String(opts.pageSize));
+    if (opts?.search) q.set('search', opts.search);
+    if (opts?.platform) q.set('platform', opts.platform);
+    if (opts?.status) q.set('status', opts.status);
+    const qs = q.toString();
+    return request<{ list: ProfileListItem[]; total: number; page: number; page_size: number }>(
+      `/api/v1/browser/list${qs ? `?${qs}` : ''}`
+    );
   },
   profileDetail: (user_id: string) =>
     request<ProfileDetails>(`/api/v1/browser-profile/detail?user_id=${encodeURIComponent(user_id)}`),
@@ -220,6 +229,26 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ user_id, name }),
     }),
+  bulkStart: (user_ids: string[]) =>
+    request<{ succeeded: Array<{ user_id: string }>; failed: Array<{ user_id: string; error: string }>; total: number }>(
+      '/api/v1/browser-profile/bulk-start',
+      { method: 'POST', body: JSON.stringify({ user_ids }) }
+    ),
+  bulkStop: (user_ids: string[]) =>
+    request<{ succeeded: string[]; failed: Array<{ user_id: string; error: string }>; total: number }>(
+      '/api/v1/browser-profile/bulk-stop',
+      { method: 'POST', body: JSON.stringify({ user_ids }) }
+    ),
+  bulkDelete: (user_ids: string[]) =>
+    request<{ succeeded: string[]; failed: Array<{ user_id: string; error: string }>; total: number }>(
+      '/api/v1/browser-profile/bulk-delete',
+      { method: 'POST', body: JSON.stringify({ user_ids }) }
+    ),
+  bulkGroup: (user_ids: string[], group_id: string | null) =>
+    request<{ succeeded: string[]; failed: Array<{ user_id: string; error: string }>; total: number }>(
+      '/api/v1/browser-profile/bulk-group',
+      { method: 'POST', body: JSON.stringify({ user_ids, group_id }) }
+    ),
   randomizeFingerprint: (user_id: string) =>
     request<{ seed: number }>('/api/v1/browser-profile/randomize-fingerprint', {
       method: 'POST',

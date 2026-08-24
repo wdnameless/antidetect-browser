@@ -40,6 +40,10 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
   const [selectedStatusFilter, setSelectedStatusFilter] = useState<string>('');
   const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(50);
+  const [total, setTotal] = useState(0);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [copiedSeed, setCopiedSeed] = useState<number | null>(null);
@@ -135,18 +139,40 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
     } catch { /* ignore */ }
   }, []);
 
+  // Debounce server-side search (300 ms after the last keystroke).
+  useEffect(() => {
+    const t = setTimeout(() => {
+      setDebouncedSearch(searchQuery);
+      setPage(1);
+    }, 300);
+    return () => clearTimeout(t);
+  }, [searchQuery]);
+
+  // Reset to the first page whenever filters/page size change.
+  useEffect(() => {
+    setPage(1);
+  }, [selectedGroupFilter, selectedPlatformFilter, selectedStatusFilter, pageSize]);
+
   const loadProfiles = useCallback(async () => {
     try {
-      const res = await api.list(selectedGroupFilter || undefined);
+      const res = await api.list({
+        groupId: selectedGroupFilter || undefined,
+        page,
+        pageSize,
+        search: debouncedSearch || undefined,
+        platform: selectedPlatformFilter || undefined,
+        status: selectedStatusFilter || undefined,
+      });
       if (res.code === 0) {
         setProfiles(res.data.list);
+        setTotal(res.data.total);
       } else {
         setError(res.msg);
       }
     } catch (err) {
       setError((err as Error).message);
     }
-  }, [selectedGroupFilter]);
+  }, [selectedGroupFilter, page, pageSize, debouncedSearch, selectedPlatformFilter, selectedStatusFilter]);
 
   useEffect(() => {
     void loadProfiles();
@@ -612,20 +638,8 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
     return g ? g.name : 'Unknown';
   };
 
-  const filteredProfiles = profiles.filter((p) => {
-    if (selectedPlatformFilter && (p.platform || 'windows').toLowerCase() !== selectedPlatformFilter.toLowerCase()) {
-      return false;
-    }
-    if (selectedStatusFilter && p.status.toLowerCase() !== selectedStatusFilter.toLowerCase()) {
-      return false;
-    }
-    if (!searchQuery) return true;
-    const query = searchQuery.toLowerCase();
-    const nameMatch = (p.name || '').toLowerCase().includes(query);
-    const idMatch = p.user_id.toLowerCase().includes(query);
-    const proxyMatch = (p.proxy_host || '').toLowerCase().includes(query);
-    return nameMatch || idMatch || proxyMatch;
-  });
+  // Filtering (search/platform/status) and pagination are server-side now.
+  const filteredProfiles = profiles;
 
   const toggleSelectAll = () => {
     if (selectedIds.size === filteredProfiles.length && filteredProfiles.length > 0) {
@@ -654,11 +668,14 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
     setBulkBusy(true);
     setError('');
     try {
-      for (const id of Array.from(selectedIds)) {
-        await api.start(id);
-        await new Promise((r) => setTimeout(r, 200));
+      const res = await api.bulkStart(Array.from(selectedIds));
+      if (res.code === 0) {
+        const failedCount = res.data.failed?.length ?? 0;
+        if (failedCount > 0) setError(`Started ${res.data.succeeded.length}, failed ${failedCount}: ${res.data.failed[0].error}`);
+        await loadProfiles();
+      } else {
+        setError(res.msg);
       }
-      await loadProfiles();
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -671,11 +688,14 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
     setBulkBusy(true);
     setError('');
     try {
-      for (const id of Array.from(selectedIds)) {
-        await api.stop(id);
-        await new Promise((r) => setTimeout(r, 100));
+      const res = await api.bulkStop(Array.from(selectedIds));
+      if (res.code === 0) {
+        const failedCount = res.data.failed?.length ?? 0;
+        if (failedCount > 0) setError(`Stopped ${res.data.succeeded.length}, failed ${failedCount}: ${res.data.failed[0].error}`);
+        await loadProfiles();
+      } else {
+        setError(res.msg);
       }
-      await loadProfiles();
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -688,11 +708,13 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
     setBulkBusy(true);
     setError('');
     try {
-      for (const id of Array.from(selectedIds)) {
-        await api.profileUpdate({ user_id: id, group_id: bulkTargetGroup || null });
+      const res = await api.bulkGroup(Array.from(selectedIds), bulkTargetGroup || null);
+      if (res.code === 0) {
+        await loadProfiles();
+        await loadGroups();
+      } else {
+        setError(res.msg);
       }
-      await loadProfiles();
-      await loadGroups();
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -709,12 +731,16 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
     setBulkBusy(true);
     setError('');
     try {
-      for (const id of Array.from(selectedIds)) {
-        await api.profileDelete(id);
+      const res = await api.bulkDelete(Array.from(selectedIds));
+      if (res.code === 0) {
+        setSelectedIds(new Set());
+        const failedCount = res.data.failed?.length ?? 0;
+        if (failedCount > 0) setError(`Deleted ${res.data.succeeded.length}, failed ${failedCount}: ${res.data.failed[0].error}`);
+        await loadProfiles();
+        await loadGroups();
+      } else {
+        setError(res.msg);
       }
-      setSelectedIds(new Set());
-      await loadProfiles();
-      await loadGroups();
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -1161,6 +1187,58 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
           </tbody>
         </table>
       </div>
+
+      {/* Pagination */}
+      {total > 0 ? (
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            marginTop: 14,
+            padding: '0 4px',
+            flexWrap: 'wrap',
+            gap: 10,
+          }}
+        >
+          <span style={{ fontSize: 12.5, color: 'var(--text-muted)' }}>
+            Total: <strong style={{ color: 'var(--text)' }}>{total}</strong> profile{total === 1 ? '' : 's'}
+          </span>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <select
+              className="select-input"
+              style={{ fontSize: 12, padding: '4px 8px' }}
+              value={pageSize}
+              onChange={(e) => setPageSize(Number(e.target.value))}
+            >
+              <option value={50}>50 / page</option>
+              <option value={100}>100 / page</option>
+              <option value={200}>200 / page</option>
+            </select>
+
+            <button
+              type="button"
+              className="btn btn-sm"
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={page <= 1}
+            >
+              ← Prev
+            </button>
+            <span style={{ fontSize: 12.5, color: 'var(--text-secondary)' }}>
+              Page {page} of {Math.max(1, Math.ceil(total / pageSize))}
+            </span>
+            <button
+              type="button"
+              className="btn btn-sm"
+              onClick={() => setPage((p) => (p * pageSize < total ? p + 1 : p))}
+              disabled={page * pageSize >= total}
+            >
+              Next →
+            </button>
+          </div>
+        </div>
+      ) : null}
 
       {/* Floating Bulk Actions Bar */}
       {selectedIds.size > 0 ? (

@@ -549,17 +549,36 @@ export function listGroups(): GroupItem[] {
 export function listProfiles(
   page: number,
   pageSize: number,
-  groupId?: string | null
+  groupId?: string | null,
+  search?: string | null,
+  platform?: string | null,
+  status?: string | null
 ): { list: ProfileListItem[]; total: number } {
   const db = getDb();
-  let where = '';
+  const clauses: string[] = [];
   const params: unknown[] = [];
   if (groupId !== undefined && groupId !== null && groupId !== '') {
-    where = ' WHERE p.group_id = ?';
+    clauses.push('p.group_id = ?');
     params.push(groupId);
   }
+  if (search !== undefined && search !== null && search.trim() !== '') {
+    const like = `%${search.trim()}%`;
+    clauses.push('(p.name LIKE ? OR p.id LIKE ? OR px.host LIKE ?)');
+    params.push(like, like, like);
+  }
+  if (platform !== undefined && platform !== null && platform !== '') {
+    clauses.push('dev.platform = ?');
+    params.push(platform);
+  }
+  if (status !== undefined && status !== null && status !== '') {
+    clauses.push('p.status = ?');
+    params.push(status);
+  }
+  const where = clauses.length > 0 ? ` WHERE ${clauses.join(' AND ')}` : '';
 
-  const total = (db.prepare(`SELECT COUNT(*) AS c FROM profiles p${where}`).get(...params) as { c: number }).c;
+  const total = (db.prepare(`SELECT COUNT(*) AS c FROM profiles p
+        LEFT JOIN proxies px ON px.id = p.proxy_id
+        LEFT JOIN devices dev ON dev.id = p.device_id${where}`).get(...params) as { c: number }).c;
   const rows = db
     .prepare(
       `SELECT p.id, p.name, p.status, p.group_id,
