@@ -1,9 +1,10 @@
-import { spawn, ChildProcess } from 'child_process';
+import { spawn, ChildProcess, execFile } from 'child_process';
 import * as path from 'path';
 import * as fs from 'fs';
 import puppeteer from 'puppeteer-core';
 import { getChromiumPath, getChromedriverPath } from '../config';
 import type { LaunchConfig } from '../profiles/profileManager';
+import { setStatus } from '../profiles/profileManager';
 import { createSshTunnel, SshTunnel } from '../proxy/sshTunnel';
 import { installProxyAuth } from '../proxy/proxyAuth';
 import { applyDeviceEmulation } from '../proxy/deviceEmulation';
@@ -52,12 +53,35 @@ function toResult(r: RunningProfile): StartResult {
   };
 }
 
-function cleanup(rec: RunningProfile): void {
+/**
+ * Kill the browser process tree. Chromium spawns multiple child processes;
+ * on Windows `kill()` alone may leave orphans, so prefer `taskkill /T /F`.
+ */
+function killTree(rec: RunningProfile): void {
+  if (process.platform === 'win32' && rec.pid) {
+    try {
+      execFile('taskkill', ['/pid', String(rec.pid), '/T', '/F'], () => {
+        // fallback if taskkill failed for any reason
+        try {
+          rec.process.kill();
+        } catch {
+          // ignore
+        }
+      });
+      return;
+    } catch {
+      // fall through to plain kill
+    }
+  }
   try {
     rec.process.kill();
   } catch {
     // ignore
   }
+}
+
+function cleanup(rec: RunningProfile): void {
+  killTree(rec);
   if (rec.tunnel) void rec.tunnel.close();
   if (rec.cleanupAuth) {
     try {
@@ -286,6 +310,14 @@ export async function startProfile(cfg: LaunchConfig): Promise<StartResult> {
         } catch {
           // ignore
         }
+      }
+      // Watchdog: keep the DB status in sync when the kernel exits on its own
+      // (crash, manual close of the browser window). Intentionally swallows
+      // errors so the exit path never throws.
+      try {
+        setStatus(cfg.profileId, 'closed');
+      } catch {
+        // ignore
       }
     });
     return toResult(rec);

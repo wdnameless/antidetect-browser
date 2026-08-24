@@ -396,6 +396,18 @@ export function setStatus(id: string, status: string): void {
     .run(status, Date.now(), id);
 }
 
+/**
+ * Crash recovery: profiles stuck in "running" from a previous session (the app
+ * crashed or was killed without a graceful shutdown) are marked "closed".
+ * Returns the number of recovered rows.
+ */
+export function recoverStaleRunning(): number {
+  const res = getDb()
+    .prepare("UPDATE profiles SET status = 'closed', updated_at = ? WHERE status = 'running'")
+    .run(Date.now());
+  return res.changes;
+}
+
 export function updateProfile(
   id: string,
   updates: {

@@ -136,12 +136,19 @@ app.whenReady().then(async () => {
   console.error('[antidetect] bootstrap failed', err);
 });
 
-// Graceful shutdown: stop all running browser profiles before quitting.
+// Graceful shutdown: stop all running browser profiles and flush the DB
+// before quitting.
 app.on('before-quit', () => {
   void (async () => {
     try {
       const { stopAll } = await import('../src/main/launcher/chromium');
       stopAll();
+    } catch {
+      // ignore
+    }
+    try {
+      const { flushDb } = await import('../src/main/db');
+      flushDb();
     } catch {
       // ignore
     }

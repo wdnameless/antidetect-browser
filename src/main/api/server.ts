@@ -15,6 +15,18 @@ export function startApi(): Promise<void> {
   app.use(cors());
   app.use(express.json());
 
+  // DNS-rebinding protection: only loopback Host headers are accepted.
+  // Legitimate clients (Electron renderer, local scripts, SDK) always target
+  // 127.0.0.1 / localhost; a rebound foreign domain would fail here.
+  app.use((req, res, next) => {
+    const host = String(req.headers.host || '');
+    if (/^(127\.0\.0\.1|localhost|\[::1\])(:\d+)?$/i.test(host)) {
+      next();
+      return;
+    }
+    res.status(403).json({ code: -1, msg: 'forbidden host', data: {} });
+  });
+
   // Health check (no auth)
   app.get('/status', (_req, res) => {
     res.json({ code: 0, msg: 'success', data: { status: 'ok', version: '0.0.1' } });
