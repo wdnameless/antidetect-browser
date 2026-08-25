@@ -22,6 +22,8 @@ declare global {
       data: {
         getDir: () => Promise<string>;
         setDir: () => Promise<{ ok: boolean; dir: string }>;
+        prepareDir: () => Promise<{ ok: boolean; dir: string }>;
+        migrateDir: (target: string, migrateData: boolean) => Promise<{ ok: boolean; dir: string; migrated?: boolean; error?: string }>;
         setDirPath: (dir: string) => Promise<{ ok: boolean; dir: string }>;
         openDir: () => Promise<string>;
       };

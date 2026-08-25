@@ -266,6 +266,13 @@ const RU: Record<string, string> = {
   'Generate a realistic random Chrome UA (matches the kernel version)': 'Сгенерировать реалистичный случайный Chrome UA (совпадает с версией ядра)',
   'Empty = kernel default UA (recommended)': 'Пусто = UA ядра по умолчанию (рекомендуется)',
 
+  // Data migration (v0.2.28)
+  'Move profiles and ALL data to': 'Перенести профили и ВСЕ данные в',
+  'OK = migrate everything (recommended). Cancel = switch to an empty folder.': 'OK = перенести всё (рекомендуется). Отмена = переключиться на пустую папку.',
+  'Data migrated to the new folder.': 'Данные перенесены в новую папку.',
+  'Migration failed': 'Ошибка переноса',
+  'Migrating data…': 'Перенос данных…',
+
   // Devices page v0.2.25
   'Copy ID': 'Копировать ID',
   'Copied!': 'Скопировано!',

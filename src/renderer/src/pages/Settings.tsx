@@ -37,6 +37,7 @@ export function Settings() {
   const [restoreMsg, setRestoreMsg] = useState('');
   const [scanBusy, setScanBusy] = useState(false);
   const [scanResults, setScanResults] = useState<Array<{ dir: string; profiles: number; modified: number; dbSize: number }>>([]);
+  const [migrating, setMigrating] = useState(false);
 
   const checkKernel = (): void => {
     setKernelChecking(true);
@@ -80,10 +81,31 @@ export function Settings() {
   const dataApiAvailable = Boolean(window.antidetect?.data);
 
   const onChangeDataDir = (): void => {
-    void window.antidetect?.data.setDir().then((r) => {
-      setDataDir(r.dir);
-      setDataDirMsg(r.ok ? 'Folder changed. Restart the app to apply.' : '');
-    }).catch(() => setDataDirMsg('Failed to change folder.'));
+    void window.antidetect?.data.prepareDir?.().then(async (picked) => {
+      if (!picked.ok) return;
+      const target = picked.dir;
+      // Ask what to do with the existing data.
+      const migrate = window.confirm(
+        `${t('Move profiles and ALL data to')}:\n${target}\n\n${t('OK = migrate everything (recommended). Cancel = switch to an empty folder.')}`
+      );
+      setMigrating(true);
+      setDataDirMsg('');
+      try {
+        const r = await window.antidetect?.data.migrateDir?.(target, migrate);
+        if (r?.ok) {
+          setDataDir(target);
+          setDataDirMsg(
+            migrate
+              ? `${t('Data migrated to the new folder.')} ${t('Restart the app to apply.')}`
+              : t('Folder changed. Restart the app to apply.')
+          );
+        } else {
+          setDataDirMsg(`${t('Migration failed')}: ${r?.error ?? 'unknown'}`);
+        }
+      } finally {
+        setMigrating(false);
+      }
+    });
   };
 
   const onOpenDataDir = (): void => {
@@ -264,10 +286,10 @@ export function Settings() {
               <div className="setting-row">
                 <span className="setting-label">{t('Actions')}</span>
                 <div style={{ display: 'flex', gap: 8 }}>
-                  <button className="btn" onClick={onChangeDataDir}>
-                    {t('Change Folder…')}
+                  <button className="btn" onClick={onChangeDataDir} disabled={migrating}>
+                    {migrating ? t('Migrating data…') : t('Change Folder…')}
                   </button>
-                  <button className="btn" onClick={onOpenDataDir}>
+                  <button className="btn" onClick={onOpenDataDir} disabled={migrating}>
                     {t('Open in Explorer')}
                   </button>
                 </div>

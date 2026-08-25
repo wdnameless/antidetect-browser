@@ -12,6 +12,9 @@ contextBridge.exposeInMainWorld('antidetect', {
   data: {
     getDir: (): Promise<string> => ipcRenderer.invoke('data:get-dir'),
     setDir: (): Promise<{ ok: boolean; dir: string }> => ipcRenderer.invoke('data:set-dir'),
+    prepareDir: (): Promise<{ ok: boolean; dir: string }> => ipcRenderer.invoke('data:prepare-dir'),
+    migrateDir: (target: string, migrateData: boolean): Promise<{ ok: boolean; dir: string; migrated?: boolean; error?: string }> =>
+      ipcRenderer.invoke('data:migrate-dir', { target, migrateData }),
     setDirPath: (dir: string): Promise<{ ok: boolean; dir: string }> =>
       ipcRenderer.invoke('data:set-dir-path', dir),
     openDir: (): Promise<string> => ipcRenderer.invoke('data:open-dir'),

@@ -56,6 +56,73 @@ async function bootstrap(): Promise<void> {
     setDataDir(dir);
     return { ok: true, dir };
   });
+  // Step 1 of a folder change: pick a folder WITHOUT applying it.
+  ipcMain.handle('data:prepare-dir', async () => {
+    const win = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0];
+    const result = await dialog.showOpenDialog(win, {
+      title: 'Select new data folder (profiles, cache, kernel)',
+      properties: ['openDirectory', 'createDirectory'],
+    });
+    if (result.canceled || result.filePaths.length === 0) {
+      return { ok: false, dir: getDataDir() };
+    }
+    return { ok: true, dir: result.filePaths[0] };
+  });
+  // Step 2: stop browsers, copy ALL data (db, profiles, extensions, backups,
+  // kernel) to the target folder, persist the choice. Old folder is kept as a
+  // backup. A restart applies the new folder.
+  ipcMain.handle('data:migrate-dir', async (_evt, payload: unknown) => {
+    const target = typeof (payload as { target?: unknown })?.target === 'string' ? (payload as { target: string }).target.trim() : '';
+    const migrateData = (payload as { migrateData?: boolean })?.migrateData !== false;
+    const { getDataDir: cur, setDataDir: setCur } = await import('../src/main/config');
+    const oldDir = cur();
+    if (!target || path.resolve(target) === path.resolve(oldDir)) {
+      return { ok: false, dir: oldDir, error: 'same or invalid folder' };
+    }
+    try {
+      const { stopAll } = await import('../src/main/launcher/chromium');
+      const { flushDb, closeDb, initDb } = await import('../src/main/db');
+      const { seedDevices } = await import('../src/main/devices/deviceManager');
+
+      await stopAll();
+      flushDb();
+      closeDb(); // release file handles so the copy is consistent
+
+      try {
+        if (migrateData) {
+          await fs.promises.mkdir(target, { recursive: true });
+          await fs.promises.cp(oldDir, target, {
+            recursive: true,
+            force: false, // never overwrite anything already in the target
+            errorOnExist: false,
+            filter: (src) => {
+              const base = path.basename(src);
+              return !base.endsWith('.tmp') && base !== 'service.lock' && !base.endsWith('.restore-tmp');
+            },
+          });
+        } else {
+          await fs.promises.mkdir(target, { recursive: true });
+        }
+        setCur(target);
+      } finally {
+        // Re-open the DB at the OLD location so the app keeps working until restart.
+        await initDb();
+        seedDevices();
+      }
+      return { ok: true, dir: target, migrated: migrateData };
+    } catch (err) {
+      // make sure the DB is usable again at the old location after any failure
+      try {
+        const { initDb } = await import('../src/main/db');
+        const { seedDevices } = await import('../src/main/devices/deviceManager');
+        await initDb();
+        seedDevices();
+      } catch {
+        // ignore
+      }
+      return { ok: false, dir: oldDir, error: (err as Error).message };
+    }
+  });
   ipcMain.handle('data:set-dir-path', (_evt, dirPath: unknown) => {
     const dir = typeof dirPath === 'string' ? dirPath.trim() : '';
     if (!dir || !fs.existsSync(dir) || !fs.existsSync(path.join(dir, 'antidetect.db'))) {
