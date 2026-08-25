@@ -519,7 +519,7 @@ input, textarea {
   border: 1px solid rgba(255, 255, 255, 0.18);
   border-radius: 4px;
   font-size: 11.5px;
-  color: #93c5fd;
+  color: var(--text);
   font-weight: 500;
 }
 
@@ -683,7 +683,7 @@ input, textarea {
 
 .fp-item-val {
   font-size: 13px;
-  color: #93c5fd;
+  color: var(--text);
   font-family: var(--font-mono);
   word-break: break-all;
 }
@@ -784,7 +784,7 @@ input, textarea {
 
 .endpoint-banner code {
   font-family: var(--font-mono);
-  color: #93c5fd;
+  color: var(--text);
   font-size: 12.5px;
 }
 
@@ -808,7 +808,7 @@ input, textarea {
 
 .setting-row code {
   font-family: var(--font-mono);
-  color: #93c5fd;
+  color: var(--text);
   background: rgba(255, 255, 255, 0.03);
   padding: 3px 8px;
   border-radius: 4px;

@@ -302,6 +302,10 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ name }),
     }),
+  dataScan: () =>
+    request<{ current: string; found: Array<{ dir: string; isCurrent: boolean; dbSize: number; modified: number; profiles: number }> }>(
+      '/api/v1/data/scan'
+    ),
   proxyTest: (body: { type: string; host: string; port: number; username?: string; password?: string }) =>
     request<ProxyTestResult>('/api/v1/proxy/test', { method: 'POST', body: JSON.stringify(body) }),
   proxyCheck: (proxy_id: string) =>

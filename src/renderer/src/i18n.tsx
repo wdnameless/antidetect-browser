@@ -253,6 +253,19 @@ const RU: Record<string, string> = {
   'Restore': 'Восстановить',
   'Database restored. Restart the app to see your profiles.': 'База восстановлена. Перезапустите приложение, чтобы увидеть профили.',
 
+  // Data recovery scan (v0.2.27)
+  'Recover old data': 'Восстановление старых данных',
+  'Profiles/groups disappeared after an update? Scan the system for existing antidetect databases and switch to the one that contains your profiles.': 'Профили/группы исчезли после обновления? Просканируйте систему на существующие базы antidetect и переключитесь на ту, где ваши профили.',
+  'Scan for existing data folders': 'Найти папки с данными',
+  'Scanning…': 'Сканирование…',
+  'Use this folder': 'Использовать эту папку',
+  'Could not switch to this folder.': 'Не удалось переключиться на эту папку.',
+  'unreadable': 'нечитаема',
+  'Custom User-Agent Override': 'Свой User-Agent (переопределение)',
+  'Randomize UA': 'Случайный UA',
+  'Generate a realistic random Chrome UA (matches the kernel version)': 'Сгенерировать реалистичный случайный Chrome UA (совпадает с версией ядра)',
+  'Empty = kernel default UA (recommended)': 'Пусто = UA ядра по умолчанию (рекомендуется)',
+
   // Devices page v0.2.25
   'Copy ID': 'Копировать ID',
   'Copied!': 'Скопировано!',

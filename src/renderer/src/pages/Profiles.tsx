@@ -753,6 +753,28 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
     setTimeout(() => setCopiedSeed(null), 1500);
   };
 
+  // Realistic random Chrome UA matching the bundled kernel (Chrome 148).
+  // Platform-consistent: Windows 10/11 or macOS — never mixes (e.g. Mac UA on Windows kernel).
+  const generateRandomUa = (): string => {
+    const chromeVer = '148.0.0.0';
+    const webkit = '537.36';
+    const roll = Math.random();
+    if (roll < 0.45) {
+      // Windows 10 / 11 (both report NT 10.0)
+      const variants = [
+        `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/${webkit} (KHTML, like Gecko) Chrome/${chromeVer} Safari/${webkit}`,
+        `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/${webkit} (KHTML, like Gecko) Chrome/${chromeVer} Safari/${webkit} Edg/${chromeVer}`,
+      ];
+      return variants[Math.floor(Math.random() * variants.length)];
+    }
+    if (roll < 0.7) {
+      // macOS (platform version in UA is fixed at 10_15_7 by Chrome itself)
+      return `Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/${webkit} (KHTML, like Gecko) Chrome/${chromeVer} Safari/${webkit}`;
+    }
+    // Linux
+    return `Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/${webkit} (KHTML, like Gecko) Chrome/${chromeVer} Safari/${webkit}`;
+  };
+
   const handleBulkStart = async () => {
     if (selectedIds.size === 0) return;
     setBulkBusy(true);
@@ -1749,7 +1771,7 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
                   <div className="fingerprint-grid">
                     <div className="fp-item">
                       <span className="fp-item-label">Fingerprint Seed</span>
-                      <span className="fp-item-val">🎲 {seed || 'Auto-generated'}</span>
+                      <span className="fp-item-val">{seed || 'Auto-generated'}</span>
                     </div>
                     <div className="fp-item">
                       <span className="fp-item-label">Navigator WebDriver</span>
@@ -1774,11 +1796,23 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
                   </div>
 
                   <div className="form-group" style={{ marginTop: 14 }}>
-                    <label>Custom User-Agent Override</label>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <label>{t('Custom User-Agent Override')}</label>
+                      <button
+                        type="button"
+                        className="btn btn-sm"
+                        onClick={() => setUserAgent(generateRandomUa())}
+                        title={t('Generate a realistic random Chrome UA (matches the kernel version)')}
+                      >
+                        <DiceIcon size={12} />
+                        <span>{t('Randomize UA')}</span>
+                      </button>
+                    </div>
                     <textarea
                       rows={2}
                       value={userAgent}
                       onChange={(e) => setUserAgent(e.target.value)}
+                      placeholder={t('Empty = kernel default UA (recommended)')}
                       style={{ fontSize: 12, fontFamily: 'var(--font-mono)' }}
                     />
                   </div>

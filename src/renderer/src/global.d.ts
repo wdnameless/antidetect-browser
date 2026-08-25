@@ -22,6 +22,7 @@ declare global {
       data: {
         getDir: () => Promise<string>;
         setDir: () => Promise<{ ok: boolean; dir: string }>;
+        setDirPath: (dir: string) => Promise<{ ok: boolean; dir: string }>;
         openDir: () => Promise<string>;
       };
       logs?: {

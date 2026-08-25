@@ -56,6 +56,14 @@ async function bootstrap(): Promise<void> {
     setDataDir(dir);
     return { ok: true, dir };
   });
+  ipcMain.handle('data:set-dir-path', (_evt, dirPath: unknown) => {
+    const dir = typeof dirPath === 'string' ? dirPath.trim() : '';
+    if (!dir || !fs.existsSync(dir) || !fs.existsSync(path.join(dir, 'antidetect.db'))) {
+      return { ok: false, dir: getDataDir() };
+    }
+    setDataDir(dir);
+    return { ok: true, dir };
+  });
   ipcMain.handle('data:open-dir', () => {
     const dir = getDataDir();
     if (fs.existsSync(dir)) void shell.openPath(dir);

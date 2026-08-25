@@ -35,6 +35,8 @@ export function Settings() {
   const [restoreBusy, setRestoreBusy] = useState(false);
   const [restoreDone, setRestoreDone] = useState(false);
   const [restoreMsg, setRestoreMsg] = useState('');
+  const [scanBusy, setScanBusy] = useState(false);
+  const [scanResults, setScanResults] = useState<Array<{ dir: string; profiles: number; modified: number; dbSize: number }>>([]);
 
   const checkKernel = (): void => {
     setKernelChecking(true);
@@ -274,6 +276,63 @@ export function Settings() {
               <p className="hint">
                 {t('All browser profiles, cookies, extensions, the Chromium kernel and the database are stored here. Changing the folder takes effect after restarting the app.')}
               </p>
+
+              <div style={{ borderTop: '1px solid var(--border)', margin: '14px 0', paddingTop: 14 }}>
+                <div className="panel-header" style={{ padding: 0, marginBottom: 8 }}>{t('Recover old data')}</div>
+                <p className="hint" style={{ marginTop: 0 }}>
+                  {t('Profiles/groups disappeared after an update? Scan the system for existing antidetect databases and switch to the one that contains your profiles.')}
+                </p>
+                <button
+                  type="button"
+                  className="btn"
+                  disabled={scanBusy}
+                  onClick={() => {
+                    setScanBusy(true);
+                    setScanResults([]);
+                    void import('../api').then(({ api }) =>
+                      api.dataScan().then((r) => {
+                        setScanBusy(false);
+                        if (r.code === 0) setScanResults(r.data.found.filter((f) => !f.isCurrent));
+                      }).catch(() => setScanBusy(false))
+                    );
+                  }}
+                >
+                  <RefreshIcon size={14} />
+                  <span>{scanBusy ? t('Scanning…') : t('Scan for existing data folders')}</span>
+                </button>
+                {scanResults.length > 0 ? (
+                  <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    {scanResults.map((f) => (
+                      <div key={f.dir} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, fontSize: 12.5 }}>
+                        <span style={{ color: 'var(--text-secondary)', wordBreak: 'break-all' }}>
+                          <code style={{ fontSize: 11 }}>{f.dir}</code>{' '}
+                          <strong style={{ color: f.profiles > 0 ? 'var(--text)' : 'var(--text-muted)' }}>
+                            ({f.profiles >= 0 ? `${f.profiles} ${f.profiles === 1 ? 'profile' : 'profiles'}` : t('unreadable')})
+                          </strong>{' '}
+                          <span style={{ color: 'var(--text-muted)' }}>{new Date(f.modified).toLocaleString()}</span>
+                        </span>
+                        <button
+                          type="button"
+                          className="btn btn-sm primary"
+                          disabled={f.profiles <= 0}
+                          onClick={() => {
+                            void window.antidetect?.data.setDirPath?.(f.dir).then((r) => {
+                              if (r.ok) {
+                                setDataDir(r.dir);
+                                setDataDirMsg(t('Folder changed. Restart the app to apply.'));
+                              } else {
+                                setDataDirMsg(t('Could not switch to this folder.'));
+                              }
+                            });
+                          }}
+                        >
+                          {t('Use this folder')}
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
             </div>
           ) : null}
 

@@ -1,8 +1,11 @@
 import { Router } from 'express';
 import { z } from 'zod';
+import * as fs from 'fs';
+import * as path from 'path';
 import * as xm from '../../proxy/proxyManager';
 import * as pm from '../../profiles/profileManager';
 import { listBackups, restoreBackup } from '../../util/backupManager';
+import { DATA_DIR } from '../../config';
 
 const router = Router();
 
@@ -239,6 +242,50 @@ router.post('/api/v1/proxy/import-list', (req, res) => {
 
 router.get('/api/v1/backups/list', (_req, res) => {
   res.json({ code: 0, msg: 'success', data: { list: listBackups() } });
+});
+
+// ---------------------------------------------------------------------------
+// Data recovery scan (v0.2.27): find antidetect.db files in known locations
+// (e.g. after a Windows-user change or a moved data folder) and report how
+// many profiles each contains, so the user can re-point the data folder.
+// ---------------------------------------------------------------------------
+
+router.get('/api/v1/data/scan', async (_req, res) => {
+  const os = await import('os');
+  const candidates = [
+    path.join(os.homedir(), '.antidetect', 'data'),
+    path.join(process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming'), 'antidetect-browser', 'data'),
+    path.join(process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming'), 'Antidetect Browser', 'data'),
+    path.join(process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local'), 'antidetect-browser', 'data'),
+    path.join(process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local'), 'Antidetect Browser', 'data'),
+  ];
+  const current = DATA_DIR;
+  const found: Array<{ dir: string; isCurrent: boolean; dbSize: number; modified: number; profiles: number }> = [];
+  const initSqlJs = (await import('sql.js')).default;
+  const SQL = await initSqlJs();
+
+  for (const dir of new Set(candidates)) {
+    const dbPath = path.join(dir, 'antidetect.db');
+    try {
+      if (!fs.existsSync(dbPath)) continue;
+      const st = fs.statSync(dbPath);
+      if (st.size < 4096) continue; // empty/placeholder
+      let profiles = -1;
+      try {
+        const inst = new SQL.Database(fs.readFileSync(dbPath));
+        const r = inst.exec('SELECT COUNT(*) FROM profiles');
+        profiles = Number(r[0]?.values?.[0]?.[0] ?? -1);
+        inst.close();
+      } catch {
+        profiles = -1; // unreadable/corrupt
+      }
+      found.push({ dir, isCurrent: path.resolve(dir) === path.resolve(current), dbSize: st.size, modified: st.mtimeMs, profiles });
+    } catch {
+      // skip unreadable candidates
+    }
+  }
+  found.sort((a, b) => b.modified - a.modified);
+  res.json({ code: 0, msg: 'success', data: { current, found } });
 });
 
 const restoreSchema = z.object({ name: z.string().regex(/^antidetect-\d{4}-\d{2}-\d{2}-\d{2}-\d{2}\.db$|^antidetect-[\w.-]+\.db$/) });
