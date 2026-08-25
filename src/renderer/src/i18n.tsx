@@ -230,6 +230,21 @@ const RU: Record<string, string> = {
   'Screen Height': 'Высота экрана',
   'native': 'нативное',
   'Disable Spoofing (advanced — pass-through to real values)': 'Отключить спуфинг (для продвинутых — реальные значения вместо подмены)',
+
+  // Devices page v0.2.25
+  'Copy ID': 'Копировать ID',
+  'Copied!': 'Скопировано!',
+  'Copy preset ID': 'Копировать ID пресета',
+  'Copy preset ID — paste it as device_id when creating/updating a profile': 'Скопировать ID пресета — вставьте как device_id при создании/изменении профиля',
+  'Apply to Profile': 'Применить к профилю',
+  'to a profile': 'к профилю',
+  'Select profile…': 'Выберите профиль…',
+  'The profile will run as this exact phone (Android preset + fixed model).': 'Профиль будет работать как этот телефон (Android-пресет + фиксированная модель).',
+  'The profile will emulate this platform (UA, screen, input, cores).': 'Профиль будет эмулировать эту платформу (UA, экран, ввод, ядра CPU).',
+  'Android Smartphone Pool': 'Пул Android-смартфонов',
+  'models': 'моделей',
+  'Search phone…': 'Поиск телефона…',
+  'Phone Model': 'Модель телефона',
 };
 
 interface I18nCtx {

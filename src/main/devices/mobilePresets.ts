@@ -48,6 +48,60 @@ export const MOBILE_PRESETS: MobilePreset[] = [
   { id: 'honor_magic_6', name: 'HONOR Magic6', model: 'BVL-AN00', androidVersion: '14', build: 'UP1A.231005.007', screen: { width: 412, height: 915, deviceScaleFactor: 2.625 }, gpu: 'Adreno 750', hardwareConcurrency: 8 },
   { id: 'vivo_x90', name: 'vivo X90', model: 'V2241A', androidVersion: '13', build: 'TP1A.220624.014', screen: { width: 412, height: 915, deviceScaleFactor: 2.625 }, gpu: 'Mali-G715', hardwareConcurrency: 8 },
   { id: 'vivo_x100', name: 'vivo X100', model: 'V2308A', androidVersion: '14', build: 'UP1A.231005.007', screen: { width: 412, height: 915, deviceScaleFactor: 2.625 }, gpu: 'Mali-G720', hardwareConcurrency: 8 },
+
+  // ---- Popular mass-market additions (v0.2.25): pool 30 -> 60 ----
+  // Pixel
+  { id: 'pixel_6_pro', name: 'Pixel 6 Pro', model: 'Pixel 6 Pro', androidVersion: '13', build: 'TP1A.220624.014', screen: { width: 412, height: 892, deviceScaleFactor: 3.5 }, gpu: 'Mali-G78', hardwareConcurrency: 8 },
+  { id: 'pixel_8_pro', name: 'Pixel 8 Pro', model: 'Pixel 8 Pro', androidVersion: '14', build: 'AP1A.240505.005', screen: { width: 412, height: 892, deviceScaleFactor: 3.5 }, gpu: 'Adreno 740', hardwareConcurrency: 9 },
+  { id: 'pixel_9_pro_xl', name: 'Pixel 9 Pro XL', model: 'Pixel 9 Pro XL', androidVersion: '14', build: 'AP2A.240805.005', screen: { width: 448, height: 998, deviceScaleFactor: 3.5 }, gpu: 'Adreno 750', hardwareConcurrency: 8 },
+  // Samsung Galaxy S / Note legacy + FE
+  { id: 's21', name: 'Galaxy S21', model: 'SM-G991B', androidVersion: '12', build: 'SP1A.210812.016', screen: { width: 384, height: 824, deviceScaleFactor: 2.75 }, gpu: 'Mali-G78', hardwareConcurrency: 8 },
+  { id: 's23_fe', name: 'Galaxy S23 FE', model: 'SM-S711B', androidVersion: '13', build: 'TP1A.220624.014', screen: { width: 384, height: 824, deviceScaleFactor: 2.75 }, gpu: 'Xclipse 920', hardwareConcurrency: 8 },
+  { id: 's24_plus', name: 'Galaxy S24+', model: 'SM-S926B', androidVersion: '14', build: 'UP1A.231005.007', screen: { width: 384, height: 824, deviceScaleFactor: 2.75 }, gpu: 'Xclipse 940', hardwareConcurrency: 8 },
+  { id: 'z_flip5', name: 'Galaxy Z Flip5', model: 'SM-F731B', androidVersion: '13', build: 'TP1A.220624.014', screen: { width: 374, height: 828, deviceScaleFactor: 3 }, gpu: 'Adreno 740', hardwareConcurrency: 8 },
+  { id: 'z_fold5', name: 'Galaxy Z Fold5', model: 'SM-F946B', androidVersion: '13', build: 'TP1A.220624.014', screen: { width: 374, height: 828, deviceScaleFactor: 3 }, gpu: 'Adreno 740', hardwareConcurrency: 8 },
+  // Samsung Galaxy A / M (mass market)
+  { id: 'a15', name: 'Galaxy A15', model: 'SM-A155F', androidVersion: '13', build: 'TP1A.220624.014', screen: { width: 360, height: 800, deviceScaleFactor: 3 }, gpu: 'Mali-G57', hardwareConcurrency: 8 },
+  { id: 'a25', name: 'Galaxy A25', model: 'SM-A256B', androidVersion: '13', build: 'TP1A.220624.014', screen: { width: 390, height: 844, deviceScaleFactor: 2.75 }, gpu: 'Xclipse 920', hardwareConcurrency: 8 },
+  { id: 'a34', name: 'Galaxy A34', model: 'SM-A346B', androidVersion: '13', build: 'TP1A.220624.014', screen: { width: 390, height: 844, deviceScaleFactor: 2.75 }, gpu: 'Mali-G68', hardwareConcurrency: 8 },
+  { id: 'a35', name: 'Galaxy A35', model: 'SM-A356B', androidVersion: '13', build: 'TP1A.220624.014', screen: { width: 390, height: 844, deviceScaleFactor: 2.75 }, gpu: 'Xclipse 920', hardwareConcurrency: 8 },
+  { id: 'a54', name: 'Galaxy A54', model: 'SM-A546B', androidVersion: '13', build: 'TP1A.220624.014', screen: { width: 390, height: 844, deviceScaleFactor: 2.75 }, gpu: 'Xclipse 920', hardwareConcurrency: 8 },
+  { id: 'a55', name: 'Galaxy A55', model: 'SM-A556B', androidVersion: '13', build: 'TP1A.220624.014', screen: { width: 390, height: 844, deviceScaleFactor: 2.75 }, gpu: 'Xclipse 920', hardwareConcurrency: 8 },
+  { id: 'm34', name: 'Galaxy M34', model: 'SM-M346B', androidVersion: '13', build: 'TP1A.220624.014', screen: { width: 360, height: 800, deviceScaleFactor: 3 }, gpu: 'Mali-G68', hardwareConcurrency: 8 },
+  // Xiaomi / Redmi / POCO
+  { id: 'xiaomi_12', name: 'Xiaomi 12', model: '2201123G', androidVersion: '12', build: 'SP1A.210812.016', screen: { width: 393, height: 851, deviceScaleFactor: 2.75 }, gpu: 'Adreno 730', hardwareConcurrency: 8 },
+  { id: 'xiaomi_13t', name: 'Xiaomi 13T', model: '23078PND5G', androidVersion: '13', build: 'TP1A.220624.014', screen: { width: 412, height: 922, deviceScaleFactor: 2.75 }, gpu: 'Mali-G715', hardwareConcurrency: 8 },
+  { id: 'xiaomi_14t', name: 'Xiaomi 14T', model: '2406APNFEG', androidVersion: '14', build: 'UKQ1.230917.001', screen: { width: 412, height: 922, deviceScaleFactor: 2.75 }, gpu: 'Mali-G720', hardwareConcurrency: 8 },
+  { id: 'redmi_note_12', name: 'Redmi Note 12', model: '22111317G', androidVersion: '13', build: 'TP1A.220624.014', screen: { width: 393, height: 873, deviceScaleFactor: 2.75 }, gpu: 'Adreno 619', hardwareConcurrency: 8 },
+  { id: 'redmi_note_13', name: 'Redmi Note 13', model: '2312DRAABG', androidVersion: '13', build: 'TP1A.220624.014', screen: { width: 393, height: 873, deviceScaleFactor: 2.75 }, gpu: 'Adreno 610', hardwareConcurrency: 8 },
+  { id: 'redmi_note_13_pro', name: 'Redmi Note 13 Pro', model: '2312DRA50G', androidVersion: '13', build: 'TP1A.220624.014', screen: { width: 393, height: 873, deviceScaleFactor: 2.75 }, gpu: 'Adreno 710', hardwareConcurrency: 8 },
+  { id: 'poco_x6', name: 'POCO X6', model: '23122PCDYG', androidVersion: '13', build: 'TP1A.220624.014', screen: { width: 400, height: 891, deviceScaleFactor: 2.75 }, gpu: 'Adreno 710', hardwareConcurrency: 8 },
+  { id: 'poco_x6_pro', name: 'POCO X6 Pro', model: '2311DRK47G', androidVersion: '13', build: 'TP1A.220624.014', screen: { width: 400, height: 891, deviceScaleFactor: 2.75 }, gpu: 'Mali-G715', hardwareConcurrency: 8 },
+  { id: 'poco_f5', name: 'POCO F5', model: '23049PCD8G', androidVersion: '13', build: 'TP1A.220624.014', screen: { width: 400, height: 891, deviceScaleFactor: 2.75 }, gpu: 'Adreno 720', hardwareConcurrency: 8 },
+  // realme / OPPO
+  { id: 'realme_12_pro', name: 'realme 12 Pro', model: 'RMX3841', androidVersion: '14', build: 'UP1A.231005.007', screen: { width: 412, height: 915, deviceScaleFactor: 2.625 }, gpu: 'Adreno 710', hardwareConcurrency: 8 },
+  { id: 'realme_gt6', name: 'realme GT 6', model: 'RMX3851', androidVersion: '14', build: 'UP1A.231005.007', screen: { width: 412, height: 915, deviceScaleFactor: 2.625 }, gpu: 'Adreno 750', hardwareConcurrency: 8 },
+  { id: 'oppo_reno_11', name: 'OPPO Reno11', model: 'CPH2609', androidVersion: '13', build: 'TP1A.220624.014', screen: { width: 412, height: 915, deviceScaleFactor: 2.625 }, gpu: 'Mali-G715', hardwareConcurrency: 8 },
+  // vivo / iQOO
+  { id: 'vivo_v29', name: 'vivo V29', model: 'V2250', androidVersion: '13', build: 'TP1A.220624.014', screen: { width: 394, height: 861, deviceScaleFactor: 2.75 }, gpu: 'Adreno 720', hardwareConcurrency: 8 },
+  { id: 'iqoo_12', name: 'iQOO 12', model: 'V2309A', androidVersion: '14', build: 'UP1A.231005.007', screen: { width: 412, height: 915, deviceScaleFactor: 2.625 }, gpu: 'Adreno 750', hardwareConcurrency: 8 },
+  // HONOR / HUAWEI
+  { id: 'honor_90', name: 'HONOR 90', model: 'REY-NX1', androidVersion: '13', build: 'TP1A.220624.014', screen: { width: 400, height: 891, deviceScaleFactor: 2.75 }, gpu: 'Adreno 720', hardwareConcurrency: 8 },
+  { id: 'honor_x9b', name: 'HONOR X9b', model: 'ALI-NX1', androidVersion: '13', build: 'TP1A.220624.014', screen: { width: 392, height: 848, deviceScaleFactor: 2.75 }, gpu: 'Adreno 710', hardwareConcurrency: 8 },
+  { id: 'huawei_p60', name: 'HUAWEI P60', model: 'MNA-AL00', androidVersion: '12', build: 'HUAWEIP60', screen: { width: 400, height: 891, deviceScaleFactor: 2.75 }, gpu: 'Adreno 730', hardwareConcurrency: 8 },
+  // OnePlus Nord
+  { id: 'oneplus_nord3', name: 'OnePlus Nord 3', model: 'CPH2493', androidVersion: '13', build: 'TP1A.220624.014', screen: { width: 412, height: 915, deviceScaleFactor: 2.625 }, gpu: 'Mali-G715', hardwareConcurrency: 8 },
+  // Motorola
+  { id: 'moto_edge_50', name: 'Motorola Edge 50 Pro', model: 'XT2401-3', androidVersion: '14', build: 'UP1A.231005.007', screen: { width: 400, height: 891, deviceScaleFactor: 2.75 }, gpu: 'Adreno 740', hardwareConcurrency: 8 },
+  { id: 'moto_g84', name: 'Motorola G84', model: 'XT2347-2', androidVersion: '13', build: 'TP1A.220624.014', screen: { width: 393, height: 873, deviceScaleFactor: 2.75 }, gpu: 'Adreno 619', hardwareConcurrency: 8 },
+  // Asus / Sony
+  { id: 'rog_phone_8', name: 'ASUS ROG Phone 8', model: 'ASUS_AI2401', androidVersion: '14', build: 'UKQ1.230917.001', screen: { width: 412, height: 915, deviceScaleFactor: 2.625 }, gpu: 'Adreno 750', hardwareConcurrency: 8 },
+  { id: 'zenfone_10', name: 'ASUS Zenfone 10', model: 'ASUS_AI2302', androidVersion: '13', build: 'TP1A.220624.014', screen: { width: 412, height: 915, deviceScaleFactor: 2.625 }, gpu: 'Adreno 740', hardwareConcurrency: 8 },
+  { id: 'xperia_1_vi', name: 'Sony Xperia 1 VI', model: 'XQ-EC72', androidVersion: '14', build: 'UKQ1.230917.001', screen: { width: 412, height: 915, deviceScaleFactor: 2.625 }, gpu: 'Adreno 750', hardwareConcurrency: 8 },
+  // Tecno / Infinix / ZTE (fast-growing markets)
+  { id: 'tecno_camon_30', name: 'Tecno Camon 30', model: 'CL6', androidVersion: '14', build: 'UP1A.231005.007', screen: { width: 393, height: 873, deviceScaleFactor: 2.75 }, gpu: 'Mali-G57', hardwareConcurrency: 8 },
+  { id: 'infinix_gt_20', name: 'Infinix GT 20 Pro', model: 'X6869', androidVersion: '14', build: 'UP1A.231005.007', screen: { width: 393, height: 873, deviceScaleFactor: 2.75 }, gpu: 'Mali-G610', hardwareConcurrency: 8 },
+  { id: 'zte_nubia_z60', name: 'ZTE nubia Z60 Ultra', model: 'NX721J', androidVersion: '14', build: 'UKQ1.230917.001', screen: { width: 412, height: 915, deviceScaleFactor: 2.625 }, gpu: 'Adreno 750', hardwareConcurrency: 8 },
 ];
 
 /** Find a preset by its id, or undefined. */
