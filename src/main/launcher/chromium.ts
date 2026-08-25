@@ -140,12 +140,20 @@ export async function startProfile(cfg: LaunchConfig): Promise<StartResult> {
     '--remote-debugging-port=0',
     '--no-first-run',
     '--no-default-browser-check',
+    // Keep session cookies on disk too — logins must survive restarts.
+    '--persist-session-cookies',
   ];
 
   if (proxyServer) {
     args.push(`--proxy-server=${proxyServer}`);
     // NOTE: --proxy-server does not accept inline credentials; authenticated
     // proxies are handled via CDP Fetch.continueWithAuth below.
+  }
+
+  // Desktop screen resolution override (AdsPower-style, from fingerprint config).
+  if (cfg.screenOverride) {
+    args.push(`--window-size=${cfg.screenOverride.width},${cfg.screenOverride.height}`);
+    args.push(`--window-position=0,0`);
   }
 
   // Kernel fingerprint flags (fingerprint-chromium). Stock Chromium ignores unknown flags,
@@ -250,6 +258,31 @@ export async function startProfile(cfg: LaunchConfig): Promise<StartResult> {
       await injectCookies(wsPuppeteer, cfg.cookies);
     }
 
+    // Desktop screen resolution override via CDP (screen.* metrics + viewport).
+    if (cfg.screenOverride) {
+      try {
+        const sBrowser = await puppeteer.connect({ browserWSEndpoint: wsPuppeteer, defaultViewport: null });
+        try {
+          const targets = await sBrowser.targets();
+          const pageTarget = targets.find((t) => t.type() === 'page');
+          if (pageTarget) {
+            const session = await pageTarget.createCDPSession();
+            await session.send('Emulation.setDeviceMetricsOverride', {
+              width: cfg.screenOverride.width,
+              height: cfg.screenOverride.height,
+              deviceScaleFactor: 1,
+              mobile: false,
+            });
+            await session.detach().catch(() => undefined);
+          }
+        } finally {
+          sBrowser.disconnect();
+        }
+      } catch {
+        // screen override is best-effort; window-size flag already applied
+      }
+    }
+
     // Start URLs (v0.2.6): open on start (first in current tab, rest in new tabs).
     if (cfg.startUrls && cfg.startUrls.length) {
       try {
@@ -327,16 +360,39 @@ export async function startProfile(cfg: LaunchConfig): Promise<StartResult> {
   }
 }
 
-export function stopProfile(profileId: string): boolean {
+/**
+ * Stop a profile: graceful close first (Chromium flushes cookies/sessions to
+ * disk on clean shutdown), wait for the process to exit, force-kill as fallback.
+ */
+export async function stopProfile(profileId: string): Promise<boolean> {
   const rec = running.get(profileId);
   if (!rec) return false;
-  cleanup(rec);
-  running.delete(profileId);
+  try {
+    const b = await puppeteer.connect({ browserWSEndpoint: rec.wsPuppeteer, defaultViewport: null });
+    await b.close().catch(() => undefined);
+  } catch {
+    // already dead — the exit handler cleaned up
+  }
+  // Wait for the exit handler to run (up to 5s).
+  await new Promise<void>((resolve) => {
+    const t0 = Date.now();
+    const iv = setInterval(() => {
+      if (!running.has(profileId) || Date.now() - t0 > 5000) {
+        clearInterval(iv);
+        resolve();
+      }
+    }, 150);
+  });
+  // Still alive? Force-kill the tree.
+  if (running.has(profileId)) {
+    cleanup(rec);
+    running.delete(profileId);
+  }
   return true;
 }
 
-export function stopAll(): void {
-  for (const id of Array.from(running.keys())) stopProfile(id);
+export async function stopAll(): Promise<void> {
+  for (const id of Array.from(running.keys())) await stopProfile(id);
 }
 
 async function waitForDevToolsPort(userDataDir: string): Promise<{ port: string; wsPath: string }> {

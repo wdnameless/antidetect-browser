@@ -51,6 +51,7 @@ export interface ProfileDetails {
     platform: string;
     hardwareConcurrency?: number;
     brand?: string;
+    config: Record<string, unknown>;
   } | null;
   device?: {
     id: string;

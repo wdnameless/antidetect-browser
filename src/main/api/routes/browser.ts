@@ -76,7 +76,7 @@ router.get('/api/v1/browser/stop', async (req, res) => {
       return;
     }
   } else {
-    launcher.stopProfile(id);
+    await launcher.stopProfile(id);
   }
   if (id) pm.setStatus(id, 'closed');
   res.json({ code: 0, msg: 'success', data: {} });
@@ -93,7 +93,7 @@ router.post('/api/v1/browser/stop', async (req, res) => {
       return;
     }
   } else {
-    launcher.stopProfile(id);
+    await launcher.stopProfile(id);
   }
   if (id) pm.setStatus(id, 'closed');
   res.json({ code: 0, msg: 'success', data: {} });
@@ -110,7 +110,7 @@ router.post('/api/v2/browser-profile/stop', async (req, res) => {
       return;
     }
   } else {
-    launcher.stopProfile(id);
+    await launcher.stopProfile(id);
   }
   if (id) pm.setStatus(id, 'closed');
   res.json({ code: 0, msg: 'success', data: {} });
@@ -207,7 +207,7 @@ router.post('/api/v1/browser-profile/bulk-stop', async (req, res) => {
           continue;
         }
       } else {
-        launcher.stopProfile(id);
+        await launcher.stopProfile(id);
       }
       pm.setStatus(id, 'closed');
       succeeded.push(id);

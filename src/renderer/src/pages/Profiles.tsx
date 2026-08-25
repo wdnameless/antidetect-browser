@@ -99,6 +99,18 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
   const [manage, setManage] = useState<{ id: string; tab: 'cookies' | 'fingerprint' | 'extensions' } | null>(null);
   const [cookiesText, setCookiesText] = useState('');
   const [fpConfig, setFpConfig] = useState('');
+  interface FpForm {
+    platform?: string;
+    brand?: string;
+    brandVersion?: string;
+    hardwareConcurrency?: number;
+    deviceMemory?: number;
+    lang?: string;
+    screenWidth?: number;
+    screenHeight?: number;
+    disableSpoofing?: string[];
+  }
+  const [fpForm, setFpForm] = useState<FpForm>({});
   const [extSel, setExtSel] = useState<string[]>([]);
 
   const loadGroups = useCallback(async () => {
@@ -185,6 +197,15 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
     void loadMobilePresets();
     void loadExtensions();
   }, [loadProfiles, loadGroups, loadProxies, loadDevices, loadMobilePresets, loadExtensions]);
+
+  // Auto-refresh statuses: if the user closes the browser window manually, the
+  // backend watchdog marks the profile "closed" — reflect it without a manual reload.
+  useEffect(() => {
+    const timer = setInterval(() => {
+      if (document.visibilityState === 'visible' && !busy) void loadProfiles();
+    }, 5000);
+    return () => clearInterval(timer);
+  }, [loadProfiles, busy]);
 
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text);
@@ -606,10 +627,33 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
     setManage({ id, tab });
     setCookiesText('');
     setFpConfig('');
+    setFpForm({});
     setExtSel([]);
     if (tab === 'extensions') {
       const res = await api.profileExtensions(id);
       if (res.code === 0) setExtSel(res.data.extension_ids);
+    }
+    if (tab === 'fingerprint') {
+      // Load the current overrides into the structured form.
+      const res = await api.profileDetail(id);
+      if (res.code === 0) {
+        const cfg = (res.data.fingerprint?.config ?? {}) as Record<string, unknown>;
+        const screen = cfg.screen as { width?: number; height?: number } | undefined;
+        setFpForm({
+          platform: typeof cfg.platform === 'string' ? cfg.platform : '',
+          brand: typeof cfg.brand === 'string' ? cfg.brand : '',
+          brandVersion: typeof cfg.brandVersion === 'string' ? cfg.brandVersion : '',
+          hardwareConcurrency: typeof cfg.hardwareConcurrency === 'number' ? cfg.hardwareConcurrency : undefined,
+          deviceMemory: typeof cfg.deviceMemory === 'number' ? cfg.deviceMemory : undefined,
+          lang: typeof cfg.lang === 'string' ? cfg.lang : '',
+          screenWidth: screen?.width,
+          screenHeight: screen?.height,
+          disableSpoofing:
+            typeof cfg.disableSpoofing === 'string' && cfg.disableSpoofing
+              ? cfg.disableSpoofing.split(',').map((s) => s.trim()).filter(Boolean)
+              : undefined,
+        });
+      }
     }
   };
 
@@ -641,14 +685,18 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
     setBusy(true);
     setError('');
     try {
-      let cfg: Record<string, unknown>;
-      try {
-        cfg = JSON.parse(fpConfig);
-      } catch {
-        setError('Invalid JSON for fingerprint config');
-        setBusy(false);
-        return;
+      // Structured form -> fingerprint config JSON (backend validates ranges).
+      const cfg: Record<string, unknown> = {};
+      if (fpForm.platform) cfg.platform = fpForm.platform;
+      if (fpForm.brand) cfg.brand = fpForm.brand;
+      if (fpForm.brandVersion) cfg.brandVersion = fpForm.brandVersion;
+      if (fpForm.hardwareConcurrency) cfg.hardwareConcurrency = fpForm.hardwareConcurrency;
+      if (fpForm.deviceMemory) cfg.deviceMemory = fpForm.deviceMemory;
+      if (fpForm.lang) cfg.lang = fpForm.lang;
+      if (fpForm.screenWidth && fpForm.screenHeight) {
+        cfg.screen = { width: fpForm.screenWidth, height: fpForm.screenHeight };
       }
+      if (fpForm.disableSpoofing?.length) cfg.disableSpoofing = fpForm.disableSpoofing.join(',');
       const res = await api.profileUpdateFingerprint(manage.id, cfg);
       if (res.code !== 0) setError(res.msg);
       setManage(null);
@@ -1931,18 +1979,127 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
                   />
                 </>
               ) : manage.tab === 'fingerprint' ? (
-                <>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                   <p className="hint" style={{ margin: 0 }}>
-                    JSON overrides for hardware and fingerprint (platform, brand, hardwareConcurrency, timezone, lang).
+                    {t('Per-profile fingerprint overrides (like AdsPower). Leave empty for defaults.')}
                   </p>
-                  <textarea
-                    placeholder='{"platform":"windows","hardwareConcurrency":8}'
-                    value={fpConfig}
-                    onChange={(e) => setFpConfig(e.target.value)}
-                    rows={6}
-                    style={{ width: '100%', fontFamily: 'var(--font-mono)' }}
-                  />
-                </>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                    <div className="form-group" style={{ margin: 0 }}>
+                      <label>{t('Platform')}</label>
+                      <select
+                        value={fpForm.platform}
+                        onChange={(e) => setFpForm({ ...fpForm, platform: e.target.value })}
+                      >
+                        <option value="">{t('Default (Windows)')}</option>
+                        <option value="windows">Windows</option>
+                        <option value="macos">macOS</option>
+                        <option value="linux">Linux</option>
+                      </select>
+                    </div>
+                    <div className="form-group" style={{ margin: 0 }}>
+                      <label>{t('Browser Brand')}</label>
+                      <select
+                        value={fpForm.brand}
+                        onChange={(e) => setFpForm({ ...fpForm, brand: e.target.value })}
+                      >
+                        <option value="">{t('Default (Chrome)')}</option>
+                        <option value="Chrome">Chrome</option>
+                        <option value="Edge">Edge</option>
+                      </select>
+                    </div>
+                    <div className="form-group" style={{ margin: 0 }}>
+                      <label>{t('CPU Cores')}</label>
+                      <input
+                        type="number"
+                        min={1}
+                        max={32}
+                        placeholder={t('e.g. 8')}
+                        value={fpForm.hardwareConcurrency ?? ''}
+                        onChange={(e) =>
+                          setFpForm({ ...fpForm, hardwareConcurrency: e.target.value ? Number(e.target.value) : undefined })
+                        }
+                      />
+                    </div>
+                    <div className="form-group" style={{ margin: 0 }}>
+                      <label>{t('RAM (GB) — navigator.deviceMemory')}</label>
+                      <select
+                        value={fpForm.deviceMemory ?? ''}
+                        onChange={(e) =>
+                          setFpForm({ ...fpForm, deviceMemory: e.target.value ? Number(e.target.value) : undefined })
+                        }
+                      >
+                        <option value="">{t('Default (8 GB)')}</option>
+                        <option value={2}>2 GB</option>
+                        <option value={4}>4 GB</option>
+                        <option value={8}>8 GB</option>
+                        <option value={16}>16 GB</option>
+                        <option value={32}>32 GB</option>
+                      </select>
+                    </div>
+                    <div className="form-group" style={{ margin: 0 }}>
+                      <label>{t('Language (Accept-Language)')}</label>
+                      <input
+                        placeholder="en-US"
+                        value={fpForm.lang ?? ''}
+                        onChange={(e) => setFpForm({ ...fpForm, lang: e.target.value || undefined })}
+                      />
+                    </div>
+                    <div className="form-group" style={{ margin: 0 }}>
+                      <label>{t('Brand Version')}</label>
+                      <input
+                        placeholder="148.0.0.0"
+                        value={fpForm.brandVersion ?? ''}
+                        onChange={(e) => setFpForm({ ...fpForm, brandVersion: e.target.value || undefined })}
+                      />
+                    </div>
+                    <div className="form-group" style={{ margin: 0 }}>
+                      <label>{t('Screen Width')}</label>
+                      <input
+                        type="number"
+                        min={320}
+                        max={7680}
+                        placeholder={t('native')}
+                        value={fpForm.screenWidth ?? ''}
+                        onChange={(e) =>
+                          setFpForm({ ...fpForm, screenWidth: e.target.value ? Number(e.target.value) : undefined })
+                        }
+                      />
+                    </div>
+                    <div className="form-group" style={{ margin: 0 }}>
+                      <label>{t('Screen Height')}</label>
+                      <input
+                        type="number"
+                        min={240}
+                        max={4320}
+                        placeholder={t('native')}
+                        value={fpForm.screenHeight ?? ''}
+                        onChange={(e) =>
+                          setFpForm({ ...fpForm, screenHeight: e.target.value ? Number(e.target.value) : undefined })
+                        }
+                      />
+                    </div>
+                  </div>
+                  <div className="form-group" style={{ margin: 0 }}>
+                    <label>{t('Disable Spoofing (advanced — pass-through to real values)')}</label>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 14, fontSize: 13, color: 'var(--text-secondary)' }}>
+                      {(['canvas', 'webgl', 'audio', 'clientrects'] as const).map((k) => (
+                        <label key={k} style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', textTransform: 'capitalize' }}>
+                          <input
+                            type="checkbox"
+                            checked={fpForm.disableSpoofing?.includes(k) ?? false}
+                            onChange={(e) => {
+                              const cur = new Set(fpForm.disableSpoofing ?? []);
+                              if (e.target.checked) cur.add(k);
+                              else cur.delete(k);
+                              setFpForm({ ...fpForm, disableSpoofing: cur.size ? Array.from(cur) : undefined });
+                            }}
+                          />
+                          {k}
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                </div>
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                   {extensions.map((e) => (

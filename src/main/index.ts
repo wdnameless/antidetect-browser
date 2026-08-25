@@ -59,13 +59,13 @@ function releaseInstanceLock(): void {
 // ---------------------------------------------------------------------------
 let shuttingDown = false;
 
-export function shutdown(reason: string, code = 0): void {
+export async function shutdown(reason: string, code = 0): Promise<void> {
   if (shuttingDown) return;
   shuttingDown = true;
   logger.info('shutdown', { reason });
   console.log(`[antidetect] ${reason} received — shutting down...`);
   try {
-    stopAll();
+    await stopAll();
   } catch {
     // ignore
   }

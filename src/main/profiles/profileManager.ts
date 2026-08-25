@@ -127,6 +127,8 @@ export interface LaunchConfig {
   startUrls?: string[];
   userAgent?: string;
   timezone?: string;
+  /** Desktop screen resolution override (AdsPower-style), from fingerprint config. */
+  screenOverride?: { width: number; height: number };
 }
 
 export interface ProfileListItem {
@@ -167,6 +169,7 @@ export interface ProfileDetails {
     platform: string;
     hardwareConcurrency?: number;
     brand?: string;
+    config: Record<string, unknown>;
   } | null;
   device?: {
     id: string;
@@ -347,6 +350,7 @@ export function getProfileDetails(id: string): ProfileDetails | null {
         platform: typeof cfg.platform === 'string' ? cfg.platform : 'windows',
         hardwareConcurrency: typeof cfg.hardwareConcurrency === 'number' ? cfg.hardwareConcurrency : 8,
         brand: typeof cfg.brand === 'string' ? cfg.brand : 'Chrome',
+        config: cfg,
       };
     }
   }
@@ -810,6 +814,7 @@ export function resolveLaunchConfig(id: string): LaunchConfig {
 
   let fingerprintSeed = 0;
   let fingerprint: FingerprintLaunch | undefined;
+  let screenOverride: { width: number; height: number } | undefined;
   if (profile.fingerprint_id) {
     const fp = db
       .prepare('SELECT seed, config_json FROM fingerprints WHERE id = ?')
@@ -833,6 +838,22 @@ export function resolveLaunchConfig(id: string): LaunchConfig {
         lang: typeof fpCfg.lang === 'string' ? fpCfg.lang : 'en-US',
         disableSpoofing: typeof fpCfg.disableSpoofing === 'string' ? fpCfg.disableSpoofing : undefined,
       };
+      // AdsPower-style desktop screen resolution override (fingerprint config).
+      if (
+        fpCfg.screen &&
+        typeof fpCfg.screen === 'object' &&
+        typeof (fpCfg.screen as { width?: unknown }).width === 'number' &&
+        typeof (fpCfg.screen as { height?: unknown }).height === 'number'
+      ) {
+        const s = fpCfg.screen as { width: number; height: number };
+        if (s.width >= 320 && s.width <= 7680 && s.height >= 240 && s.height <= 4320) {
+          screenOverride = { width: s.width, height: s.height };
+        }
+      }
+      // navigator.deviceMemory override (GB) from the fingerprint config.
+      if (typeof fpCfg.deviceMemory === 'number' && fingerprint) {
+        (fingerprint as { deviceMemory?: number }).deviceMemory = fpCfg.deviceMemory;
+      }
     }
   }
 
@@ -1039,5 +1060,6 @@ export function resolveLaunchConfig(id: string): LaunchConfig {
     startUrls: startUrls && startUrls.length ? startUrls : undefined,
     userAgent: profile.user_agent ?? undefined,
     timezone: profile.timezone ?? undefined,
+    screenOverride,
   };
 }

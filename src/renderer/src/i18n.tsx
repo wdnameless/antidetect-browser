@@ -213,6 +213,23 @@ const RU: Record<string, string> = {
   'Language': 'Язык интерфейса',
   'English': 'English',
   'Russian': 'Русский',
+
+  // Fingerprint overrides form (v0.2.24)
+  'Per-profile fingerprint overrides (like AdsPower). Leave empty for defaults.': 'Переопределения отпечатка для профиля (как в AdsPower). Пусто — значения по умолчанию.',
+  'Platform': 'Платформа',
+  'Browser Brand': 'Бренд браузера',
+  'Default (Windows)': 'По умолчанию (Windows)',
+  'Default (Chrome)': 'По умолчанию (Chrome)',
+  'Default (8 GB)': 'По умолчанию (8 ГБ)',
+  'CPU Cores': 'Ядра CPU',
+  'e.g. 8': 'напр. 8',
+  'RAM (GB) — navigator.deviceMemory': 'ОЗУ (ГБ) — navigator.deviceMemory',
+  'Language (Accept-Language)': 'Язык (Accept-Language)',
+  'Brand Version': 'Версия бренда',
+  'Screen Width': 'Ширина экрана',
+  'Screen Height': 'Высота экрана',
+  'native': 'нативное',
+  'Disable Spoofing (advanced — pass-through to real values)': 'Отключить спуфинг (для продвинутых — реальные значения вместо подмены)',
 };
 
 interface I18nCtx {
