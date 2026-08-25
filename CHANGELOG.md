@@ -3,6 +3,22 @@
 All notable changes are documented here. Releases are published on
 [GitHub Releases](https://github.com/wdnameless/antidetect-browser/releases).
 
+## v0.2.29 - Server deployment: remote access, web panel + screencast viewer
+
+- **Server mode** (`ANTIDETECT_SERVER_MODE=1`): trusted Host whitelist behind a
+  reverse proxy, per-request file log, CORS disabled.
+- **CDP tunnel**: `/cdp/:sessionId/*` exposes each profile's loopback DevTools
+  endpoint through the single API port (HTTP streaming + raw WS pipe); random
+  debug ports stay closed. `browser/start` rewrites `ws.puppeteer` to the
+  tunneled URL for remote clients — Puppeteer/Playwright connect unchanged.
+- **Web panel** at `/ui`: login with API key, profile list, start/stop/create,
+- **Screencast viewer** (`/cdp-view/:id`): streams the running browser into the
+  panel via CDP `Page.startScreencast` with full mouse/keyboard control —
+  use profiles from any device while Chromium runs on the server.
+- **Deploy kit**: Traefik docker-compose bound to the WireGuard interface,
+  guides `docs/SERVER_DEPLOY.md` (EN) / `.ru.md` (RU): WireGuard, NSSM
+  autostart, RDP session keep-alive, firewall, profile migration.
+
 ## v0.2.21 - Premium monochrome redesign & two-pane Settings
 
 - **Monochrome design system**: black/white/gray palette (Vercel/Linear-style) -

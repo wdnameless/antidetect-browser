@@ -43,6 +43,14 @@ export function getRunningWs(profileId: string): string | undefined {
   return running.get(profileId)?.wsPuppeteer;
 }
 
+/** Loopback CDP endpoint of a running profile (port + ws path), for the tunnel. */
+export function getCdpEndpoint(profileId: string): { port: string; wsPath: string } | undefined {
+  const rec = running.get(profileId);
+  if (!rec) return undefined;
+  const wsPath = rec.wsPuppeteer.slice(rec.wsPuppeteer.indexOf('/devtools/'));
+  return { port: rec.port, wsPath };
+}
+
 function toResult(r: RunningProfile): StartResult {
   return {
     ws: { puppeteer: r.wsPuppeteer, selenium: r.wsSelenium },

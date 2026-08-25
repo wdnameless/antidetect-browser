@@ -54,8 +54,33 @@ export const CHROMEDRIVER_DIR = path.join(DATA_DIR, 'chromedriver');
 export const EXTENSIONS_DIR = path.join(DATA_DIR, 'extensions');
 export const DB_PATH = path.join(DATA_DIR, 'antidetect.db');
 
-export const API_HOST = '127.0.0.1';
+export const API_HOST = process.env.API_HOST || '127.0.0.1';
 export const API_PORT = Number(process.env.API_PORT || 50325);
+
+/**
+ * Server mode: the service is deployed on a remote machine and reached through
+ * a reverse proxy (Traefik) over VPN. Enables trusted non-loopback Host headers,
+ * disables permissive CORS and enables request logging to DATA_DIR/server.log.
+ */
+export const SERVER_MODE = process.env.ANTIDETECT_SERVER_MODE === '1';
+
+/** Extra Host headers accepted in server mode (comma-separated, host only). */
+export const TRUSTED_HOSTS: string[] = (process.env.ANTIDETECT_TRUSTED_HOSTS || '')
+  .split(',')
+  .map((h) => h.trim().toLowerCase())
+  .filter((h) => h.length > 0);
+
+const LOOPBACK_HOST_RE = /^(127\.0\.0\.1|localhost|\[::1\])(:\d+)?$/i;
+
+/** True when the request arrived through a public/trusted entry point. */
+export function isRemoteHost(hostHeader: string | undefined): boolean {
+  if (!hostHeader) return false;
+  const h = String(hostHeader);
+  if (LOOPBACK_HOST_RE.test(h)) return false;
+  if (!SERVER_MODE) return true;
+  const bare = h.split(':')[0].replace(/^\[|\]$/g, '').toLowerCase();
+  return TRUSTED_HOSTS.includes(bare);
+}
 
 for (const dir of [DATA_DIR, PROFILES_DIR, CHROMIUM_DIR, EXTENSIONS_DIR]) {
   fs.mkdirSync(dir, { recursive: true });

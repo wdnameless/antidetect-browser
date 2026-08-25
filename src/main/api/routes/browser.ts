@@ -1,14 +1,36 @@
-import { Router, Response } from 'express';
+import { Router, Request, Response } from 'express';
 import { z } from 'zod';
 import * as pm from '../../profiles/profileManager';
 import * as launcher from '../../launcher/chromium';
 import * as firefox from '../../launcher/firefox';
 import { checkProxy, type ProxyInput } from '../../proxy/proxyManager';
 import { MOBILE_PRESETS as mobilePresets } from '../../devices/mobilePresets';
+import { SERVER_MODE } from '../../config';
+import type { StartResult } from '../../launcher/chromium';
 
 const router = Router();
 
-async function handleStart(id: string, res: Response): Promise<void> {
+const LOOPBACK_HOST_RE = /^(127\.0\.0\.1|localhost|\[::1\])(:\d+)?$/i;
+
+/**
+ * Server mode + non-loopback Host: hand out the tunnel endpoint
+ * (`ws://<host>/cdp/<id><ws-path>`) instead of the loopback one.
+ */
+function rewriteForRemote(req: Request, profileId: string, result: StartResult): StartResult {
+  const host = req.headers.host;
+  if (!SERVER_MODE || !host || LOOPBACK_HOST_RE.test(host)) return result;
+  const ep = launcher.getCdpEndpoint(profileId);
+  if (!ep) return result;
+  return {
+    ...result,
+    ws: {
+      puppeteer: `ws://${host}/cdp/${profileId}${ep.wsPath}`,
+      selenium: result.ws.selenium,
+    },
+  };
+}
+
+async function handleStart(req: Request, id: string, res: Response): Promise<void> {
   if (!id) {
     res.json({ code: -1, msg: 'user_id is required', data: {} });
     return;
@@ -39,7 +61,7 @@ async function handleStart(id: string, res: Response): Promise<void> {
     } else {
       const startResult = await launcher.startProfile(cfg);
       pm.setStatus(id, 'running');
-      res.json({ code: 0, msg: 'success', data: startResult });
+      res.json({ code: 0, msg: 'success', data: rewriteForRemote(req, id, startResult) });
     }
   } catch (err) {
     pm.setStatus(id, 'closed');
@@ -50,19 +72,19 @@ async function handleStart(id: string, res: Response): Promise<void> {
 // GET /api/v1/browser/start?user_id=<id>
 router.get('/api/v1/browser/start', async (req, res) => {
   const id = String(req.query.user_id || '');
-  await handleStart(id, res);
+  await handleStart(req, id, res);
 });
 
 // POST /api/v1/browser/start { user_id }
 router.post('/api/v1/browser/start', async (req, res) => {
   const id = String(req.body?.user_id || req.query.user_id || '');
-  await handleStart(id, res);
+  await handleStart(req, id, res);
 });
 
 // POST /api/v2/browser-profile/start (AdsPower V2 alias)
 router.post('/api/v2/browser-profile/start', async (req, res) => {
   const id = String(req.body?.user_id || req.query.user_id || '');
-  await handleStart(id, res);
+  await handleStart(req, id, res);
 });
 
 // GET /api/v1/browser/stop?user_id=<id>

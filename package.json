@@ -1,6 +1,6 @@
 {
   "name": "antidetect-browser",
-  "version": "0.2.28",
+  "version": "0.2.29",
   "private": true,
   "description": "Personal antidetect browser with an AdsPower-compatible Local API.",
   "main": "dist/electron/main.js",
@@ -37,6 +37,7 @@
     "socks-proxy-agent": "^6.2.1",
     "sql.js": "^1.14.1",
     "ssh2": "^1.17.0",
+    "ws": "^8.21.3",
     "zod": "^3.23.8"
   },
   "devDependencies": {
@@ -49,6 +50,7 @@
     "@types/react-dom": "^18.3.0",
     "@types/sql.js": "^1.4.11",
     "@types/ssh2": "^1.15.5",
+    "@types/ws": "^8.18.1",
     "@vitejs/plugin-react": "^4.3.2",
     "concurrently": "^9.0.1",
     "cross-env": "^7.0.3",
