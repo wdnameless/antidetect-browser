@@ -976,7 +976,7 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
                           gap: 4,
                           fontSize: 12,
                           fontWeight: 600,
-                          color: p.platform === 'android' || p.platform === 'ios' ? '#38bdf8' : '#e2e8f0',
+                          color: 'var(--text)',
                         }}
                       >
                         {p.device_name ? (
@@ -1364,7 +1364,7 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
             onClick={() => void handleBulkStart()}
             disabled={bulkBusy}
             title={t('Start selected profiles')}
-            style={{ background: 'rgba(34, 197, 94, 0.15)', color: '#4ade80', borderColor: 'rgba(34, 197, 94, 0.3)' }}
+            style={{ background: 'rgba(255, 255, 255, 0.08)', color: 'var(--text)', borderColor: 'rgba(255, 255, 255, 0.22)' }}
           >
             <PlayIcon size={12} />
             <span>{t('Start')}</span>
@@ -1376,7 +1376,7 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
             onClick={() => void handleBulkStop()}
             disabled={bulkBusy}
             title={t('Stop selected profiles')}
-            style={{ background: 'rgba(239, 68, 68, 0.15)', color: '#f87171', borderColor: 'rgba(239, 68, 68, 0.3)' }}
+            style={{ background: 'rgba(255, 255, 255, 0.08)', color: 'var(--text-secondary)', borderColor: 'rgba(255, 255, 255, 0.22)' }}
           >
             <StopIcon size={12} />
             <span>{t('Stop')}</span>

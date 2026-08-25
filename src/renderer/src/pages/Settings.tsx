@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { getApiBase } from '../api';
 import type { UpdateStatus } from '../global';
 import { useI18n, type Lang } from '../i18n';
-import { SettingsIcon, RefreshIcon } from '../icons';
+import { SettingsIcon, RefreshIcon, CopyIcon, CheckIcon } from '../icons';
 
 function formatBytes(n: number): string {
   if (!Number.isFinite(n) || n <= 0) return '—';
@@ -16,9 +16,14 @@ function formatBytes(n: number): string {
   return `${v.toFixed(v >= 100 ? 0 : 1)} ${units[i]}`;
 }
 
+type Section = 'general' | 'api' | 'data' | 'updates' | 'diagnostics';
+
 export function Settings() {
   const { t, lang, setLang } = useI18n();
+  const [section, setSection] = useState<Section>('general');
   const [apiKey, setApiKey] = useState('');
+  const [keyVisible, setKeyVisible] = useState(false);
+  const [keyCopied, setKeyCopied] = useState(false);
   const [status, setStatus] = useState<UpdateStatus | null>(null);
   const [dataDir, setDataDir] = useState('');
   const [dataDirMsg, setDataDirMsg] = useState('');
@@ -48,7 +53,7 @@ export function Settings() {
       api.logsList().then((res) => {
         if (res.code === 0) {
           setLogDir(res.data.dir);
-          setLogFiles(res.data.list.slice(0, 3));
+          setLogFiles(res.data.list.slice(0, 5));
         }
       }).catch(() => undefined);
       api.kernelInfo().then((res) => {
@@ -99,21 +104,27 @@ export function Settings() {
     void window.antidetect?.update.quitAndInstall();
   };
 
-  const renderStatus = (): React.ReactNode => {
+  const copyKey = (): void => {
+    void navigator.clipboard.writeText(apiKey);
+    setKeyCopied(true);
+    setTimeout(() => setKeyCopied(false), 1500);
+  };
+
+  const renderUpdateStatus = (): React.ReactNode => {
     if (!status) return null;
     switch (status.state) {
       case 'checking':
-        return <p className="hint">Checking for updates…</p>;
+        return <p className="hint">{t('Checking for updates…')}</p>;
       case 'not-available':
-        return <p className="hint" style={{ color: 'var(--ok)', fontWeight: 500 }}>✓ You are on the latest version.</p>;
+        return <p className="hint" style={{ color: 'var(--text-secondary)', fontWeight: 500 }}>✓ {t('You are on the latest version.')}</p>;
       case 'available':
         return (
           <div className="setting-row">
             <span className="setting-label">
-              New version available: <strong>{status.info.version ? `v${status.info.version}` : 'New build'}</strong>
+              {t('New version available')}: <strong>{status.info.version ? `v${status.info.version}` : t('New build')}</strong>
             </span>
             <button className="btn primary" onClick={onDownload} disabled={busy}>
-              Download Update
+              {t('Download Update')}
             </button>
           </div>
         );
@@ -121,8 +132,7 @@ export function Settings() {
         return (
           <div className="setting-row">
             <span className="setting-label">
-              Downloading… {Math.round(status.percent)}% ({formatBytes(status.transferred)} /{' '}
-              {formatBytes(status.total)})
+              {t('Downloading…')} {Math.round(status.percent)}% ({formatBytes(status.transferred)} / {formatBytes(status.total)})
             </span>
           </div>
         );
@@ -130,161 +140,221 @@ export function Settings() {
         return (
           <div className="setting-row">
             <span className="setting-label">
-              Update ready: <strong>{status.info.version ? `v${status.info.version}` : 'Ready to install'}</strong>
+              {t('Update ready')}: <strong>{status.info.version ? `v${status.info.version}` : t('Ready to install')}</strong>
             </span>
             <button className="btn primary" onClick={onRestart}>
-              Restart &amp; install
+              {t('Restart & install')}
             </button>
           </div>
         );
       case 'error':
-        return <p className="hint" style={{ color: 'var(--danger)' }}>Update check failed: {status.message}</p>;
+        return <p className="hint" style={{ color: 'var(--text-secondary)' }}>{t('Update check failed')}: {status.message}</p>;
     }
   };
+
+  const SECTIONS: Array<{ key: Section; label: string }> = [
+    { key: 'general', label: t('General') },
+    { key: 'api', label: t('Automation API') },
+    { key: 'data', label: t('Data Folder') },
+    { key: 'updates', label: t('Updates') },
+    { key: 'diagnostics', label: t('Diagnostics') },
+  ];
 
   return (
     <div>
       <div className="page-header-actions">
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <SettingsIcon size={20} style={{ color: 'var(--accent)' }} />
-          <h2 style={{ fontSize: 16, fontWeight: 700 }}>Settings &amp; Automation</h2>
+          <SettingsIcon size={20} style={{ color: 'var(--text-secondary)' }} />
+          <h2 style={{ fontSize: 16, fontWeight: 700 }}>{t('Settings & Automation')}</h2>
         </div>
       </div>
 
-      <div className="panel">
-        <div className="panel-header">{t('Language')}</div>
-        <div className="setting-row">
-          <span className="setting-label">{t('Language')}</span>
-          <select
-            className="select-input"
-            value={lang}
-            onChange={(e) => setLang(e.target.value as Lang)}
-            style={{ minWidth: 140 }}
-          >
-            <option value="en">{t('English')}</option>
-            <option value="ru">{t('Russian')}</option>
-          </select>
-        </div>
-      </div>
-
-      <div className="panel">
-        <div className="panel-header">{t('Automation API (for your scripts)')}</div>
-        <div className="setting-row">
-          <span className="setting-label">Endpoint URL</span>
-          <code>{getApiBase()}</code>
-        </div>
-        <div className="setting-row">
-          <span className="setting-label">Bearer API Key</span>
-          <code>{apiKey || '—'}</code>
-        </div>
-        <p className="hint">
-          Use this key to connect your own bots and scripts (Puppeteer, Playwright, Selenium, Python) to the
-          local API. Pass it in the HTTP header: <code>Authorization: Bearer &lt;key&gt;</code>.
-        </p>
-      </div>
-
-      {dataApiAvailable && (
-        <div className="panel">
-          <div className="panel-header">Data Folder (Profiles, Cache, Kernel)</div>
-          <div className="setting-row">
-            <span className="setting-label">Current folder</span>
-            <code style={{ wordBreak: 'break-all', maxWidth: '60%' }}>{dataDir || '—'}</code>
-          </div>
-          <div className="setting-row">
-            <span className="setting-label">Actions</span>
-            <div style={{ display: 'flex', gap: 8 }}>
-              <button className="btn" onClick={onChangeDataDir}>
-                Change Folder…
-              </button>
-              <button className="btn" onClick={onOpenDataDir}>
-                Open in Explorer
-              </button>
-            </div>
-          </div>
-          {dataDirMsg ? <p className="hint" style={{ color: 'var(--warn)' }}>{dataDirMsg}</p> : null}
-          <p className="hint">
-            All browser profiles, cookies, extensions, the Chromium kernel and the database are stored here.
-            Changing the folder takes effect after restarting the app.
-          </p>
-        </div>
-      )}
-
-      {updaterAvailable && (
-        <div className="panel">
-          <div className="panel-header">Software Updates</div>
-          <div className="setting-row">
-            <span className="setting-label">Release Channel (GitHub Releases)</span>
-            <button className="btn" onClick={onCheck} disabled={busy}>
-              <RefreshIcon size={14} />
-              <span>Check for updates</span>
+      <div style={{ display: 'flex', gap: 20, alignItems: 'flex-start' }}>
+        {/* Section nav */}
+        <div style={{ width: 200, flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
+          {SECTIONS.map((s) => (
+            <button
+              key={s.key}
+              type="button"
+              onClick={() => setSection(s.key)}
+              className={`settings-nav-item ${section === s.key ? 'active' : ''}`}
+            >
+              {s.label}
             </button>
-          </div>
-          {renderStatus()}
+          ))}
         </div>
-      )}
 
-      <div className="panel">
-        <div className="panel-header">Browser Kernel (fingerprint-chromium)</div>
-        <div className="setting-row">
-          <span className="setting-label">Installed version</span>
-          <code>{kernelInfo?.installed ?? '—'}</code>
-        </div>
-        <div className="setting-row">
-          <span className="setting-label">Upstream check</span>
-          <button className="btn" onClick={checkKernel} disabled={kernelChecking}>
-            <RefreshIcon size={14} />
-            <span>{kernelChecking ? 'Checking…' : 'Check for kernel update'}</span>
-          </button>
-        </div>
-        {kernelInfo?.latest ? (
-          <p className="hint" style={{ color: kernelInfo.updateAvailable ? 'var(--warn)' : 'var(--ok)', fontWeight: 500 }}>
-            {kernelInfo.updateAvailable
-              ? `⚠ Update available: v${kernelInfo.latest} (installed v${kernelInfo.installed}). Download from the release page, then replace the folder in data/chromium.`
-              : `✓ You are on the latest kernel (v${kernelInfo.latest}).`}
-            {kernelInfo.releaseUrl ? (
-              <>
-                {' '}
-                <a href={kernelInfo.releaseUrl} target="_blank" rel="noreferrer" style={{ color: 'var(--accent)' }}>
-                  Open releases ↗
-                </a>
-              </>
-            ) : null}
-          </p>
-        ) : null}
-        {kernelInfo?.error ? <p className="hint" style={{ color: 'var(--danger)' }}>Check failed: {kernelInfo.error}</p> : null}
-        <p className="hint">
-          The kernel is intentionally pinned (stealth patches are version-specific). Updating is manual:
-          download the new Windows build, replace the folder under <code>data/chromium/fingerprint-chromium</code>.
-        </p>
-      </div>
-
-      <div className="panel">
-        <div className="panel-header">Diagnostics &amp; Logs</div>
-        <div className="setting-row">
-          <span className="setting-label">Log folder</span>
-          <code style={{ wordBreak: 'break-all', maxWidth: '55%' }}>{logDir || '—'}</code>
-        </div>
-        <div className="setting-row">
-          <span className="setting-label">Actions</span>
-          <button className="btn" onClick={onOpenLogsDir}>
-            Open Logs Folder
-          </button>
-        </div>
-        {logFiles.length > 0 ? (
-          <div style={{ padding: '4px 0' }}>
-            <p className="hint" style={{ marginBottom: 6 }}>Recent log files (kept 14 days):</p>
-            {logFiles.map((f) => (
-              <div key={f.name} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, padding: '3px 0', color: 'var(--text-secondary)' }}>
-                <code>{f.name}</code>
-                <span style={{ color: 'var(--text-muted)' }}>{formatBytes(f.size)}</span>
+        {/* Section content */}
+        <div style={{ flex: 1, minWidth: 0 }}>
+          {section === 'general' ? (
+            <div className="panel">
+              <div className="panel-header">{t('General')}</div>
+              <div className="setting-row">
+                <span className="setting-label">{t('Language')}</span>
+                <select
+                  className="select-input"
+                  value={lang}
+                  onChange={(e) => setLang(e.target.value as Lang)}
+                  style={{ minWidth: 160 }}
+                >
+                  <option value="en">English</option>
+                  <option value="ru">Русский</option>
+                </select>
               </div>
-            ))}
-          </div>
-        ) : null}
-        <p className="hint">
-          Logs include service lifecycle, profile start/stop errors, backups and crash recovery events.
-          Send the newest <code>app-*.log</code> file when reporting an issue.
-        </p>
+              <p className="hint">
+                {t('Interface language. Applies immediately.')}
+              </p>
+            </div>
+          ) : null}
+
+          {section === 'api' ? (
+            <div className="panel">
+              <div className="panel-header">{t('Automation API (for your scripts)')}</div>
+              <div className="setting-row">
+                <span className="setting-label">{t('Endpoint URL')}</span>
+                <code>{getApiBase()}</code>
+              </div>
+              <div className="setting-row">
+                <span className="setting-label">{t('Bearer API Key')}</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <code style={{ maxWidth: 320, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {apiKey ? (keyVisible ? apiKey : `${apiKey.slice(0, 8)}${'•'.repeat(24)}`) : '—'}
+                  </code>
+                  <button
+                    type="button"
+                    className="btn-icon"
+                    onClick={() => setKeyVisible((v) => !v)}
+                    title={keyVisible ? t('Hide') : t('Show')}
+                  >
+                    {keyVisible ? '🙈' : '👁'}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-icon"
+                    onClick={copyKey}
+                    disabled={!apiKey}
+                    title={t('Copy')}
+                  >
+                    {keyCopied ? <CheckIcon size={13} style={{ color: 'var(--text)' }} /> : <CopyIcon size={13} />}
+                  </button>
+                </div>
+              </div>
+              <p className="hint">
+                {t('Use this key to connect your own bots and scripts (Puppeteer, Playwright, Selenium, Python) to the local API. Pass it in the HTTP header:')} <code>Authorization: Bearer &lt;key&gt;</code>.
+              </p>
+            </div>
+          ) : null}
+
+          {section === 'data' && dataApiAvailable ? (
+            <div className="panel">
+              <div className="panel-header">{t('Data Folder (Profiles, Cache, Kernel)')}</div>
+              <div className="setting-row">
+                <span className="setting-label">{t('Current folder')}</span>
+                <code style={{ wordBreak: 'break-all', maxWidth: '55%' }}>{dataDir || '—'}</code>
+              </div>
+              <div className="setting-row">
+                <span className="setting-label">{t('Actions')}</span>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button className="btn" onClick={onChangeDataDir}>
+                    {t('Change Folder…')}
+                  </button>
+                  <button className="btn" onClick={onOpenDataDir}>
+                    {t('Open in Explorer')}
+                  </button>
+                </div>
+              </div>
+              {dataDirMsg ? <p className="hint" style={{ color: 'var(--warn)' }}>{dataDirMsg}</p> : null}
+              <p className="hint">
+                {t('All browser profiles, cookies, extensions, the Chromium kernel and the database are stored here. Changing the folder takes effect after restarting the app.')}
+              </p>
+            </div>
+          ) : null}
+
+          {section === 'updates' ? (
+            <>
+              <div className="panel">
+                <div className="panel-header">{t('Software Updates')}</div>
+                {updaterAvailable ? (
+                  <>
+                    <div className="setting-row">
+                      <span className="setting-label">{t('Release Channel (GitHub Releases)')}</span>
+                      <button className="btn" onClick={onCheck} disabled={busy}>
+                        <RefreshIcon size={14} />
+                        <span>{t('Check for updates')}</span>
+                      </button>
+                    </div>
+                    {renderUpdateStatus()}
+                  </>
+                ) : (
+                  <p className="hint">{t('Updates are available in the installed app.')}</p>
+                )}
+              </div>
+
+              <div className="panel">
+                <div className="panel-header">{t('Browser Kernel (fingerprint-chromium)')}</div>
+                <div className="setting-row">
+                  <span className="setting-label">{t('Installed version')}</span>
+                  <code>{kernelInfo?.installed ?? '—'}</code>
+                </div>
+                <div className="setting-row">
+                  <span className="setting-label">{t('Upstream check')}</span>
+                  <button className="btn" onClick={checkKernel} disabled={kernelChecking}>
+                    <RefreshIcon size={14} />
+                    <span>{kernelChecking ? t('Checking…') : t('Check for kernel update')}</span>
+                  </button>
+                </div>
+                {kernelInfo?.latest ? (
+                  <p className="hint" style={{ color: kernelInfo.updateAvailable ? 'var(--warn)' : 'var(--text-secondary)', fontWeight: 500 }}>
+                    {kernelInfo.updateAvailable
+                      ? `⚠ ${t('Update available')}: v${kernelInfo.latest} (v${kernelInfo.installed})`
+                      : `✓ ${t('You are on the latest kernel')} (v${kernelInfo.latest})`}
+                    {kernelInfo.releaseUrl ? (
+                      <>
+                        {' '}
+                        <a href={kernelInfo.releaseUrl} target="_blank" rel="noreferrer" style={{ color: 'var(--text)', textDecoration: 'underline' }}>
+                          {t('Open releases')} ↗
+                        </a>
+                      </>
+                    ) : null}
+                  </p>
+                ) : null}
+                <p className="hint">
+                  {t('The kernel is intentionally pinned (stealth patches are version-specific). Updating is manual: download the new Windows build, replace the folder under')} <code>data/chromium/fingerprint-chromium</code>.
+                </p>
+              </div>
+            </>
+          ) : null}
+
+          {section === 'diagnostics' ? (
+            <div className="panel">
+              <div className="panel-header">{t('Diagnostics & Logs')}</div>
+              <div className="setting-row">
+                <span className="setting-label">{t('Log folder')}</span>
+                <code style={{ wordBreak: 'break-all', maxWidth: '55%' }}>{logDir || '—'}</code>
+              </div>
+              <div className="setting-row">
+                <span className="setting-label">{t('Actions')}</span>
+                <button className="btn" onClick={onOpenLogsDir}>
+                  {t('Open Logs Folder')}
+                </button>
+              </div>
+              {logFiles.length > 0 ? (
+                <div style={{ padding: '4px 0' }}>
+                  <p className="hint" style={{ marginBottom: 6 }}>{t('Recent log files (kept 14 days):')}</p>
+                  {logFiles.map((f) => (
+                    <div key={f.name} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, padding: '3px 0', color: 'var(--text-secondary)' }}>
+                      <code>{f.name}</code>
+                      <span style={{ color: 'var(--text-muted)' }}>{formatBytes(f.size)}</span>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+              <p className="hint">
+                {t('Logs include service lifecycle, profile start/stop errors, backups and crash recovery events. Send the newest')} <code>app-*.log</code> {t('when reporting an issue.')}
+              </p>
+            </div>
+          ) : null}
+        </div>
       </div>
     </div>
   );

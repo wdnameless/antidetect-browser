@@ -3,6 +3,20 @@
 All notable changes are documented here. Releases are published on
 [GitHub Releases](https://github.com/wdnameless/antidetect-browser/releases).
 
+## v0.2.21 - Premium monochrome redesign & two-pane Settings
+
+- **Monochrome design system**: black/white/gray palette (Vercel/Linear-style) -
+  white primary buttons with dark text, gray outlines, monochrome status badges
+  and action buttons. All blue/purple accents removed.
+- **Two-pane Settings** with sections: General (language), Automation API
+  (endpoint + key with show/hide and copy), Data Folder, Updates (app + kernel),
+  Diagnostics (logs).
+- API key masking (show/hide) and one-click copy.
+# Changelog
+
+All notable changes are documented here. Releases are published on
+[GitHub Releases](https://github.com/wdnameless/antidetect-browser/releases).
+
 ## v0.2.19 — Profile bundles & structured logs (2026-08)
 
 - **Profile bundles**: export/import a full profile (fingerprint seed+config, proxy
