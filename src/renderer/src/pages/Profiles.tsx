@@ -41,6 +41,7 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
   const [selectedPlatformFilter, setSelectedPlatformFilter] = useState<string>('');
   const [selectedStatusFilter, setSelectedStatusFilter] = useState<string>('');
   const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
+  const [menuPos, setMenuPos] = useState<{ top: number; right: number }>({ top: 0, right: 0 });
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [page, setPage] = useState(1);
@@ -980,14 +981,11 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
                         }}
                       >
                         {p.device_name ? (
-                          <>
-                            {p.platform === 'android' ? '📱' : p.platform === 'ios' ? '📱' : p.platform === 'macos' ? '💻' : '💻'}
-                            <span>{p.device_name}</span>
-                          </>
+                          <span>{p.device_name}</span>
                         ) : (
-                          <>
-                            {p.platform === 'android' ? '📱 Android' : p.platform === 'ios' ? '📱 iOS' : p.platform === 'macos' ? '💻 macOS' : '💻 Windows'}
-                          </>
+                          <span>
+                            {p.platform === 'android' ? 'Android' : p.platform === 'ios' ? 'iOS' : p.platform === 'macos' ? 'macOS' : 'Windows'}
+                          </span>
                         )}
                       </span>
                       <span
@@ -1006,7 +1004,7 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
                         {copiedSeed === p.fingerprint_seed ? (
                           '✓ Copied!'
                         ) : (
-                          <>🎲 {p.fingerprint_seed ? String(p.fingerprint_seed).slice(0, 8) + '..' : 'auto'}</>
+                          <>{p.fingerprint_seed ? String(p.fingerprint_seed).slice(0, 8) + '..' : 'auto'}</>
                         )}
                       </span>
                     </div>
@@ -1055,7 +1053,24 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
                         <button
                           type="button"
                           className={`btn-icon ${activeMenuId === p.user_id ? 'active' : ''}`}
-                          onClick={() => setActiveMenuId(activeMenuId === p.user_id ? null : p.user_id)}
+                          onClick={(e) => {
+                            if (activeMenuId === p.user_id) {
+                              setActiveMenuId(null);
+                              return;
+                            }
+                            // Position the menu with `fixed` coordinates from the button so
+                            // the table container's overflow can never clip it. Flip above
+                            // the button when there is not enough room below.
+                            const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                            const MENU_H = 270;
+                            const top =
+                              rect.bottom + MENU_H > window.innerHeight
+                                ? Math.max(8, rect.top - MENU_H - 6)
+                                : rect.bottom + 6;
+                            const right = Math.max(8, window.innerWidth - rect.right);
+                            setMenuPos({ top, right });
+                            setActiveMenuId(p.user_id);
+                          }}
                           title="More actions"
                           style={{ fontWeight: 800, fontSize: 13, padding: '0 6px' }}
                         >
@@ -1070,11 +1085,11 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
                             />
                             <div
                               style={{
-                                position: 'absolute',
-                                right: 0,
-                                top: 'calc(100% + 4px)',
+                                position: 'fixed',
+                                right: menuPos.right,
+                                top: menuPos.top,
                                 zIndex: 100,
-                                minWidth: 165,
+                                minWidth: 175,
                                 background: 'var(--panel)',
                                 border: '1px solid var(--border)',
                                 borderRadius: 6,

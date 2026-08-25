@@ -122,6 +122,9 @@ export async function initApiKey(): Promise<void> {
 }
 
 export function getApiBase(): string {
+  // Dev/test override: localStorage.apiBase (e.g. a second service instance on another port).
+  const override = typeof localStorage !== 'undefined' ? localStorage.getItem('apiBase') : null;
+  if (override && override.startsWith('http')) return override.replace(/\/$/, '');
   return 'http://127.0.0.1:50325';
 }
 
