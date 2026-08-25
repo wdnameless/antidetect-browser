@@ -38,7 +38,9 @@ async function main(): Promise<void> {
   });
   await new Promise((r) => setTimeout(r, 300));
   const copied = await page.evaluate(() => Boolean(document.querySelector('button')?.textContent?.includes('Copied!')) || undefined);
+  const scroll = await page.evaluate(() => { const el = document.querySelector('.content') as HTMLElement; if (!el) return 'no .content'; const before = el.scrollTop; el.scrollTop = 99999; return { scrollable: el.scrollHeight > el.clientHeight, scrolledTo: el.scrollTop, before }; });
   console.log('DEVICES PAGE:', JSON.stringify({ ...res, copiedFeedback: copied }));
+  console.log('SCROLL:', JSON.stringify(scroll));
   await browser.close();
 }
 

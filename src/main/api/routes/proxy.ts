@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import * as xm from '../../proxy/proxyManager';
 import * as pm from '../../profiles/profileManager';
+import { listBackups, restoreBackup } from '../../util/backupManager';
 
 const router = Router();
 
@@ -116,6 +117,144 @@ router.post('/api/v1/browser-profile/fingerprint', (req, res) => {
   }
   const ok = pm.updateProfileFingerprint(parsed.data.user_id, parsed.data.config);
   res.json(ok ? { code: 0, msg: 'success', data: {} } : { code: -1, msg: 'profile not found', data: {} });
+});
+
+// ---------------------------------------------------------------------------
+// Bulk import from a text list (v0.2.26): Webshare-style lines and friends.
+// Supported per line:
+//   protocol://user:pass@host:port     protocol from prefix
+//   protocol://host:port
+//   user:pass@host:port                default protocol
+//   host:port:user:pass                default protocol (Webshare format)
+//   host:port                          default protocol
+// ---------------------------------------------------------------------------
+
+interface ParsedProxyLine {
+  type: xm.ProxyType;
+  host: string;
+  port: number;
+  username?: string;
+  password?: string;
+}
+
+export function parseProxyLine(
+  raw: string,
+  defaultProtocol: 'http' | 'https' | 'socks5'
+): ParsedProxyLine | null {
+  const line = raw.trim();
+  if (!line || line.startsWith('#')) return null;
+
+  let rest = line;
+  let protocol: xm.ProxyType = defaultProtocol;
+  const protoMatch = rest.match(/^(https?|socks5|ssh):\/\//i);
+  if (protoMatch) {
+    protocol = protoMatch[1].toLowerCase() as xm.ProxyType;
+    rest = rest.slice(protoMatch[0].length);
+  }
+
+  let username: string | undefined;
+  let password: string | undefined;
+  const at = rest.lastIndexOf('@');
+  if (at > 0) {
+    const creds = rest.slice(0, at);
+    rest = rest.slice(at + 1);
+    const sep = creds.indexOf(':');
+    if (sep > 0) {
+      username = creds.slice(0, sep);
+      password = creds.slice(sep + 1);
+    } else {
+      username = creds;
+    }
+  }
+
+  // host:port[:user:pass]
+  const parts = rest.split(':').map((p) => p.trim());
+  if (parts.length < 2) return null;
+  const host = parts[0];
+  const port = Number(parts[1]);
+  if (!host || !Number.isFinite(port) || port <= 0 || port > 65535) return null;
+  if (parts.length >= 4 && !username) {
+    username = parts[2];
+    password = parts[3];
+  } else if (parts.length >= 4 && username !== undefined && password === undefined) {
+    // user:pass came from @ but host part had extra cols — ignore
+  }
+
+  return { type: protocol, host, port, username, password };
+}
+
+export function parseProxyList(
+  text: string,
+  defaultProtocol: 'http' | 'https' | 'socks5'
+): { parsed: ParsedProxyLine[]; invalid: number } {
+  const parsed: ParsedProxyLine[] = [];
+  let invalid = 0;
+  for (const line of text.split(/\r?\n/)) {
+    const p = parseProxyLine(line, defaultProtocol);
+    if (p) parsed.push(p);
+    else if (line.trim() && !line.trim().startsWith('#')) invalid++;
+  }
+  return { parsed, invalid };
+}
+
+const importListSchema = z.object({
+  text: z.string().min(1),
+  defaultProtocol: z.enum(['http', 'https', 'socks5']).default('socks5'),
+});
+
+router.post('/api/v1/proxy/import-list', (req, res) => {
+  const parsed = importListSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.json({ code: -1, msg: 'invalid body', data: { errors: parsed.error.flatten() } });
+    return;
+  }
+  const { parsed: proxies, invalid } = parseProxyList(parsed.data.text, parsed.data.defaultProtocol);
+
+  // Dedupe within the list and against existing proxies (host+port+username).
+  const existing = new Set(
+    xm.listProxies().map((p) => `${p.host}:${p.port}:${p.username ?? ''}`)
+  );
+  const created: string[] = [];
+  let duplicates = 0;
+  const seen = new Set<string>();
+  for (const p of proxies) {
+    const key = `${p.host}:${p.port}:${p.username ?? ''}`;
+    if (seen.has(key) || existing.has(key)) {
+      duplicates++;
+      continue;
+    }
+    seen.add(key);
+    created.push(xm.createProxy(p));
+  }
+  res.json({
+    code: 0,
+    msg: 'success',
+    data: { created: created.length, duplicates, invalid, proxy_ids: created },
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Backup restore (v0.2.26): recover the database from a daily backup.
+// ---------------------------------------------------------------------------
+
+router.get('/api/v1/backups/list', (_req, res) => {
+  res.json({ code: 0, msg: 'success', data: { list: listBackups() } });
+});
+
+const restoreSchema = z.object({ name: z.string().regex(/^antidetect-\d{4}-\d{2}-\d{2}-\d{2}-\d{2}\.db$|^antidetect-[\w.-]+\.db$/) });
+
+router.post('/api/v1/backups/restore', (req, res) => {
+  const parsed = restoreSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.json({ code: -1, msg: 'invalid backup name', data: {} });
+    return;
+  }
+  try {
+    restoreBackup(parsed.data.name);
+    res.json({ code: 0, msg: 'success', data: { restart_required: true } });
+  } catch (err) {
+    res.json({ code: -1, msg: (err as Error).message, data: {} });
+  }
 });
 
 export default router;

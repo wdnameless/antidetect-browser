@@ -290,6 +290,18 @@ export const api = {
   proxyList: () => request<{ list: ProxyItem[]; total: number }>('/api/v1/proxy/list'),
   proxyCreate: (body: Record<string, unknown>) =>
     request<{ proxy_id: string }>('/api/v1/proxy/create', { method: 'POST', body: JSON.stringify(body) }),
+  proxyImportList: (text: string, defaultProtocol: 'http' | 'https' | 'socks5') =>
+    request<{ created: number; duplicates: number; invalid: number; proxy_ids: string[] }>(
+      '/api/v1/proxy/import-list',
+      { method: 'POST', body: JSON.stringify({ text, defaultProtocol }) }
+    ),
+  backupsList: () =>
+    request<{ list: Array<{ name: string; size: number; modified: number }> }>('/api/v1/backups/list'),
+  backupRestore: (name: string) =>
+    request<{ restart_required: boolean }>('/api/v1/backups/restore', {
+      method: 'POST',
+      body: JSON.stringify({ name }),
+    }),
   proxyTest: (body: { type: string; host: string; port: number; username?: string; password?: string }) =>
     request<ProxyTestResult>('/api/v1/proxy/test', { method: 'POST', body: JSON.stringify(body) }),
   proxyCheck: (proxy_id: string) =>

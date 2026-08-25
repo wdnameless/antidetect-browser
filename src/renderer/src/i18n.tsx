@@ -231,6 +231,28 @@ const RU: Record<string, string> = {
   'native': 'нативное',
   'Disable Spoofing (advanced — pass-through to real values)': 'Отключить спуфинг (для продвинутых — реальные значения вместо подмены)',
 
+  // Proxy list import + backups (v0.2.26)
+  'Import List': 'Импорт списка',
+  'Import Proxy List': 'Импорт списка прокси',
+  'One proxy per line. Supported formats:': 'Один прокси на строку. Поддерживаемые форматы:',
+  'Protocol for lines without prefix': 'Протокол для строк без префикса',
+  'Upload .txt file': 'Загрузить .txt файл',
+  'Lines detected': 'Найдено строк',
+  'geo will be detected automatically after import': 'гео определится автоматически после импорта',
+  'Importing…': 'Импорт…',
+  'Import': 'Импортировать',
+  'Imported': 'Импортировано',
+  'duplicates': 'дубликаты',
+  'invalid lines': 'неверных строк',
+  'checking geo…': 'определение гео…',
+  'geo detected': 'гео определено',
+  'Database Backups (restore)': 'Бэкапы базы данных (восстановление)',
+  'If profiles/groups suddenly disappeared, restore the database from an automatic daily backup. The current (broken) database is snapshotted before restoring — the operation is reversible. Restart the app after restoring.': 'Если профили/группы внезапно исчезли — восстановите базу из автоматического ежедневного бэкапа. Текущая (повреждённая) база сохраняется перед восстановлением — операция обратима. После восстановления перезапустите приложение.',
+  'No backups found yet (they are created daily after the first run).': 'Бэкапов пока нет (они создаются ежедневно после первого запуска).',
+  'Restore database from this backup? The app must be restarted afterwards.': 'Восстановить базу из этого бэкапа? После этого нужно перезапустить приложение.',
+  'Restore': 'Восстановить',
+  'Database restored. Restart the app to see your profiles.': 'База восстановлена. Перезапустите приложение, чтобы увидеть профили.',
+
   // Devices page v0.2.25
   'Copy ID': 'Копировать ID',
   'Copied!': 'Скопировано!',

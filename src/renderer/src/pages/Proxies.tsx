@@ -95,22 +95,152 @@ export function Proxies() {
     }
   };
 
+  // ---- Bulk list import (v0.2.26) ----
+  const [showImport, setShowImport] = useState(false);
+  const [importText, setImportText] = useState('');
+  const [importProto, setImportProto] = useState<'http' | 'https' | 'socks5'>('socks5');
+  const [importBusy, setImportBusy] = useState(false);
+  const [importSummary, setImportSummary] = useState<string>('');
+
+  const previewCount = importText
+    ? importText
+        .split(/\r?\n/)
+        .map((l) => l.trim())
+        .filter((l) => l && !l.startsWith('#')).length
+    : 0;
+
+  const runImport = async (): Promise<void> => {
+    if (!importText.trim()) return;
+    setImportBusy(true);
+    setError('');
+    setImportSummary('');
+    try {
+      const res = await api.proxyImportList(importText, importProto);
+      if (res.code === 0) {
+        setImportSummary(
+          t('Imported') + `: ${res.data.created}, ` + t('duplicates') + `: ${res.data.duplicates}, ` + t('invalid lines') + `: ${res.data.invalid}`
+        );
+        setImportText('');
+        await load();
+        // Auto-detect geo: check each new proxy (sequential, gentle on ip-api).
+        if (importProto && res.data.proxy_ids.length > 0) {
+          const ids: string[] = res.data.proxy_ids;
+          setImportSummary((s) => s + ` — ${t('checking geo…')} (0/${ids.length})`);
+          for (let i = 0; i < ids.length; i++) {
+            try {
+              await api.proxyCheck(ids[i]);
+            } catch {
+              // keep going — one failed check must not stop the batch
+            }
+            if (i % 5 === 0 || i === ids.length - 1) {
+              setImportSummary((s) => s.replace(/\(0\/\d+\)$|\(\d+\/\d+\)$/, `(${i + 1}/${ids.length})`));
+              await load();
+            }
+          }
+          setImportSummary((s) => s.replace(/— .*$/, '') + ` — ${t('geo detected')}`);
+          await load();
+        }
+        setTimeout(() => {
+          setShowImport(false);
+          setImportSummary('');
+        }, 1500);
+      } else {
+        setError(res.msg);
+      }
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setImportBusy(false);
+    }
+  };
+
   return (
     <div>
       <div className="page-header-actions">
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <ProxiesIcon size={20} style={{ color: 'var(--accent)' }} />
+          <ProxiesIcon size={20} style={{ color: 'var(--text-secondary)' }} />
           <h2 style={{ fontSize: 16, fontWeight: 700 }}>{t('Proxy Manager')}</h2>
           <span className="hint" style={{ margin: 0 }}>({t('proxies configured')}: {proxies.length})</span>
         </div>
 
-        <button className="btn primary" onClick={() => setShowModal(true)}>
-          <PlusIcon size={15} />
-          <span>{t('Add Proxy')}</span>
-        </button>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button className="btn" onClick={() => setShowImport(true)}>
+            {t('Import List')}
+          </button>
+          <button className="btn primary" onClick={() => setShowModal(true)}>
+            <PlusIcon size={15} />
+            <span>{t('Add Proxy')}</span>
+          </button>
+        </div>
       </div>
 
       {error ? <div className="error-banner">{error}</div> : null}
+
+      {/* Import List Modal */}
+      {showImport ? (
+        <div className="modal-overlay" onClick={() => !importBusy && setShowImport(false)}>
+          <div className="modal-card" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>{t('Import Proxy List')}</h3>
+              <button className="btn-icon" onClick={() => setShowImport(false)}>✕</button>
+            </div>
+            <div className="modal-body">
+              <p className="hint" style={{ margin: 0 }}>
+                {t('One proxy per line. Supported formats:')} <code>ip:port</code>, <code>ip:port:user:pass</code>, <code>user:pass@ip:port</code>, <code>socks5://user:pass@ip:port</code>.
+              </p>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center', margin: '10px 0' }}>
+                <label style={{ fontSize: 12.5, color: 'var(--text-secondary)' }}>{t('Protocol for lines without prefix')}:</label>
+                <select
+                  className="select-input"
+                  style={{ width: 140 }}
+                  value={importProto}
+                  onChange={(e) => setImportProto(e.target.value as 'http' | 'https' | 'socks5')}
+                >
+                  <option value="socks5">SOCKS5</option>
+                  <option value="http">HTTP</option>
+                  <option value="https">HTTPS</option>
+                </select>
+                <label style={{ fontSize: 12.5, color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
+                  <input
+                    type="file"
+                    accept=".txt,.csv,text/plain"
+                    style={{ display: 'none' }}
+                    onChange={async (e) => {
+                      const f = e.target.files?.[0];
+                      if (f) setImportText(await f.text());
+                      e.target.value = '';
+                    }}
+                  />
+                  <span className="btn btn-sm" onClick={(e) => (e.currentTarget.previousElementSibling as HTMLInputElement)?.click()}>
+                    {t('Upload .txt file')}
+                  </span>
+                </label>
+              </div>
+              <textarea
+                placeholder={'145.223.59.161:6195:zpmigfas:xcn562htzyka\n195.40.122.162:6846:zpmigfas:xcn562htzyka\nsocks5://user:pass@1.2.3.4:1080'}
+                value={importText}
+                onChange={(e) => setImportText(e.target.value)}
+                rows={10}
+                style={{ width: '100%', fontFamily: 'var(--font-mono)', fontSize: 12 }}
+              />
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 }}>
+                <span style={{ fontSize: 12.5, color: 'var(--text-secondary)' }}>
+                  {t('Lines detected')}: <strong>{previewCount}</strong> — {t('geo will be detected automatically after import')}
+                </span>
+                {importSummary ? <span style={{ fontSize: 12.5, color: 'var(--text)' }}>{importSummary}</span> : null}
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button className="btn" onClick={() => setShowImport(false)} disabled={importBusy}>
+                {t('Cancel')}
+              </button>
+              <button className="btn primary" onClick={() => void runImport()} disabled={importBusy || !importText.trim()}>
+                {importBusy ? t('Importing…') : `${t('Import')} ${previewCount > 0 ? `(${previewCount})` : ''}`}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {/* Add Proxy Modal */}
       {showModal ? (

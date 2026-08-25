@@ -31,6 +31,10 @@ export function Settings() {
   const [logFiles, setLogFiles] = useState<Array<{ name: string; size: number; modified: number }>>([]);
   const [kernelInfo, setKernelInfo] = useState<{ installed: string | null; latest: string | null; updateAvailable: boolean; releaseUrl?: string; error?: string } | null>(null);
   const [kernelChecking, setKernelChecking] = useState(false);
+  const [backups, setBackups] = useState<Array<{ name: string; size: number; modified: number }>>([]);
+  const [restoreBusy, setRestoreBusy] = useState(false);
+  const [restoreDone, setRestoreDone] = useState(false);
+  const [restoreMsg, setRestoreMsg] = useState('');
 
   const checkKernel = (): void => {
     setKernelChecking(true);
@@ -58,6 +62,9 @@ export function Settings() {
       }).catch(() => undefined);
       api.kernelInfo().then((res) => {
         if (res.code === 0) setKernelInfo({ installed: res.data.installed, latest: null, updateAvailable: false });
+      }).catch(() => undefined);
+      api.backupsList().then((res) => {
+        if (res.code === 0) setBackups(res.data.list);
       }).catch(() => undefined);
     });
     if (window.antidetect?.update?.onStatus) {
@@ -352,6 +359,51 @@ export function Settings() {
               <p className="hint">
                 {t('Logs include service lifecycle, profile start/stop errors, backups and crash recovery events. Send the newest')} <code>app-*.log</code> {t('when reporting an issue.')}
               </p>
+
+              <div style={{ borderTop: '1px solid var(--border)', margin: '14px 0', paddingTop: 14 }}>
+                <div className="panel-header" style={{ padding: 0, marginBottom: 8 }}>{t('Database Backups (restore)')}</div>
+                <p className="hint" style={{ marginTop: 0 }}>
+                  {t('If profiles/groups suddenly disappeared, restore the database from an automatic daily backup. The current (broken) database is snapshotted before restoring — the operation is reversible. Restart the app after restoring.')}
+                </p>
+                {backups.length === 0 ? (
+                  <p className="hint" style={{ color: 'var(--text-secondary)' }}>{t('No backups found yet (they are created daily after the first run).')}</p>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    {backups.map((b) => (
+                      <div key={b.name} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 12.5 }}>
+                        <span style={{ color: 'var(--text-secondary)' }}>
+                          <code>{b.name}</code>{' '}
+                          <span style={{ color: 'var(--text-muted)' }}>({formatBytes(b.size)}, {new Date(b.modified).toLocaleString()})</span>
+                        </span>
+                        <button
+                          type="button"
+                          className="btn btn-sm"
+                          disabled={restoreBusy}
+                          onClick={() => {
+                            if (!window.confirm(t('Restore database from this backup? The app must be restarted afterwards.'))) return;
+                            setRestoreBusy(true);
+                            void import('../api').then(({ api }) =>
+                              api.backupRestore(b.name).then((r) => {
+                                setRestoreBusy(false);
+                                if (r.code === 0) setRestoreDone(true);
+                                else setRestoreMsg(r.msg);
+                              }).catch(() => setRestoreBusy(false))
+                            );
+                          }}
+                        >
+                          {t('Restore')}
+                        </button>
+                      </div>
+                    ))}
+                    {restoreDone ? (
+                      <p className="hint" style={{ color: 'var(--warn)', fontWeight: 600 }}>
+                        ✓ {t('Database restored. Restart the app to see your profiles.')}
+                      </p>
+                    ) : null}
+                    {restoreMsg ? <p className="hint" style={{ color: 'var(--text-secondary)' }}>{restoreMsg}</p> : null}
+                  </div>
+                )}
+              </div>
             </div>
           ) : null}
         </div>
