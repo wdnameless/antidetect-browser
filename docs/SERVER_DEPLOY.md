@@ -237,6 +237,7 @@ The same works from any external machine that has a WireGuard peer config.
 | Panel loads but WS viewer says `connection error` | Ensure Traefik forwards upgrades (default) and you connect via `ws://`, not `https://` mismatch |
 | Browser starts but window is invisible / dies after RDP logout | Re-check autologon + `MaxDisconnectionTime=0`; the session must stay active |
 | `profile is not running` on `/cdp/*` | Start the profile first (`/browser/start`) |
+| Forgot the panel login/password | Delete `data\panel_auth.json` and reload `/ui` — first-run setup repeats |
 | Kernel not found | Run `npm run ensure-kernel` on the server |
 
 ---

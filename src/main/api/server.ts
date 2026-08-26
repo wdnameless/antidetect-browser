@@ -9,6 +9,7 @@ import { rateLimitMiddleware } from './rateLimit';
 import { createCdpRouter, tryHandleCdpUpgrade } from './cdpTunnel';
 import { createViewerUpgradeHandler } from './viewer';
 import { PANEL_HTML } from './uiPanel';
+import { panelAuthRouter } from './panelAuth';
 import { getCdpEndpoint } from '../launcher/chromium';
 import { getApiKey } from '../config';
 import browserRoutes from './routes/browser';
@@ -76,6 +77,10 @@ export function startApi(): Promise<void> {
   app.get('/ui', (_req, res) => {
     res.type('html').send(PANEL_HTML);
   });
+
+  // Panel login (username/password -> session token). Public routes with
+  // their own brute-force protection.
+  app.use(panelAuthRouter);
 
   // Everything below requires Bearer auth
   app.use(authMiddleware);

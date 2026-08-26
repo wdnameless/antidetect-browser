@@ -61,13 +61,44 @@ export const PANEL_HTML = `<!doctype html>
   </table>
 </main>
 
-<div id="login">
+<div id="login" style="display:none">
   <div class="card">
-    <h2>Sign in</h2>
-    <p>Enter the API key printed by the service on the server.</p>
-    <label>API key</label>
-    <input id="key" type="password" placeholder="xxxxxxxx-xxxx-xxxx">
-    <div style="margin-top:14px;text-align:right"><button onclick="login()">Sign in</button></div>
+    <h2>Antidetect Panel</h2>
+
+    <!-- first run: create credentials -->
+    <div id="f_setup" style="display:none">
+      <p>Первый запуск: создайте логин и пароль панели.</p>
+      <label>Логин</label>
+      <input id="su_user" value="admin">
+      <label>Пароль (6+ символов)</label>
+      <input id="su_pass" type="password">
+      <label>Повторите пароль</label>
+      <input id="su_pass2" type="password">
+      <div style="margin-top:14px;text-align:right"><button onclick="doSetup()">Создать и войти</button></div>
+    </div>
+
+    <!-- regular login -->
+    <div id="f_login" style="display:none">
+      <p>Войдите, чтобы управлять профилями на сервере.</p>
+      <label>Логин</label>
+      <input id="li_user">
+      <label>Пароль</label>
+      <input id="li_pass" type="password">
+      <div style="margin-top:14px;display:flex;justify-content:flex-end;gap:8px">
+        <button class="gray" onclick="showKeyLogin()">API-ключом</button>
+        <button onclick="doLogin()">Войти</button>
+      </div>
+    </div>
+
+    <!-- fallback: paste API key directly -->
+    <div id="f_key" style="display:none">
+      <p>Вставьте API-ключ (для автоматизаций или восстановления доступа).</p>
+      <input id="key" type="password" placeholder="xxxxxxxx-xxxx-xxxx">
+      <div style="margin-top:14px;text-align:right"><button onclick="login()">Войти</button></div>
+    </div>
+
+    <p id="li_err" style="color:#e57373;font-size:13px;margin:10px 0 0"></p>
+    <p id="back_link" style="display:none;margin:8px 0 0"><a href="#" onclick="showLoginBack();return false" style="color:#7fb0ff;font-size:13px">← назад ко входу</a></p>
   </div>
 </div>
 
@@ -111,16 +142,57 @@ function api(path, opts){
   });
 }
 
+function enterApp(){
+  localStorage.setItem('antidetect_key', KEY);
+  document.getElementById('login').style.display='none';
+  document.getElementById('app').style.display='';
+  document.getElementById('conn').textContent='connected';
+  refresh();
+}
+
+function showOnly(id){
+  ['f_setup','f_login','f_key'].forEach(function(f){ document.getElementById(f).style.display = (f===id)?'':'none'; });
+  document.getElementById('li_err').textContent='';
+  document.getElementById('back_link').style.display = (id==='f_key') ? '' : 'none';
+}
+function liErr(m){ document.getElementById('li_err').textContent=m; }
+
+function authPost(path, body, cb){
+  fetch(path, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)})
+    .then(function(r){ return r.json().then(function(j){ return {status:r.status, j:j}; }); })
+    .then(function(x){
+      if(x.status===200 && x.j.code===0 && x.j.data.token){ KEY=x.j.data.token; enterApp(); }
+      else cb((x.j&&x.j.msg)||('HTTP '+x.status));
+    })
+    .catch(function(e){ cb(e.message); });
+}
+
+function doSetup(){
+  var u=document.getElementById('su_user').value.trim();
+  var p=document.getElementById('su_pass').value;
+  if(!u){ liErr('Введите логин'); return; }
+  if(p.length<6){ liErr('Пароль от 6 символов'); return; }
+  if(p!==document.getElementById('su_pass2').value){ liErr('Пароли не совпадают'); return; }
+  authPost('/ui/setup', {username:u, password:p}, liErr);
+}
+
+function doLogin(){
+  var u=document.getElementById('li_user').value.trim();
+  var p=document.getElementById('li_pass').value;
+  if(!u||!p){ liErr('Заполните логин и пароль'); return; }
+  authPost('/ui/login', {username:u, password:p}, liErr);
+}
+function showKeyLogin(){ showOnly('f_key'); }
+function showLoginBack(){
+  fetch('/ui/auth-state').then(function(r){return r.json();}).then(function(j){
+    showOnly(j.data.hasPassword ? 'f_login' : 'f_setup');
+  });
+}
+
 function login(){
   KEY = document.getElementById('key').value.trim();
   if(!KEY) return;
-  api('/status').then(function(){
-    localStorage.setItem('antidetect_key', KEY);
-    document.getElementById('login').style.display='none';
-    document.getElementById('app').style.display='';
-    document.getElementById('conn').textContent='connected';
-    refresh();
-  }).catch(function(e){ toast('Auth failed: '+e.message); });
+  api('/status').then(enterApp).catch(function(e){ toast('Auth failed: '+e.message); });
 }
 function logout(){ localStorage.removeItem('antidetect_key'); location.reload(); }
 
@@ -271,14 +343,18 @@ window.addEventListener('keyup', function(ev){
 }, true);
 
 if(KEY){
-  api('/status').then(function(){
-    document.getElementById('login').style.display='none';
-    document.getElementById('app').style.display='';
-    document.getElementById('conn').textContent='connected';
-    refresh();
-  }).catch(function(){ document.getElementById('login').style.display='flex'; });
+  api('/status').then(enterApp).catch(function(){
+    // stored key rejected — show the proper login flow
+    fetch('/ui/auth-state').then(function(r){return r.json();}).then(function(j){
+      showOnly(j.data.hasPassword ? 'f_login' : 'f_setup');
+      document.getElementById('login').style.display='flex';
+    }).catch(function(){ document.getElementById('login').style.display='flex'; });
+  });
 } else {
-  document.getElementById('login').style.display='flex';
+  fetch('/ui/auth-state').then(function(r){return r.json();}).then(function(j){
+    showOnly(j.data.hasPassword ? 'f_login' : 'f_setup');
+    document.getElementById('login').style.display='flex';
+  }).catch(function(){ document.getElementById('login').style.display='flex'; });
 }
 </script>
 </body>
