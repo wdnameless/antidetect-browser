@@ -41,6 +41,31 @@ interface StoredAuth {
   hash: string;
 }
 
+export interface PanelSession {
+  at: number;
+  ip: string;
+  ua: string;
+  username: string;
+}
+
+const SESSIONS_FILE = path.join(DATA_DIR, 'panel_sessions.json');
+const MAX_SESSIONS = 50;
+
+export function recordSession(ip: string, ua: string, username: string): void {
+  try {
+    let list: PanelSession[] = [];
+    try {
+      list = JSON.parse(fs.readFileSync(SESSIONS_FILE, 'utf8')) as PanelSession[];
+    } catch {
+      // first entry
+    }
+    list.unshift({ at: Date.now(), ip, ua: String(ua || '').slice(0, 200), username });
+    fs.writeFileSync(SESSIONS_FILE, JSON.stringify(list.slice(0, MAX_SESSIONS), null, 2), 'utf8');
+  } catch {
+    // never fail a login because of session bookkeeping
+  }
+}
+
 function readAuth(): StoredAuth | undefined {
   try {
     const raw = JSON.parse(fs.readFileSync(AUTH_FILE, 'utf8')) as StoredAuth;
@@ -76,6 +101,22 @@ panelAuthRouter.get('/ui/auth-state', (_req, res) => {
   res.json({ code: 0, msg: 'success', data: { hasPassword: hasPanelPassword() } });
 });
 
+/** Login sessions (devices that signed in). Requires Bearer token. */
+panelAuthRouter.get('/ui/sessions', (req, res) => {
+  const header = String(req.headers.authorization || '').replace(/^Bearer\s+/i, '');
+  if (!header || header !== getApiKey()) {
+    res.status(401).json({ code: -1, msg: 'unauthorized', data: {} });
+    return;
+  }
+  let list: PanelSession[] = [];
+  try {
+    list = JSON.parse(fs.readFileSync(SESSIONS_FILE, 'utf8')) as PanelSession[];
+  } catch {
+    // empty
+  }
+  res.json({ code: 0, msg: 'success', data: { list } });
+});
+
 /** Public one-time setup: allowed only while no credentials exist. */
 panelAuthRouter.post('/ui/setup', (req: Request, res: Response) => {
   if (hasPanelPassword()) {
@@ -90,6 +131,7 @@ panelAuthRouter.post('/ui/setup', (req: Request, res: Response) => {
   }
   const salt = randomBytes(16).toString('hex');
   writeAuth({ username, salt, hash: hashPassword(password, salt) });
+  recordSession(req.ip || 'anon', String(req.headers['user-agent'] || ''), username);
   res.json({ code: 0, msg: 'success', data: { token: getApiKey(), username } });
 });
 
@@ -110,5 +152,6 @@ panelAuthRouter.post('/ui/login', (req: Request, res: Response) => {
     res.status(401).json({ code: -1, msg: 'invalid credentials', data: {} });
     return;
   }
+  recordSession(req.ip || 'anon', String(req.headers['user-agent'] || ''), username);
   res.json({ code: 0, msg: 'success', data: { token: getApiKey(), username } });
 });

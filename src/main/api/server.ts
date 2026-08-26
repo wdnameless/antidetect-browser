@@ -20,6 +20,7 @@ import extensionsRoutes from './routes/extensions';
 import batchRoutes from './routes/batch';
 import logsRoutes from './routes/logs';
 import kernelRoutes from './routes/kernel';
+import cloudRoutes from './routes/cloud';
 
 const LOOPBACK_HOST_RE = /^(127\.0\.0\.1|localhost|\[::1\])(:\d+)?$/i;
 
@@ -95,8 +96,9 @@ export function startApi(): Promise<void> {
   app.use(cookiesRoutes);
   app.use(extensionsRoutes);
   app.use(batchRoutes);
-  app.use(logsRoutes);
-  app.use(kernelRoutes);
+app.use(logsRoutes);
+app.use(kernelRoutes);
+app.use(cloudRoutes);
 
   // JSON 404 for unknown routes (Express default would return HTML).
   app.use((_req: Request, res: Response) => {

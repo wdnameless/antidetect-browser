@@ -7,6 +7,7 @@ import { Proxies } from './pages/Proxies';
 import { Devices } from './pages/Devices';
 import { Extensions } from './pages/Extensions';
 import { Settings } from './pages/Settings';
+import { CloudSync } from './pages/CloudSync';
 import {
   ProfilesIcon,
   FolderIcon,
@@ -15,9 +16,10 @@ import {
   ExtensionsIcon,
   SettingsIcon,
   ShieldIcon,
+  CloudIcon,
 } from './icons';
 
-type Page = 'profiles' | 'groups' | 'proxies' | 'devices' | 'extensions' | 'settings';
+type Page = 'profiles' | 'groups' | 'proxies' | 'devices' | 'extensions' | 'cloud' | 'settings';
 
 interface NavItem {
   key: Page;
@@ -31,6 +33,7 @@ const NAV: NavItem[] = [
   { key: 'proxies', label: 'Proxies', icon: ProxiesIcon },
   { key: 'devices', label: 'Devices', icon: DevicesIcon },
   { key: 'extensions', label: 'Extensions', icon: ExtensionsIcon },
+  { key: 'cloud', label: 'Cloud Sync', icon: CloudIcon },
   { key: 'settings', label: 'Settings', icon: SettingsIcon },
 ];
 
@@ -116,6 +119,8 @@ export function App() {
             <Devices />
           ) : page === 'extensions' ? (
             <Extensions />
+          ) : page === 'cloud' ? (
+            <CloudSync />
           ) : (
             <Settings />
           )}

@@ -102,6 +102,18 @@ export function setDataDir(dir: string): string {
   return dir;
 }
 
+/** Read a single persisted setting (settings.json). */
+export function getSetting(key: string): unknown {
+  return readSettings()[key];
+}
+
+/** Persist a single setting (takes effect immediately). */
+export function setSetting(key: string, value: unknown): void {
+  const s = readSettings();
+  s[key] = value;
+  writeSettings(s);
+}
+
 let cachedApiKey: string | null = null;
 
 export function getApiKey(): string {

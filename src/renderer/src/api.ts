@@ -160,6 +160,33 @@ async function request<T>(path: string, options: RequestInit = {}, retries = 3):
   return (await res.json()) as ApiEnvelope<T>;
 }
 
+export interface CloudStateData {
+  configured: boolean;
+  url?: string;
+  user?: string;
+  hasToken?: boolean;
+  connected?: boolean;
+  version?: string;
+  hasPassword?: boolean;
+  authorized?: boolean;
+  error?: string;
+}
+
+export interface CloudSessionItem {
+  at: number;
+  ip: string;
+  ua: string;
+  username: string;
+}
+
+export interface SyncResultRow {
+  user_id: string;
+  name: string;
+  ok: boolean;
+  new_id?: string;
+  error?: string;
+}
+
 export const api = {
   status: () => request<{ status: string; version: string }>('/status'),
   list: (opts?: { groupId?: string | null; page?: number; pageSize?: number; search?: string | null; platform?: string | null; status?: string | null }) => {
@@ -381,5 +408,32 @@ export const api = {
     request<{ user_ids: string[]; count: number }>('/api/v1/browser-profile/import', {
       method: 'POST',
       body: JSON.stringify({ csv }),
+    }),
+  // ---- Cloud Sync (bridge endpoints on the LOCAL service) ----
+  cloudState: () => request<CloudStateData>('/api/v1/cloud/state'),
+  cloudConnect: (url: string) =>
+    request<CloudStateData>('/api/v1/cloud/connect', { method: 'POST', body: JSON.stringify({ url }) }),
+  cloudSetup: (username: string, password: string) =>
+    request<{ username: string }>('/api/v1/cloud/setup', {
+      method: 'POST',
+      body: JSON.stringify({ username, password }),
+    }),
+  cloudLogin: (username: string, password: string) =>
+    request<{ username: string }>('/api/v1/cloud/login', {
+      method: 'POST',
+      body: JSON.stringify({ username, password }),
+    }),
+  cloudDisconnect: () => request<Record<string, never>>('/api/v1/cloud/disconnect', { method: 'POST' }),
+  cloudSessions: () => request<{ list: CloudSessionItem[] }>('/api/v1/cloud/sessions'),
+  cloudRemoteList: () => request<{ list: ProfileListItem[]; total: number }>('/api/v1/cloud/remote-list'),
+  cloudPush: (user_ids?: string[]) =>
+    request<{ pushed: number; failed: number; results: SyncResultRow[] }>('/api/v1/cloud/push', {
+      method: 'POST',
+      body: JSON.stringify({ user_ids: user_ids ?? null }),
+    }),
+  cloudPull: (user_ids?: string[]) =>
+    request<{ pulled: number; failed: number; results: SyncResultRow[] }>('/api/v1/cloud/pull', {
+      method: 'POST',
+      body: JSON.stringify({ user_ids: user_ids ?? null }),
     }),
 };

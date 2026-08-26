@@ -196,3 +196,11 @@ export const IconChevronDown = ({ size = 15, ...props }: IconProps) => (
     <polyline points="6 9 12 15 18 9" />
   </svg>
 );
+
+export function CloudIcon({ size = 18, ...props }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <path d="M17.5 19a4.5 4.5 0 1 0-.42-8.98 6 6 0 0 0-11.06 2.15A3.5 3.5 0 0 0 6.5 19h11Z" />
+    </svg>
+  );
+}

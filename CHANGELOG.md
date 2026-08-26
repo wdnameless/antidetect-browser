@@ -3,6 +3,20 @@
 All notable changes are documented here. Releases are published on
 [GitHub Releases](https://github.com/wdnameless/antidetect-browser/releases).
 
+## v0.2.30 - Cloud Sync tab: connect, deploy, sync from the desktop app
+
+- **New "Cloud Sync" tab**: connect the desktop app to your self-hosted
+  server instance (URL/IP → sign in or one-time account setup).
+- **One-command deploy**: copy a bootstrap PowerShell command that installs
+  Node, WireGuard (10.8.0.1 + N peers), builds the app and registers an
+  auto-start service on any Windows dedicated machine (`deploy/bootstrap.ps1`).
+- **Profile sync**: push local profiles to the server and pull server profiles
+  back (bundle export/import over the cloud bridge; running profiles skipped).
+- **Devices list**: recent panel logins (time, IP, user-agent) from the server.
+- Server-side: login sessions are recorded (`data\panel_sessions.json`) and
+  exposed via `GET /ui/sessions`; cloud bridge endpoints under
+  `/api/v1/cloud/*` keep remote credentials in the main process.
+
 ## v0.2.29 - Server deployment: remote access, web panel + screencast viewer
 
 - **Server mode** (`ANTIDETECT_SERVER_MODE=1`): trusted Host whitelist behind a
