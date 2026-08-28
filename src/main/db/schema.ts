@@ -155,6 +155,46 @@ export function migrate(db: Database): void {
       status            TEXT NOT NULL DEFAULT 'active',
       members           TEXT NOT NULL DEFAULT '[]'
     );
+
+    CREATE TABLE IF NOT EXISTS scripts (
+      id          TEXT PRIMARY KEY,
+      name        TEXT NOT NULL,
+      code        TEXT NOT NULL,
+      created_at  INTEGER NOT NULL,
+      updated_at  INTEGER NOT NULL,
+      last_run_at INTEGER,
+      last_status TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS script_runs (
+      id          TEXT PRIMARY KEY,
+      script_id   TEXT NOT NULL,
+      profile_ids TEXT NOT NULL DEFAULT '[]',
+      status      TEXT NOT NULL DEFAULT 'running',
+      log         TEXT NOT NULL DEFAULT '',
+      started_at  INTEGER NOT NULL,
+      finished_at INTEGER
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_script_runs_script ON script_runs(script_id);
+
+    CREATE TABLE IF NOT EXISTS global_keys (
+      key       TEXT PRIMARY KEY,
+      value_enc TEXT NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS triggers (
+      id        TEXT PRIMARY KEY,
+      name      TEXT NOT NULL,
+      script_id TEXT NOT NULL,
+      type      TEXT NOT NULL,
+      schedule  TEXT,
+      event     TEXT,
+      enabled   INTEGER NOT NULL DEFAULT 1,
+      last_fired_at INTEGER,
+      created_at INTEGER NOT NULL
+    );
   `);
 
   // Migrations for databases created before these columns existed.

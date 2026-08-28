@@ -288,6 +288,56 @@ export interface TileResult {
   failed: Array<{ profile_id: string; error: string }>;
 }
 
+// ---- Sprint 4: script engine / keys / triggers / catalog ----
+
+export interface ScriptItem {
+  id: string;
+  name: string;
+  code: string;
+  created_at: number;
+  updated_at: number;
+  last_run_at: number | null;
+  last_status: string | null;
+}
+
+export interface ScriptRunItem {
+  id: string;
+  script_id: string;
+  profile_ids: string[];
+  status: 'running' | 'done' | 'error' | 'timeout';
+  log: string;
+  started_at: number;
+  finished_at: number | null;
+}
+
+export interface KeyItem {
+  key: string;
+  has_value: boolean;
+  updated_at: number;
+}
+
+export interface TriggerItem {
+  id: string;
+  name: string;
+  script_id: string;
+  type: 'schedule' | 'event';
+  schedule: string | null;
+  event: 'profile_started' | 'profile_stopped' | null;
+  enabled: number;
+  last_fired_at: number | null;
+  created_at: number;
+}
+
+export interface CatalogScriptItem {
+  id: string;
+  name: string;
+  description: string;
+  tags: string[];
+  version: string;
+  url: string;
+  checksum_sha256: string;
+}
+
 export const api = {
   status: () => request<{ status: string; version: string }>('/status'),
   list: (opts?: { groupId?: string | null; page?: number; pageSize?: number; search?: string | null; platform?: string | null; status?: string | null; tagId?: string | null }) => {
@@ -695,4 +745,59 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ session_id: sessionId, layout }),
     }),
+  // ---- Scripts (Sprint 4) ----
+  scriptsList: () => request<{ list: ScriptItem[] }>('/api/v1/scripts'),
+  scriptGet: (id: string) => request<ScriptItem>(`/api/v1/scripts/${encodeURIComponent(id)}`),
+  scriptCreate: (name: string, code: string) =>
+    request<{ id: string }>('/api/v1/scripts', { method: 'POST', body: JSON.stringify({ name, code }) }),
+  scriptUpdate: (id: string, body: { name?: string; code?: string }) =>
+    request<Record<string, never>>(`/api/v1/scripts/${encodeURIComponent(id)}/update`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  scriptDelete: (id: string) =>
+    request<Record<string, never>>(`/api/v1/scripts/${encodeURIComponent(id)}/delete`, { method: 'POST' }),
+  scriptRun: (id: string, profileIds: string[]) =>
+    request<{ run_ids: string[]; queued: number }>(`/api/v1/scripts/${encodeURIComponent(id)}/run`, {
+      method: 'POST',
+      body: JSON.stringify({ profile_ids: profileIds }),
+    }),
+  scriptRuns: (id: string) =>
+    request<{ list: ScriptRunItem[] }>(`/api/v1/scripts/${encodeURIComponent(id)}/runs`),
+  // ---- Keys (Sprint 4.2) ----
+  keysList: () => request<{ list: KeyItem[] }>('/api/v1/keys'),
+  keySet: (key: string, value: string) =>
+    request<{ key: string }>('/api/v1/keys', { method: 'POST', body: JSON.stringify({ key, value }) }),
+  keyDelete: (key: string) =>
+    request<Record<string, never>>(`/api/v1/keys/${encodeURIComponent(key)}/delete`, { method: 'POST' }),
+  keyReveal: (key: string) =>
+    request<{ value: string }>(`/api/v1/keys/${encodeURIComponent(key)}/reveal`),
+  // ---- Triggers (Sprint 4.3) ----
+  triggersList: () => request<{ list: TriggerItem[] }>('/api/v1/triggers'),
+  triggerCreate: (body: { name: string; script_id: string; type: 'schedule' | 'event'; schedule?: string; event?: string }) =>
+    request<{ id: string }>('/api/v1/triggers', { method: 'POST', body: JSON.stringify(body) }),
+  triggerUpdate: (id: string, body: { name?: string; schedule?: string; event?: string }) =>
+    request<Record<string, never>>(`/api/v1/triggers/${encodeURIComponent(id)}/update`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  triggerToggle: (id: string, enabled: boolean) =>
+    request<{ enabled: boolean }>(`/api/v1/triggers/${encodeURIComponent(id)}/toggle`, {
+      method: 'POST',
+      body: JSON.stringify({ enabled }),
+    }),
+  triggerDelete: (id: string) =>
+    request<Record<string, never>>(`/api/v1/triggers/${encodeURIComponent(id)}/delete`, { method: 'POST' }),
+  // ---- Catalog (Sprint 4.4) ----
+  catalogFetch: () => request<{ url: string; scripts: CatalogScriptItem[] }>('/api/v1/catalog'),
+  catalogCode: (url: string) =>
+    request<{ code: string; checksum: string }>(`/api/v1/catalog/code?url=${encodeURIComponent(url)}`),
+  catalogInstall: (catalogId: string) =>
+    request<{ id: string }>('/api/v1/catalog/install', {
+      method: 'POST',
+      body: JSON.stringify({ catalog_id: catalogId }),
+    }),
+  catalogGetUrl: () => request<{ url: string }>('/api/v1/catalog/url'),
+  catalogSetUrl: (url: string) =>
+    request<{ url: string }>('/api/v1/catalog/url', { method: 'POST', body: JSON.stringify({ url }) }),
 };

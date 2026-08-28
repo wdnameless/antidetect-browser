@@ -11,6 +11,8 @@ import { CloudSync } from './pages/CloudSync';
 import { Teams } from './pages/Teams';
 import { Diagnostics } from './pages/Diagnostics';
 import { Trash } from './pages/Trash';
+import { Scripts } from './pages/Scripts';
+import { Catalog } from './pages/Catalog';
 import { WorkspaceSwitcher } from './components/WorkspaceSwitcher';
 import {
   ProfilesIcon,
@@ -24,9 +26,11 @@ import {
   UsersIcon,
   KeyIcon,
   TrashIcon,
+  DiceIcon,
+  CookieIcon,
 } from './icons';
 
-type Page = 'profiles' | 'groups' | 'proxies' | 'devices' | 'extensions' | 'teams' | 'cloud' | 'diagnostics' | 'trash' | 'settings';
+type Page = 'profiles' | 'groups' | 'proxies' | 'devices' | 'extensions' | 'teams' | 'cloud' | 'diagnostics' | 'trash' | 'scripts' | 'catalog' | 'settings';
 
 interface NavItem {
   key: Page;
@@ -42,6 +46,8 @@ const NAV: NavItem[] = [
   { key: 'extensions', label: 'Extensions', icon: ExtensionsIcon },
   { key: 'diagnostics', label: 'Diagnostics', icon: KeyIcon },
   { key: 'trash', label: 'Trash', icon: TrashIcon },
+  { key: 'scripts', label: 'Scripts', icon: DiceIcon },
+  { key: 'catalog', label: 'Catalog', icon: CookieIcon },
   { key: 'teams', label: 'Teams', icon: UsersIcon },
   { key: 'cloud', label: 'Cloud Sync', icon: CloudIcon },
   { key: 'settings', label: 'Settings', icon: SettingsIcon },
@@ -149,6 +155,10 @@ export function App() {
             <Diagnostics />
           ) : page === 'trash' ? (
             <Trash />
+          ) : page === 'scripts' ? (
+            <Scripts />
+          ) : page === 'catalog' ? (
+            <Catalog />
           ) : page === 'teams' ? (
             <Teams />
           ) : page === 'cloud' ? (

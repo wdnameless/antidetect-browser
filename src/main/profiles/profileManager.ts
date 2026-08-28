@@ -482,6 +482,30 @@ export function setStatus(id: string, status: string): void {
   getDb()
     .prepare('UPDATE profiles SET status = ?, updated_at = ? WHERE id = ?')
     .run(status, Date.now(), id);
+  notifyStatusChange(id, status);
+}
+
+// ---------------------------------------------------------------------------
+// Status-change events (Sprint 4.3): script trigger hooks subscribe here.
+// A tiny callback registry keeps profileManager decoupled from the trigger
+// module (which imports runScript lazily via require inside the callback).
+// ---------------------------------------------------------------------------
+
+type StatusChangeCallback = (profileId: string, status: string) => void;
+const statusChangeCallbacks: StatusChangeCallback[] = [];
+
+export function onProfileStatusChange(cb: StatusChangeCallback): void {
+  statusChangeCallbacks.push(cb);
+}
+
+function notifyStatusChange(profileId: string, status: string): void {
+  for (const cb of statusChangeCallbacks) {
+    try {
+      cb(profileId, status);
+    } catch {
+      // subscriber errors must never break profile lifecycle
+    }
+  }
 }
 
 /**

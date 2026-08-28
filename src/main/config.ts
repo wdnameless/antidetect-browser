@@ -114,6 +114,19 @@ export function setSetting(key: string, value: unknown): void {
   writeSettings(s);
 }
 
+/**
+ * Script catalog manifest URL (Sprint 4.4). Default stub ships empty so the
+ * catalog starts disabled; users point it at their own GitHub raw manifest in
+ * Settings. Env override wins for CI/server deployments.
+ */
+export const CATALOG_URL_DEFAULT = '';
+export function getCatalogUrl(): string {
+  const fromEnv = process.env.ANTIDETECT_CATALOG_URL;
+  if (fromEnv && fromEnv.length > 0) return fromEnv;
+  const saved = getSetting('catalogUrl');
+  return typeof saved === 'string' ? saved : CATALOG_URL_DEFAULT;
+}
+
 let cachedApiKey: string | null = null;
 
 export function getApiKey(): string {

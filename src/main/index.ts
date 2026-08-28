@@ -7,6 +7,9 @@ import { seedDevices } from './devices/deviceManager';
 import { recoverStaleRunning, purgeExpiredTrash } from './profiles/profileManager';
 import { stopAll } from './launcher/chromium';
 import { stopAllSessions } from './syncer/actionSyncer';
+import { startScheduler, stopScheduler, onProfileStatusChanged } from './scripts/triggerScheduler';
+import { stopAllWorkers } from './scripts/scriptEngine';
+import { onProfileStatusChange } from './profiles/profileManager';
 import { logger, initLogger, flushLogs } from './util/logger';
 
 // ---------------------------------------------------------------------------
@@ -76,6 +79,12 @@ export async function shutdown(reason: string, code = 0): Promise<void> {
     // ignore
   }
   try {
+    stopScheduler();
+    stopAllWorkers();
+  } catch {
+    // ignore
+  }
+  try {
     flushDb();
     closeDb();
   } catch {
@@ -110,6 +119,10 @@ export async function startService(): Promise<void> {
     logger.info('trash purge applied', { purged });
     console.log(`[antidetect] trash purge: ${purged} profile(s) older than 30 days removed`);
   }
+
+  // Script triggers (Sprint 4.3): scheduler tick + event hooks on status changes.
+  startScheduler();
+  onProfileStatusChange(onProfileStatusChanged);
 
   await startApi();
   logger.info('service ready', { apiKey: getApiKey() });
