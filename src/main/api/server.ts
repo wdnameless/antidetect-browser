@@ -29,6 +29,7 @@ import diagnosticsRoutes from './routes/diagnostics';
 import tagsRoutes from './routes/tags';
 import trashRoutes from './routes/trash';
 import profilesRoutes from './routes/profiles';
+import syncerRoutes from './routes/syncer';
 
 const LOOPBACK_HOST_RE = /^(127\.0\.0\.1|localhost|\[::1\])(:\d+)?$/i;
 
@@ -115,6 +116,7 @@ app.use(diagnosticsRoutes);
 app.use(tagsRoutes);
 app.use(trashRoutes);
 app.use(profilesRoutes);
+app.use(syncerRoutes);
 
   // JSON 404 for unknown routes (Express default would return HTML).
   app.use((_req: Request, res: Response) => {

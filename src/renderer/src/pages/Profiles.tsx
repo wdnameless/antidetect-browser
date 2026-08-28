@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+﻿import { useCallback, useEffect, useState } from 'react';
 import {
   api,
   type ProfileListItem,
@@ -10,8 +10,10 @@ import {
   type VaultEntry,
   type TagItem,
   type ProfileTagBinding,
+  type SyncSessionInfo,
 } from '../api';
 import { useI18n } from '../i18n';
+import { SyncPanel } from '../components/SyncPanel';
 import {
   PlayIcon,
   StopIcon,
@@ -31,6 +33,7 @@ import {
   DevicesIcon,
   ProfilesIcon,
   KeyIcon,
+  UsersIcon,
 } from '../icons';
 
 export function Profiles({ initialGroupId }: { initialGroupId?: string | null } = {}) {
@@ -68,6 +71,10 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
   const [vaultForm, setVaultForm] = useState<{ id: string | null; label: string; login: string; password: string; totp: string; notes: string }>({ id: null, label: '', login: '', password: '', totp: '', notes: '' });
   const [revealed, setRevealed] = useState<Record<string, string>>({});
   const [copiedValue, setCopiedValue] = useState<string | null>(null);
+
+  // Action Syncer (Sprint 3)
+  const [syncSession, setSyncSession] = useState<SyncSessionInfo | null>(null);
+  const [syncBusy, setSyncBusy] = useState(false);
 
   // Modal Profile State (Create or Edit)
   const [modalMode, setModalMode] = useState<'create' | 'edit' | null>(null);
@@ -1028,6 +1035,28 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
     }
   };
 
+  // ---- Action Syncer (Sprint 3): mirror actions across running profiles ----
+  const selectedRunning = profiles.filter((p) => selectedIds.has(p.user_id) && p.status === 'running');
+  const syncEligible = selectedRunning.length >= 2;
+
+  const handleStartSync = async () => {
+    if (!syncEligible) return;
+    setSyncBusy(true);
+    setError('');
+    try {
+      const res = await api.syncCreate(selectedRunning.map((p) => p.user_id));
+      if (res.code === 0) {
+        setSyncSession(res.data);
+      } else {
+        setError(res.msg);
+      }
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setSyncBusy(false);
+    }
+  };
+
   return (
     <div>
       {/* Top Action Header */}
@@ -1697,6 +1726,21 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
 
           <button
             type="button"
+            className="btn btn-sm"
+            onClick={() => void handleStartSync()}
+            disabled={bulkBusy || syncBusy || !syncEligible}
+            title={
+              syncEligible
+                ? t('Mirror actions from the first selected profile to the others')
+                : t('Select at least 2 RUNNING profiles to sync')
+            }
+          >
+            <UsersIcon size={12} />
+            <span>{syncBusy ? t('Starting...') : t('Sync (profiles)')}</span>
+          </button>
+
+          <button
+            type="button"
             className="btn btn-sm btn-danger"
             onClick={() => void handleBulkDelete()}
             disabled={bulkBusy}
@@ -1717,6 +1761,16 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
             ✕
           </button>
         </div>
+      ) : null}
+
+      {/* Action Syncer panel (Sprint 3) */}
+      {syncSession ? (
+        <SyncPanel
+          session={syncSession}
+          profiles={profiles}
+          onChanged={() => void loadProfiles()}
+          onClosed={() => setSyncSession(null)}
+        />
       ) : null}
 
       {/* AdsPower-Style Tabbed Profile Modal (Create / Edit) */}

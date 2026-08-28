@@ -147,6 +147,14 @@ export function migrate(db: Database): void {
     );
 
     CREATE INDEX IF NOT EXISTS idx_profile_tags_tag ON profile_tags(tag_id);
+
+    CREATE TABLE IF NOT EXISTS sync_sessions (
+      id                TEXT PRIMARY KEY,
+      master_profile_id TEXT NOT NULL,
+      created_at        INTEGER NOT NULL,
+      status            TEXT NOT NULL DEFAULT 'active',
+      members           TEXT NOT NULL DEFAULT '[]'
+    );
   `);
 
   // Migrations for databases created before these columns existed.

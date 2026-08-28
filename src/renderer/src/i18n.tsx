@@ -437,6 +437,23 @@ const RU: Record<string, string> = {
   // Sprint 2: Export CSV
   'Export CSV': 'Экспорт CSV',
   'Export all profiles to CSV': 'Экспортировать все профили в CSV',
+
+  // Sprint 3: Action Syncer
+  'Action Sync': 'Синхронизация действий',
+  'Sync (profiles)': 'Синхро',
+  'Starting...': 'Запуск...',
+  'Mirror actions from the first selected profile to the others': 'Повторять действия первого выбранного профиля в остальных',
+  'Select at least 2 RUNNING profiles to sync': 'Выберите минимум 2 ЗАПУЩЕННЫХ профиля для синхронизации',
+  'Session active': 'Активна',
+  'Master': 'Мастер',
+  'Slave': 'Ведомый',
+  'Leave session': 'Покинуть сессию',
+  'Tile 2x2': 'Сетка 2x2',
+  'Tile 3x3': 'Сетка 3x3',
+  'Tile auto': 'Сетка авто',
+  'Join profile...': 'Добавить профиль...',
+  'Join selected': 'Добавить выбранные',
+  'Stop session': 'Остановить сессию',
 };
 
 interface I18nCtx {

@@ -6,6 +6,7 @@ import { getApiKey, API_HOST, API_PORT, DATA_DIR } from './config';
 import { seedDevices } from './devices/deviceManager';
 import { recoverStaleRunning, purgeExpiredTrash } from './profiles/profileManager';
 import { stopAll } from './launcher/chromium';
+import { stopAllSessions } from './syncer/actionSyncer';
 import { logger, initLogger, flushLogs } from './util/logger';
 
 // ---------------------------------------------------------------------------
@@ -66,6 +67,11 @@ export async function shutdown(reason: string, code = 0): Promise<void> {
   console.log(`[antidetect] ${reason} received — shutting down...`);
   try {
     await stopAll();
+  } catch {
+    // ignore
+  }
+  try {
+    await stopAllSessions();
   } catch {
     // ignore
   }

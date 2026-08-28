@@ -273,6 +273,21 @@ export interface TrashItem {
   created_at: number;
 }
 
+// ---- Sprint 3: action syncer ----
+
+export interface SyncSessionInfo {
+  id: string;
+  master_profile_id: string;
+  created_at: number;
+  status: string;
+  members: string[];
+}
+
+export interface TileResult {
+  tiled: string[];
+  failed: Array<{ profile_id: string; error: string }>;
+}
+
 export const api = {
   status: () => request<{ status: string; version: string }>('/status'),
   list: (opts?: { groupId?: string | null; page?: number; pageSize?: number; search?: string | null; platform?: string | null; status?: string | null; tagId?: string | null }) => {
@@ -656,4 +671,28 @@ export const api = {
     request<{ deleted: boolean }>(`/api/v1/trash/${encodeURIComponent(id)}/delete`, { method: 'POST' }),
   // ---- Export (Sprint 2.5) ----
   exportCsvUrl: () => `${getApiBase()}/api/v1/profiles/export-csv`,
+  // ---- Action syncer (Sprint 3) ----
+  syncCreate: (profileIds: string[]) =>
+    request<SyncSessionInfo>('/api/v1/sync/sessions', {
+      method: 'POST',
+      body: JSON.stringify({ profile_ids: profileIds }),
+    }),
+  syncList: () => request<{ list: SyncSessionInfo[] }>('/api/v1/sync/sessions'),
+  syncStop: (sessionId: string) =>
+    request<{ stopped: boolean }>(`/api/v1/sync/sessions/${encodeURIComponent(sessionId)}/stop`, { method: 'POST' }),
+  syncJoin: (sessionId: string, profileId: string) =>
+    request<SyncSessionInfo>(`/api/v1/sync/sessions/${encodeURIComponent(sessionId)}/join`, {
+      method: 'POST',
+      body: JSON.stringify({ profile_id: profileId }),
+    }),
+  syncLeave: (sessionId: string, profileId: string) =>
+    request<SyncSessionInfo>(`/api/v1/sync/sessions/${encodeURIComponent(sessionId)}/leave`, {
+      method: 'POST',
+      body: JSON.stringify({ profile_id: profileId }),
+    }),
+  syncTile: (sessionId: string, layout: '2x2' | '3x3' | 'auto') =>
+    request<TileResult>('/api/v1/sync/tile', {
+      method: 'POST',
+      body: JSON.stringify({ session_id: sessionId, layout }),
+    }),
 };
