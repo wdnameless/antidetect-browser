@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { initApiKey } from './api';
+import { initApiKey, api } from './api';
 import { useI18n } from './i18n';
 import { Profiles } from './pages/Profiles';
 import { Groups } from './pages/Groups';
@@ -8,6 +8,8 @@ import { Devices } from './pages/Devices';
 import { Extensions } from './pages/Extensions';
 import { Settings } from './pages/Settings';
 import { CloudSync } from './pages/CloudSync';
+import { Teams } from './pages/Teams';
+import { WorkspaceSwitcher } from './components/WorkspaceSwitcher';
 import {
   ProfilesIcon,
   FolderIcon,
@@ -17,9 +19,10 @@ import {
   SettingsIcon,
   ShieldIcon,
   CloudIcon,
+  UsersIcon,
 } from './icons';
 
-type Page = 'profiles' | 'groups' | 'proxies' | 'devices' | 'extensions' | 'cloud' | 'settings';
+type Page = 'profiles' | 'groups' | 'proxies' | 'devices' | 'extensions' | 'teams' | 'cloud' | 'settings';
 
 interface NavItem {
   key: Page;
@@ -33,6 +36,7 @@ const NAV: NavItem[] = [
   { key: 'proxies', label: 'Proxies', icon: ProxiesIcon },
   { key: 'devices', label: 'Devices', icon: DevicesIcon },
   { key: 'extensions', label: 'Extensions', icon: ExtensionsIcon },
+  { key: 'teams', label: 'Teams', icon: UsersIcon },
   { key: 'cloud', label: 'Cloud Sync', icon: CloudIcon },
   { key: 'settings', label: 'Settings', icon: SettingsIcon },
 ];
@@ -42,10 +46,24 @@ export function App() {
   const [page, setPage] = useState<Page>('profiles');
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
+  const [workspace, setWorkspace] = useState('personal');
 
   useEffect(() => {
-    void initApiKey().then(() => setReady(true));
+    void initApiKey().then(() => {
+      // Restore the persisted workspace (Pro feature; defaults to personal).
+      api.teamsList()
+        .then((res) => {
+          if (res.code === 0 && res.data.active_workspace) setWorkspace(res.data.active_workspace);
+        })
+        .catch(() => undefined);
+      setReady(true);
+    });
   }, []);
+
+  const changeWorkspace = (ws: string) => {
+    setWorkspace(ws);
+    void api.workspaceSetActive(ws).catch(() => undefined);
+  };
 
   if (!ready) {
     return (
@@ -93,6 +111,8 @@ export function App() {
               );
             })}
           </nav>
+
+          <WorkspaceSwitcher active={workspace} onChange={changeWorkspace} />
         </div>
 
         <div className="sidebar-footer">
@@ -119,6 +139,8 @@ export function App() {
             <Devices />
           ) : page === 'extensions' ? (
             <Extensions />
+          ) : page === 'teams' ? (
+            <Teams />
           ) : page === 'cloud' ? (
             <CloudSync />
           ) : (

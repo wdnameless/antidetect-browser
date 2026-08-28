@@ -1,7 +1,7 @@
 import puppeteer from 'puppeteer-core';
 import * as fs from 'fs';
 
-const CHROME = 'D:\\WORK\\antidetect browser\\data\\chromium\\fingerprint-chromium\\ungoogled-chromium_148.0.7778.215-1.1_windows_x64\\chrome.exe';
+const CHROME = process.env.CHROMIUM_PATH || '';
 const APP = 'http://localhost:5173/';
 const KEY = fs.readFileSync('D:/WORK/antidetect browser/data/api_key', 'utf8').trim();
 

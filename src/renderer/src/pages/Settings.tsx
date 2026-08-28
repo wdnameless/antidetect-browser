@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react';
-import { getApiBase } from '../api';
+import { getApiBase, api } from '../api';
 import type { UpdateStatus } from '../global';
 import { useI18n, type Lang } from '../i18n';
 import { SettingsIcon, RefreshIcon, CopyIcon, CheckIcon } from '../icons';
+import { SyncSettings } from './SyncSettings';
+import { LicenseSettings } from './LicenseSettings';
 
 function formatBytes(n: number): string {
   if (!Number.isFinite(n) || n <= 0) return '—';
@@ -16,7 +18,7 @@ function formatBytes(n: number): string {
   return `${v.toFixed(v >= 100 ? 0 : 1)} ${units[i]}`;
 }
 
-type Section = 'general' | 'api' | 'data' | 'updates' | 'diagnostics';
+type Section = 'general' | 'api' | 'data' | 'updates' | 'diagnostics' | 'sync' | 'license';
 
 export function Settings() {
   const { t, lang, setLang } = useI18n();
@@ -187,9 +189,24 @@ export function Settings() {
     { key: 'general', label: t('General') },
     { key: 'api', label: t('Automation API') },
     { key: 'data', label: t('Data Folder') },
+    { key: 'sync', label: t('Sync') },
+    { key: 'license', label: t('License') },
     { key: 'updates', label: t('Updates') },
     { key: 'diagnostics', label: t('Diagnostics') },
   ];
+
+  const renderSection = (): React.ReactNode => {
+    if (section === 'sync') return <SyncSettings />;
+    if (section === 'license') return <LicenseSettings />;
+    return null;
+  };
+
+  const renderSectionContent = (): React.ReactNode => {
+    if (section === 'sync' || section === 'license') return renderSection();
+    return null;
+  };
+
+  void renderSectionContent;
 
   return (
     <div>
@@ -217,7 +234,11 @@ export function Settings() {
 
         {/* Section content */}
         <div style={{ flex: 1, minWidth: 0 }}>
-          {section === 'general' ? (
+          {section === 'sync' ? (
+            <SyncSettings />
+          ) : section === 'license' ? (
+            <LicenseSettings />
+          ) : section === 'general' ? (
             <div className="panel">
               <div className="panel-header">{t('General')}</div>
               <div className="setting-row">

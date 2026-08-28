@@ -11,7 +11,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as http from 'http';
 
-const ROOT = 'D:\\WORK\\antidetect browser';
+const ROOT = process.cwd();
 const DATA = path.join(ROOT, 'data');
 const TSX = path.join(ROOT, 'node_modules', 'tsx', 'dist', 'cli.mjs');
 const PORT = 50341;

@@ -80,6 +80,44 @@ export function migrate(db: Database): void {
       extension_id TEXT NOT NULL,
       PRIMARY KEY (profile_id, extension_id)
     );
+
+    CREATE TABLE IF NOT EXISTS teams (
+      id              TEXT PRIMARY KEY,
+      name            TEXT NOT NULL,
+      owner_device_id TEXT NOT NULL,
+      created_at      INTEGER NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS team_members (
+      team_id     TEXT NOT NULL,
+      member_id   TEXT NOT NULL,
+      email       TEXT,
+      role        TEXT NOT NULL CHECK (role IN ('owner','member')),
+      permissions TEXT, -- JSON: {can_run_profiles,can_add_profiles,can_remove_profiles,can_invite}
+      status      TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','active')),
+      invite_code_hash TEXT,
+      key_blob    TEXT,
+      joined_at   INTEGER,
+      created_at  INTEGER NOT NULL,
+      PRIMARY KEY (team_id, member_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS team_bundles_meta (
+      team_id    TEXT NOT NULL,
+      bundle_id  TEXT NOT NULL,
+      device_id  TEXT,
+      version    INTEGER NOT NULL DEFAULT 1,
+      updated_at INTEGER NOT NULL,
+      PRIMARY KEY (team_id, bundle_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS team_profiles (
+      team_id   TEXT NOT NULL,
+      user_id   TEXT NOT NULL,
+      added_by  TEXT,
+      added_at  INTEGER NOT NULL,
+      PRIMARY KEY (team_id, user_id)
+    );
   `);
 
   // Migrations for databases created before these columns existed.

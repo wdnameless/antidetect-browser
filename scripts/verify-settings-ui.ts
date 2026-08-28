@@ -1,6 +1,6 @@
 import puppeteer from 'puppeteer-core';
 
-const CHROME = 'D:\\WORK\\antidetect browser\\data\\chromium\\fingerprint-chromium\\ungoogled-chromium_148.0.7778.215-1.1_windows_x64\\chrome.exe';
+const CHROME = process.env.CHROMIUM_PATH || '';
 const API_KEY = process.env.ANTIDETECT_API_KEY || '';
 const APP = 'http://localhost:5173/';
 

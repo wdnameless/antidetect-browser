@@ -7,6 +7,7 @@ import { Router, Request, Response } from 'express';
 import * as pm from '../../profiles/profileManager';
 import { isRunning } from '../../launcher/chromium';
 import { getSetting, setSetting } from '../../config';
+import { protectSecret, revealSecret } from '../../util/secretStore';
 
 const router = Router();
 
@@ -26,8 +27,12 @@ function getCloud(): CloudState {
   return {
     url: str(getSetting('cloudUrl')).replace(/\/+$/, ''),
     user: str(getSetting('cloudUser')),
-    token: str(getSetting('cloudToken')),
+    token: revealSecret(str(getSetting('cloudToken'))) ?? '',
   };
+}
+
+function saveToken(token: string): void {
+  setSetting('cloudToken', protectSecret(token) ?? '');
 }
 
 function normalizeUrl(input: string): string {
@@ -124,7 +129,7 @@ router.post('/api/v1/cloud/setup', async (req: Request, res: Response) => {
   const data = r.json?.data as Record<string, unknown> | undefined;
   if (r.status === 200 && data && typeof data.token === 'string') {
     setSetting('cloudUser', String(data.username ?? req.body?.username ?? ''));
-    setSetting('cloudToken', data.token);
+    saveToken(data.token);
     res.json({ code: 0, msg: 'success', data: { username: data.username } });
     return;
   }
@@ -144,7 +149,7 @@ router.post('/api/v1/cloud/login', async (req: Request, res: Response) => {
   const data = r.json?.data as Record<string, unknown> | undefined;
   if (r.status === 200 && data && typeof data.token === 'string') {
     setSetting('cloudUser', String(data.username ?? req.body?.username ?? ''));
-    setSetting('cloudToken', data.token);
+    saveToken(data.token);
     res.json({ code: 0, msg: 'success', data: { username: data.username } });
     return;
   }

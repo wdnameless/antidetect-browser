@@ -187,6 +187,41 @@ export interface SyncResultRow {
   error?: string;
 }
 
+export interface TeamPermissions {
+  can_run_profiles: boolean;
+  can_add_profiles: boolean;
+  can_remove_profiles: boolean;
+  can_invite: boolean;
+}
+
+export interface TeamItem {
+  id: string;
+  name: string;
+  owner_device_id: string;
+  created_at: number;
+  local_role: 'owner' | 'member' | null;
+  local_status: 'pending' | 'active' | null;
+  member_count: number;
+}
+
+export interface TeamMemberItem {
+  team_id: string;
+  member_id: string;
+  email: string | null;
+  role: 'owner' | 'member';
+  permissions: TeamPermissions | null;
+  status: 'pending' | 'active';
+  joined_at: number | null;
+  created_at: number;
+}
+
+export interface LicenseStateData {
+  plan: 'free' | 'pro';
+  email?: string;
+  exp?: number;
+  expired: boolean;
+}
+
 export const api = {
   status: () => request<{ status: string; version: string }>('/status'),
   list: (opts?: { groupId?: string | null; page?: number; pageSize?: number; search?: string | null; platform?: string | null; status?: string | null }) => {
@@ -436,4 +471,80 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ user_ids: user_ids ?? null }),
     }),
+  // ---- Teams / RBAC (Pro) ----
+  teamsList: () =>
+    request<{ list: TeamItem[]; active_workspace: string }>('/api/v1/teams'),
+  teamCreate: (name: string) =>
+    request<{ team_id: string; name: string; role: string }>('/api/v1/teams', {
+      method: 'POST',
+      body: JSON.stringify({ name }),
+    }),
+  teamUpdate: (teamId: string, name: string) =>
+    request<{ team_id: string; name: string }>(`/api/v1/teams/${encodeURIComponent(teamId)}/update`, {
+      method: 'POST',
+      body: JSON.stringify({ name }),
+    }),
+  teamDelete: (teamId: string) =>
+    request<{ team_id: string; deleted: boolean }>(`/api/v1/teams/${encodeURIComponent(teamId)}/delete`, {
+      method: 'POST',
+    }),
+  teamMembers: (teamId: string) =>
+    request<{ list: TeamMemberItem[] }>(`/api/v1/teams/${encodeURIComponent(teamId)}/members`),
+  teamInvite: (teamId: string, email: string, permissions: TeamPermissions) =>
+    request<{ member_id: string; activation_code?: string }>(`/api/v1/teams/${encodeURIComponent(teamId)}/invites`, {
+      method: 'POST',
+      body: JSON.stringify({ email, permissions }),
+    }),
+  inviteAccept: (teamId: string, email: string, activation_code: string) =>
+    request<{ team_id: string; status: string }>('/api/v1/invites/accept', {
+      method: 'POST',
+      body: JSON.stringify({ team_id: teamId, email, activation_code }),
+    }),
+  teamInviteCancel: (teamId: string, member_id: string) =>
+    request<{ cancelled: boolean }>(`/api/v1/teams/${encodeURIComponent(teamId)}/invites/cancel`, {
+      method: 'POST',
+      body: JSON.stringify({ member_id }),
+    }),
+  teamMemberRemove: (teamId: string, member_id: string) =>
+    request<{ removed: boolean }>(`/api/v1/teams/${encodeURIComponent(teamId)}/members/remove`, {
+      method: 'POST',
+      body: JSON.stringify({ member_id }),
+    }),
+  teamMemberPermissions: (teamId: string, member_id: string, permissions: Partial<TeamPermissions>) =>
+    request<{ permissions: TeamPermissions }>(`/api/v1/teams/${encodeURIComponent(teamId)}/members/permissions`, {
+      method: 'POST',
+      body: JSON.stringify({ member_id, permissions }),
+    }),
+  teamProfiles: (teamId: string) =>
+    request<{ list: string[] }>(`/api/v1/teams/${encodeURIComponent(teamId)}/profiles`),
+  workspaceSetActive: (workspace: string) =>
+    request<{ workspace: string }>('/api/v1/workspace/active', {
+      method: 'POST',
+      body: JSON.stringify({ workspace }),
+    }),
+  // ---- Sync (Pro) ----
+  syncEndpoint: () =>
+    request<{ mode: 'cloud' | 'custom'; url: string; default_url: string; customUrl?: string }>('/api/v1/sync/endpoint'),
+  syncEndpointSet: (mode: 'cloud' | 'custom', url?: string) =>
+    request<{ mode: string; url: string }>('/api/v1/sync/endpoint', {
+      method: 'POST',
+      body: JSON.stringify({ mode, url }),
+    }),
+  syncStatus: () =>
+    request<{ connected: boolean; url: string; error?: string; version?: string; token: boolean }>('/api/v1/sync/status'),
+  teamPush: (teamId: string, user_ids?: string[]) =>
+    request<{ pushed: number; failed: number; results: Array<{ bundle_id: string; ok: boolean; error?: string }> }>(
+      `/api/v1/teams/${encodeURIComponent(teamId)}/push`,
+      { method: 'POST', body: JSON.stringify({ user_ids: user_ids ?? null }) }
+    ),
+  teamPull: (teamId: string, user_ids?: string[]) =>
+    request<{ pulled: number; failed: number; errors: string[] }>(
+      `/api/v1/teams/${encodeURIComponent(teamId)}/pull`,
+      { method: 'POST', body: JSON.stringify({ user_ids: user_ids ?? null }) }
+    ),
+  // ---- License ----
+  licenseState: () => request<LicenseStateData>('/api/v1/license/state'),
+  licenseActivate: (key: string) =>
+    request<LicenseStateData>('/api/v1/license/activate', { method: 'POST', body: JSON.stringify({ key }) }),
+  licenseDeactivate: () => request<LicenseStateData>('/api/v1/license/deactivate', { method: 'POST' }),
 };

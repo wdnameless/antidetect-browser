@@ -1,0 +1,16 @@
+services:
+  sync-server:
+    build: .
+    image: antidetect-sync-server:latest
+    container_name: antidetect-sync
+    restart: unless-stopped
+    ports:
+      - "8787:8787"
+    environment:
+      PORT: "8787"
+      SYNC_DATA_DIR: /data
+    volumes:
+      - sync-data:/data
+
+volumes:
+  sync-data:
