@@ -145,7 +145,8 @@ router.get('/api/v1/browser/list', (req, res) => {
   const search = typeof req.query.search === 'string' ? req.query.search : undefined;
   const platform = typeof req.query.platform === 'string' ? req.query.platform : undefined;
   const status = typeof req.query.status === 'string' ? req.query.status : undefined;
-  const { list, total } = pm.listProfiles(page, pageSize, groupId, search, platform, status);
+  const tagId = typeof req.query.tag_id === 'string' ? req.query.tag_id : undefined;
+  const { list, total } = pm.listProfiles(page, pageSize, groupId, search, platform, status, tagId);
   res.json({ code: 0, msg: 'success', data: { list, page, page_size: pageSize, total } });
 });
 

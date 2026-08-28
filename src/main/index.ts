@@ -4,7 +4,7 @@ import { initDb, closeDb, flushDb } from './db';
 import { startApi } from './api/server';
 import { getApiKey, API_HOST, API_PORT, DATA_DIR } from './config';
 import { seedDevices } from './devices/deviceManager';
-import { recoverStaleRunning } from './profiles/profileManager';
+import { recoverStaleRunning, purgeExpiredTrash } from './profiles/profileManager';
 import { stopAll } from './launcher/chromium';
 import { logger, initLogger, flushLogs } from './util/logger';
 
@@ -95,6 +95,14 @@ export async function startService(): Promise<void> {
   if (recovered > 0) {
     logger.warn('crash recovery applied', { recovered });
     console.log(`[antidetect] crash recovery: ${recovered} stale running profile(s) marked closed`);
+  }
+
+  // Trash sweep (Sprint 2.4): permanently delete soft-deleted profiles older
+  // than 30 days on every service start.
+  const purged = purgeExpiredTrash();
+  if (purged > 0) {
+    logger.info('trash purge applied', { purged });
+    console.log(`[antidetect] trash purge: ${purged} profile(s) older than 30 days removed`);
   }
 
   await startApi();

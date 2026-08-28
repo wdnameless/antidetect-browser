@@ -1,4 +1,4 @@
-// Lightweight i18n (v0.2.21): English strings are the keys; the RU dictionary
+﻿// Lightweight i18n (v0.2.21): English strings are the keys; the RU dictionary
 // maps them to Russian. Missing translations fall back to the English key.
 import { createContext, useContext, useState, type ReactNode } from 'react';
 
@@ -250,7 +250,6 @@ const RU: Record<string, string> = {
   'If profiles/groups suddenly disappeared, restore the database from an automatic daily backup. The current (broken) database is snapshotted before restoring — the operation is reversible. Restart the app after restoring.': 'Если профили/группы внезапно исчезли — восстановите базу из автоматического ежедневного бэкапа. Текущая (повреждённая) база сохраняется перед восстановлением — операция обратима. После восстановления перезапустите приложение.',
   'No backups found yet (they are created daily after the first run).': 'Бэкапов пока нет (они создаются ежедневно после первого запуска).',
   'Restore database from this backup? The app must be restarted afterwards.': 'Восстановить базу из этого бэкапа? После этого нужно перезапустить приложение.',
-  'Restore': 'Восстановить',
   'Database restored. Restart the app to see your profiles.': 'База восстановлена. Перезапустите приложение, чтобы увидеть профили.',
 
   // Data recovery scan (v0.2.27)
@@ -303,7 +302,6 @@ const RU: Record<string, string> = {
   'First time on this server: create the panel login and password.': 'Первый запуск на этом сервере: создайте логин и пароль панели.',
   'Sign in to your server account.': 'Войдите в аккаунт вашего сервера.',
   'Login': 'Логин',
-  'Password': 'Пароль',
   'Repeat password': 'Повторите пароль',
   'Create account & connect': 'Создать аккаунт и подключиться',
   'Sign in': 'Войти',
@@ -390,6 +388,55 @@ const RU: Record<string, string> = {
   'Invalid license key': 'Неверный лицензионный ключ',
   'License removed': 'Лицензия удалена',
   'Pro unlocks Teams, RBAC and encrypted cloud sync. Keys are validated offline — no account needed.': 'Pro открывает команды, RBAC и зашифрованную облачную синхронизацию. Ключи проверяются офлайн — аккаунт не нужен.',
+
+  // Sprint 2: Diagnostics
+  'Select a profile': 'Выберите профиль',
+  'Run check': 'Запустить проверку',
+  'Checking...': 'Проверка...',
+  'Profile is not running — start it first to run diagnostics.': 'Профиль не запущен — сначала запустите его для диагностики.',
+  'Run diagnostics for a running profile to verify IP, timezone, WebRTC and consistency.': 'Запустите диагностику работающего профиля, чтобы проверить IP, часовой пояс, WebRTC и согласованность.',
+  'IP / Geo': 'IP / Гео',
+  'Timezone match': 'Совпадение часового пояса',
+  'WebRTC leak': 'Утечка WebRTC',
+  'Consistency': 'Согласованность',
+  'Leaked': 'Утечка',
+  'No public address exposed': 'Публичный адрес не раскрыт',
+  'Unknown (browser not reachable)': 'Неизвестно (браузер недоступен)',
+  'OK': 'OK',
+  'Warning': 'Предупреждение',
+
+  // Sprint 2: Trash
+  'Trash': 'Корзина',
+  'Deleted profiles are kept for 30 days, then purged automatically.': 'Удалённые профили хранятся 30 дней, затем удаляются автоматически.',
+  'Deleted at': 'Дата удаления',
+  'Delete forever': 'Удалить навсегда',
+  'Trash is empty': 'Корзина пуста',
+  'Permanently delete this profile? This cannot be undone.': 'Удалить профиль навсегда? Это действие необратимо.',
+
+  // Sprint 2: Tags
+  'All Tags': 'Все теги',
+  'Tags': 'Теги',
+  'Manage Tags': 'Управление тегами',
+  'Create tag': 'Создать тег',
+  'Edit tag': 'Изменить тег',
+  'Tag name': 'Название тега',
+  'No tags yet — create one above.': 'Тегов пока нет — создайте выше.',
+
+  // Sprint 2: Vault
+  'Vault': 'Хранилище',
+  'Add entry': 'Добавить запись',
+  'Edit entry': 'Изменить запись',
+  'Label (e.g. main account)': 'Название (напр. основной аккаунт)',
+  'TOTP secret (optional)': 'TOTP-секрет (необязательно)',
+  'Add': 'Добавить',
+  'Reveal / hide (15s)': 'Показать / скрыть (15 сек)',
+  'Copy value': 'Копировать значение',
+  'TOTP secret stored': 'TOTP-секрет сохранён',
+  'No saved credentials yet. Passwords are encrypted (AES-256-GCM) and never leave this machine.': 'Паролей пока нет. Пароли шифруются (AES-256-GCM) и не покидают этот компьютер.',
+
+  // Sprint 2: Export CSV
+  'Export CSV': 'Экспорт CSV',
+  'Export all profiles to CSV': 'Экспортировать все профили в CSV',
 };
 
 interface I18nCtx {

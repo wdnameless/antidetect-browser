@@ -24,6 +24,11 @@ import cloudRoutes from './routes/cloud';
 import teamsRoutes from './routes/teams';
 import syncRoutes from './routes/sync';
 import licensingRoutes from './routes/licensing';
+import vaultRoutes from './routes/vault';
+import diagnosticsRoutes from './routes/diagnostics';
+import tagsRoutes from './routes/tags';
+import trashRoutes from './routes/trash';
+import profilesRoutes from './routes/profiles';
 
 const LOOPBACK_HOST_RE = /^(127\.0\.0\.1|localhost|\[::1\])(:\d+)?$/i;
 
@@ -105,6 +110,11 @@ app.use(cloudRoutes);
 app.use(teamsRoutes);
 app.use(syncRoutes);
 app.use(licensingRoutes);
+app.use(vaultRoutes);
+app.use(diagnosticsRoutes);
+app.use(tagsRoutes);
+app.use(trashRoutes);
+app.use(profilesRoutes);
 
   // JSON 404 for unknown routes (Express default would return HTML).
   app.use((_req: Request, res: Response) => {

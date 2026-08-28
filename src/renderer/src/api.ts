@@ -222,9 +222,60 @@ export interface LicenseStateData {
   expired: boolean;
 }
 
+// ---- Sprint 2: vault / diagnostics / tags / trash ----
+
+export interface VaultEntry {
+  id: string;
+  profile_id: string;
+  label: string | null;
+  login: string | null;
+  has_password: boolean;
+  has_totp: boolean;
+  notes: string | null;
+  created_at: number;
+  updated_at: number;
+}
+
+export interface DiagnosticsReport {
+  profile_id: string;
+  ip: string | null;
+  geo: { country?: string; city?: string; timezone?: string; lat?: number; lon?: number } | null;
+  timezone: string | null;
+  ip_timezone: string | null;
+  timezone_match: 'ok' | 'warn' | null;
+  webrtc: 'ok' | 'warn' | null;
+  webrtc_addresses: string[];
+  consistency: 'ok' | 'warn' | null;
+  consistency_detail: string | null;
+  dns_leak: null;
+  collected_at: number;
+}
+
+export interface TagItem {
+  id: string;
+  name: string;
+  color: string | null;
+  created_at: number;
+  profile_count: number;
+}
+
+export interface ProfileTagBinding {
+  tag_id: string;
+  name: string;
+  color: string | null;
+}
+
+export interface TrashItem {
+  id: string;
+  name: string | null;
+  group_name: string | null;
+  deleted_at: number;
+  created_at: number;
+}
+
 export const api = {
   status: () => request<{ status: string; version: string }>('/status'),
-  list: (opts?: { groupId?: string | null; page?: number; pageSize?: number; search?: string | null; platform?: string | null; status?: string | null }) => {
+  list: (opts?: { groupId?: string | null; page?: number; pageSize?: number; search?: string | null; platform?: string | null; status?: string | null; tagId?: string | null }) => {
     const q = new URLSearchParams();
     if (opts?.groupId) q.set('group_id', opts.groupId);
     if (opts?.page) q.set('page', String(opts.page));
@@ -232,6 +283,7 @@ export const api = {
     if (opts?.search) q.set('search', opts.search);
     if (opts?.platform) q.set('platform', opts.platform);
     if (opts?.status) q.set('status', opts.status);
+    if (opts?.tagId) q.set('tag_id', opts.tagId);
     const qs = q.toString();
     return request<{ list: ProfileListItem[]; total: number; page: number; page_size: number }>(
       `/api/v1/browser/list${qs ? `?${qs}` : ''}`
@@ -547,4 +599,61 @@ export const api = {
   licenseActivate: (key: string) =>
     request<LicenseStateData>('/api/v1/license/activate', { method: 'POST', body: JSON.stringify({ key }) }),
   licenseDeactivate: () => request<LicenseStateData>('/api/v1/license/deactivate', { method: 'POST' }),
+  // ---- Vault (Sprint 2.1) ----
+  vaultList: (profileId: string) =>
+    request<{ list: VaultEntry[] }>(`/api/v1/accounts/${encodeURIComponent(profileId)}`),
+  vaultCreate: (profileId: string, body: { label?: string; login?: string; password?: string; totp_secret?: string; notes?: string }) =>
+    request<{ id: string }>(`/api/v1/accounts/${encodeURIComponent(profileId)}`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  vaultUpdate: (profileId: string, entryId: string, body: { label?: string; login?: string; password?: string; totp_secret?: string; notes?: string }) =>
+    request<{ id: string }>(`/api/v1/accounts/${encodeURIComponent(profileId)}/${encodeURIComponent(entryId)}/update`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  vaultDelete: (profileId: string, entryId: string) =>
+    request<{ deleted: boolean }>(`/api/v1/accounts/${encodeURIComponent(profileId)}/${encodeURIComponent(entryId)}/delete`, {
+      method: 'POST',
+    }),
+  vaultReveal: (profileId: string, entryId: string, field: 'password' | 'totp_secret') =>
+    request<{ value: string }>(
+      `/api/v1/accounts/${encodeURIComponent(profileId)}/${encodeURIComponent(entryId)}/reveal?field=${field}`
+    ),
+  // ---- Diagnostics (Sprint 2.2) ----
+  diagnosticsRun: (profileId: string) =>
+    request<DiagnosticsReport>(`/api/v1/diagnostics/${encodeURIComponent(profileId)}`),
+  // ---- Tags (Sprint 2.3) ----
+  tagsList: () => request<{ list: TagItem[] }>('/api/v1/tags'),
+  tagCreate: (name: string, color?: string) =>
+    request<{ id: string }>('/api/v1/tags', { method: 'POST', body: JSON.stringify({ name, color }) }),
+  tagUpdate: (tagId: string, body: { name?: string; color?: string | null }) =>
+    request<{ id: string }>(`/api/v1/tags/${encodeURIComponent(tagId)}/update`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  tagDelete: (tagId: string) =>
+    request<{ deleted: boolean }>(`/api/v1/tags/${encodeURIComponent(tagId)}/delete`, { method: 'POST' }),
+  tagAttach: (tagId: string, userIds: string[]) =>
+    request<{ attached: number }>(`/api/v1/tags/${encodeURIComponent(tagId)}/attach`, {
+      method: 'POST',
+      body: JSON.stringify({ user_ids: userIds }),
+    }),
+  tagDetach: (tagId: string, userIds: string[]) =>
+    request<{ detached: number }>(`/api/v1/tags/${encodeURIComponent(tagId)}/detach`, {
+      method: 'POST',
+      body: JSON.stringify({ user_ids: userIds }),
+    }),
+  profileTags: (userId: string) =>
+    request<{ tags: ProfileTagBinding[] }>(
+      `/api/v1/browser-profile/tags?user_id=${encodeURIComponent(userId)}`
+    ),
+  // ---- Trash (Sprint 2.4) ----
+  trashList: () => request<{ list: TrashItem[] }>('/api/v1/trash'),
+  trashRestore: (id: string) =>
+    request<{ restored: boolean }>(`/api/v1/trash/${encodeURIComponent(id)}/restore`, { method: 'POST' }),
+  trashDeleteForever: (id: string) =>
+    request<{ deleted: boolean }>(`/api/v1/trash/${encodeURIComponent(id)}/delete`, { method: 'POST' }),
+  // ---- Export (Sprint 2.5) ----
+  exportCsvUrl: () => `${getApiBase()}/api/v1/profiles/export-csv`,
 };

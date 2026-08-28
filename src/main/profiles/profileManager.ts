@@ -1,4 +1,4 @@
-import { randomUUID, randomInt } from 'crypto';
+﻿import { randomUUID, randomInt } from 'crypto';
 import * as path from 'path';
 import { getDb } from '../db';
 import { PROFILES_DIR } from '../config';
@@ -6,6 +6,8 @@ import { getEnabledExtensionPaths } from '../extensions/extensionManager';
 import { checkProxy, type ProxyCheckResult } from '../proxy/proxyManager';
 import { pickMobilePreset, buildMobileUa, getMobilePreset, type MobilePreset } from '../devices/mobilePresets';
 import { protectSecret, revealSecret } from '../util/secretStore';
+import { deleteEntriesForProfile } from '../vault/accountVault';
+import { removeBindingsForProfile } from '../tags/tagManager';
 
 export type ProxyType = 'http' | 'https' | 'socks5' | 'ssh';
 
@@ -53,6 +55,8 @@ export interface ProfileRow {
   status: string;
   created_at: number;
   updated_at: number;
+  /** Trash (Sprint 2.4): NULL = live, timestamp = moved to trash. */
+  deleted_at: number | null;
 }
 
 export interface ProxyRow {
@@ -293,7 +297,7 @@ export function updateProfileFingerprint(userId: string, config: Record<string, 
 }
 
 export function duplicateProfile(userId: string, newName?: string): string | null {
-  const source = getProfile(userId);
+  const source = getLiveProfile(userId);
   if (!source) return null;
 
   const targetName = newName?.trim() || (source.name ? `${source.name} (Copy)` : 'Profile (Copy)');
@@ -317,9 +321,15 @@ export function getProfile(id: string): ProfileRow | undefined {
     .get(id) as ProfileRow | undefined;
 }
 
+/** Live (non-trashed) profile lookup â€” used by launch/duplicate/detail paths. */
+export function getLiveProfile(id: string): ProfileRow | undefined {
+  const p = getProfile(id);
+  return p && p.deleted_at == null ? p : undefined;
+}
+
 export function getProfileDetails(id: string): ProfileDetails | null {
   const db = getDb();
-  const p = getProfile(id);
+  const p = getLiveProfile(id);
   if (!p) return null;
 
   let proxy: ProfileDetails['proxy'] = null;
@@ -386,6 +396,50 @@ export function getProfileDetails(id: string): ProfileDetails | null {
 }
 
 export function deleteProfile(id: string): boolean {
+  // Trash (Sprint 2.4): soft delete â€” keep everything (fingerprint, bindings,
+  // credentials, user-data on disk) so the profile can be restored.
+  const db = getDb();
+  const p = getProfile(id);
+  if (!p) return false;
+  const res = db
+    .prepare('UPDATE profiles SET deleted_at = ?, status = ?, updated_at = ? WHERE id = ? AND deleted_at IS NULL')
+    .run(Date.now(), 'closed', Date.now(), id);
+  return res.changes > 0;
+}
+
+// ---------------------------------------------------------------------------
+// Trash (Sprint 2.4): soft-deleted profiles lifecycle.
+// ---------------------------------------------------------------------------
+
+export interface TrashItem {
+  id: string;
+  name: string | null;
+  group_name: string | null;
+  deleted_at: number;
+  created_at: number;
+}
+
+export function listTrash(): TrashItem[] {
+  const db = getDb();
+  return db
+    .prepare(
+      `SELECT p.id, p.name, g.name AS group_name, p.deleted_at, p.created_at
+       FROM profiles p LEFT JOIN groups g ON g.id = p.group_id
+       WHERE p.deleted_at IS NOT NULL
+       ORDER BY p.deleted_at DESC`
+    )
+    .all() as unknown as TrashItem[];
+}
+
+export function restoreProfile(id: string): boolean {
+  const res = getDb()
+    .prepare('UPDATE profiles SET deleted_at = NULL, updated_at = ? WHERE id = ? AND deleted_at IS NOT NULL')
+    .run(Date.now(), id);
+  return res.changes > 0;
+}
+
+/** Hard delete: remove the row, fingerprint, bindings, credentials, user-data. */
+export function purgeProfile(id: string): boolean {
   const db = getDb();
   const p = getProfile(id);
   if (!p) return false;
@@ -393,8 +447,35 @@ export function deleteProfile(id: string): boolean {
     db.prepare('DELETE FROM fingerprints WHERE id = ?').run(p.fingerprint_id);
   }
   db.prepare('DELETE FROM profile_extensions WHERE profile_id = ?').run(id);
+  deleteEntriesForProfile(id);
+  removeBindingsForProfile(id);
   const res = db.prepare('DELETE FROM profiles WHERE id = ?').run(id);
+  if (res.changes > 0) {
+    try {
+      // User-data dir lives outside the DB; best-effort cleanup.
+      const fs = require('fs') as typeof import('fs');
+      const rm = (fs as unknown as { rmSync?: (p: string, o?: Record<string, unknown>) => void }).rmSync;
+      if (typeof rm === 'function') rm(path.join(PROFILES_DIR, id), { recursive: true, force: true });
+    } catch {
+      // ignore
+    }
+  }
   return res.changes > 0;
+}
+
+const TRASH_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
+
+/** Startup sweep: permanently delete trash entries older than 30 days. */
+export function purgeExpiredTrash(): number {
+  const db = getDb();
+  const rows = db
+    .prepare('SELECT id FROM profiles WHERE deleted_at IS NOT NULL AND deleted_at < ?')
+    .all(Date.now() - TRASH_RETENTION_MS) as Array<{ id: string }>;
+  let purged = 0;
+  for (const r of rows) {
+    if (purgeProfile(r.id)) purged++;
+  }
+  return purged;
 }
 
 export function setStatus(id: string, status: string): void {
@@ -416,8 +497,8 @@ export function recoverStaleRunning(): number {
 }
 
 // ---------------------------------------------------------------------------
-// Profile bundles (v0.2.19): portable export/import of a full profile —
-// fingerprint, device, proxy (incl. credentials) and cookies — as one JSON.
+// Profile bundles (v0.2.19): portable export/import of a full profile â€”
+// fingerprint, device, proxy (incl. credentials) and cookies â€” as one JSON.
 // ---------------------------------------------------------------------------
 
 export interface ProfileBundle {
@@ -446,7 +527,7 @@ export interface ProfileBundle {
 }
 
 export function exportProfileBundle(id: string): ProfileBundle | null {
-  const p = getProfile(id);
+  const p = getLiveProfile(id);
   if (!p) return null;
   const db = getDb();
 
@@ -483,7 +564,7 @@ export function exportProfileBundle(id: string): ProfileBundle | null {
         host: px.host,
         port: px.port,
         username: px.username || undefined,
-        // bundles are explicit user exports — include the usable (decrypted) credentials
+        // bundles are explicit user exports â€” include the usable (decrypted) credentials
         password: revealSecret(px.password),
         private_key: revealSecret(px.private_key),
       };
@@ -723,7 +804,7 @@ export function listGroups(): GroupItem[] {
     .prepare(
       `SELECT g.id, g.name, g.created_at, COUNT(p.id) AS profile_count
        FROM groups g
-       LEFT JOIN profiles p ON p.group_id = g.id
+       LEFT JOIN profiles p ON p.group_id = g.id AND p.deleted_at IS NULL
        GROUP BY g.id
        ORDER BY g.created_at DESC`
     )
@@ -737,10 +818,11 @@ export function listProfiles(
   groupId?: string | null,
   search?: string | null,
   platform?: string | null,
-  status?: string | null
+  status?: string | null,
+  tagId?: string | null
 ): { list: ProfileListItem[]; total: number } {
   const db = getDb();
-  const clauses: string[] = [];
+  const clauses: string[] = ['p.deleted_at IS NULL'];
   const params: unknown[] = [];
   if (groupId !== undefined && groupId !== null && groupId !== '') {
     clauses.push('p.group_id = ?');
@@ -758,6 +840,10 @@ export function listProfiles(
   if (status !== undefined && status !== null && status !== '') {
     clauses.push('p.status = ?');
     params.push(status);
+  }
+  if (tagId !== undefined && tagId !== null && tagId !== '') {
+    clauses.push('EXISTS (SELECT 1 FROM profile_tags pt WHERE pt.profile_id = p.id AND pt.tag_id = ?)');
+    params.push(tagId);
   }
   const where = clauses.length > 0 ? ` WHERE ${clauses.join(' AND ')}` : '';
 
@@ -809,7 +895,7 @@ export function listProfiles(
 
 export function resolveLaunchConfig(id: string): LaunchConfig {
   const db = getDb();
-  const profile = getProfile(id);
+  const profile = getLiveProfile(id);
   if (!profile) throw new Error('profile not found');
 
   let fingerprintSeed = 0;
@@ -888,9 +974,9 @@ export function resolveLaunchConfig(id: string): LaunchConfig {
                 : 'windows';
 
       if (devCfg.mobile === true) {
-        // Мобильный профиль v2: детерминированный «телефон» из пула по seed — только для Android.
-        // Если пользователь зафиксировал модель (mobile_model_id) — используем её, иначе
-        // детерминированный выбор от seed (один профиль = один телефон при каждом запуске).
+        // ÐœÐ¾Ð±Ð¸Ð»ÑŒÐ½Ñ‹Ð¹ Ð¿Ñ€Ð¾Ñ„Ð¸Ð»ÑŒ v2: Ð´ÐµÑ‚ÐµÑ€Ð¼Ð¸Ð½Ð¸Ñ€Ð¾Ð²Ð°Ð½Ð½Ñ‹Ð¹ Â«Ñ‚ÐµÐ»ÐµÑ„Ð¾Ð½Â» Ð¸Ð· Ð¿ÑƒÐ»Ð° Ð¿Ð¾ seed â€” Ñ‚Ð¾Ð»ÑŒÐºÐ¾ Ð´Ð»Ñ Android.
+        // Ð•ÑÐ»Ð¸ Ð¿Ð¾Ð»ÑŒÐ·Ð¾Ð²Ð°Ñ‚ÐµÐ»ÑŒ Ð·Ð°Ñ„Ð¸ÐºÑÐ¸Ñ€Ð¾Ð²Ð°Ð» Ð¼Ð¾Ð´ÐµÐ»ÑŒ (mobile_model_id) â€” Ð¸ÑÐ¿Ð¾Ð»ÑŒÐ·ÑƒÐµÐ¼ ÐµÑ‘, Ð¸Ð½Ð°Ñ‡Ðµ
+        // Ð´ÐµÑ‚ÐµÑ€Ð¼Ð¸Ð½Ð¸Ñ€Ð¾Ð²Ð°Ð½Ð½Ñ‹Ð¹ Ð²Ñ‹Ð±Ð¾Ñ€ Ð¾Ñ‚ seed (Ð¾Ð´Ð¸Ð½ Ð¿Ñ€Ð¾Ñ„Ð¸Ð»ÑŒ = Ð¾Ð´Ð¸Ð½ Ñ‚ÐµÐ»ÐµÑ„Ð¾Ð½ Ð¿Ñ€Ð¸ ÐºÐ°Ð¶Ð´Ð¾Ð¼ Ð·Ð°Ð¿ÑƒÑÐºÐµ).
         const isAndroid = logicalPlatform === 'android';
         const preset = isAndroid
           ? profile.mobile_model_id
@@ -905,7 +991,7 @@ export function resolveLaunchConfig(id: string): LaunchConfig {
           maxTouchPoints:
             typeof devCfg.maxTouchPoints === 'number' ? devCfg.maxTouchPoints : 5,
         };
-        // Сохраняем пресет для stealth-слоя (модель/версия Android/GPU).
+        // Ð¡Ð¾Ñ…Ñ€Ð°Ð½ÑÐµÐ¼ Ð¿Ñ€ÐµÑÐµÑ‚ Ð´Ð»Ñ stealth-ÑÐ»Ð¾Ñ (Ð¼Ð¾Ð´ÐµÐ»ÑŒ/Ð²ÐµÑ€ÑÐ¸Ñ Android/GPU).
         if (preset) devCfg._preset = preset;
       }
 

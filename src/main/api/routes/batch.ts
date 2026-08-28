@@ -1,10 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import * as fs from 'fs';
-import * as path from 'path';
 import * as pm from '../../profiles/profileManager';
 import { getDb } from '../../db';
-import { PROFILES_DIR } from '../../config';
 
 const router = Router();
 
@@ -40,19 +37,11 @@ router.post('/api/v1/browser-profile/batch-delete', (req, res) => {
     res.json({ code: -1, msg: 'invalid body', data: {} });
     return;
   }
-  const db = getDb();
+  // Soft delete (Sprint 2.4 trash): entries land in the trash and are purged
+  // only from there (or automatically after 30 days).
   let deleted = 0;
   for (const id of parsed.data.user_ids) {
-    const r = db.prepare('DELETE FROM profiles WHERE id = ?').run(id);
-    if (r.changes > 0) {
-      db.prepare('DELETE FROM profile_extensions WHERE profile_id = ?').run(id);
-      try {
-        fs.rmSync(path.join(PROFILES_DIR, id), { recursive: true, force: true });
-      } catch {
-        // ignore
-      }
-      deleted++;
-    }
+    if (pm.deleteProfile(id)) deleted++;
   }
   res.json({ code: 0, msg: 'success', data: { deleted } });
 });

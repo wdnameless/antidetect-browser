@@ -9,6 +9,8 @@ import { Extensions } from './pages/Extensions';
 import { Settings } from './pages/Settings';
 import { CloudSync } from './pages/CloudSync';
 import { Teams } from './pages/Teams';
+import { Diagnostics } from './pages/Diagnostics';
+import { Trash } from './pages/Trash';
 import { WorkspaceSwitcher } from './components/WorkspaceSwitcher';
 import {
   ProfilesIcon,
@@ -20,9 +22,11 @@ import {
   ShieldIcon,
   CloudIcon,
   UsersIcon,
+  KeyIcon,
+  TrashIcon,
 } from './icons';
 
-type Page = 'profiles' | 'groups' | 'proxies' | 'devices' | 'extensions' | 'teams' | 'cloud' | 'settings';
+type Page = 'profiles' | 'groups' | 'proxies' | 'devices' | 'extensions' | 'teams' | 'cloud' | 'diagnostics' | 'trash' | 'settings';
 
 interface NavItem {
   key: Page;
@@ -36,6 +40,8 @@ const NAV: NavItem[] = [
   { key: 'proxies', label: 'Proxies', icon: ProxiesIcon },
   { key: 'devices', label: 'Devices', icon: DevicesIcon },
   { key: 'extensions', label: 'Extensions', icon: ExtensionsIcon },
+  { key: 'diagnostics', label: 'Diagnostics', icon: KeyIcon },
+  { key: 'trash', label: 'Trash', icon: TrashIcon },
   { key: 'teams', label: 'Teams', icon: UsersIcon },
   { key: 'cloud', label: 'Cloud Sync', icon: CloudIcon },
   { key: 'settings', label: 'Settings', icon: SettingsIcon },
@@ -139,6 +145,10 @@ export function App() {
             <Devices />
           ) : page === 'extensions' ? (
             <Extensions />
+          ) : page === 'diagnostics' ? (
+            <Diagnostics />
+          ) : page === 'trash' ? (
+            <Trash />
           ) : page === 'teams' ? (
             <Teams />
           ) : page === 'cloud' ? (

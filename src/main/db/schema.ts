@@ -118,6 +118,35 @@ export function migrate(db: Database): void {
       added_at  INTEGER NOT NULL,
       PRIMARY KEY (team_id, user_id)
     );
+
+    CREATE TABLE IF NOT EXISTS account_credentials (
+      id              TEXT PRIMARY KEY,
+      profile_id      TEXT NOT NULL REFERENCES profiles(id),
+      label           TEXT,
+      login           TEXT,
+      password_enc    TEXT,
+      totp_secret_enc TEXT,
+      notes           TEXT,
+      created_at      INTEGER NOT NULL,
+      updated_at      INTEGER NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_account_credentials_profile ON account_credentials(profile_id);
+
+    CREATE TABLE IF NOT EXISTS tags (
+      id         TEXT PRIMARY KEY,
+      name       TEXT NOT NULL,
+      color      TEXT,
+      created_at INTEGER NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS profile_tags (
+      profile_id TEXT NOT NULL,
+      tag_id     TEXT NOT NULL,
+      PRIMARY KEY (profile_id, tag_id)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_profile_tags_tag ON profile_tags(tag_id);
   `);
 
   // Migrations for databases created before these columns existed.
@@ -127,4 +156,6 @@ export function migrate(db: Database): void {
   ensureColumn(db, 'proxies', 'longitude', 'REAL');
   ensureColumn(db, 'profiles', 'browser_type', 'TEXT DEFAULT \'chromium\'');
   ensureColumn(db, 'profiles', 'mobile_model_id', 'TEXT');
+  // Trash (soft delete): NULL = live profile, timestamp = moved to trash.
+  ensureColumn(db, 'profiles', 'deleted_at', 'INTEGER');
 }

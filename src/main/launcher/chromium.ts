@@ -51,6 +51,11 @@ export function getCdpEndpoint(profileId: string): { port: string; wsPath: strin
   return { port: rec.port, wsPath };
 }
 
+/** Loopback CDP debug port of a running profile (diagnostics/CDP helpers). */
+export function getRunningPort(profileId: string): string | undefined {
+  return running.get(profileId)?.port;
+}
+
 function toResult(r: RunningProfile): StartResult {
   return {
     ws: { puppeteer: r.wsPuppeteer, selenium: r.wsSelenium },

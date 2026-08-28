@@ -7,6 +7,9 @@ import {
   type ProxyItem,
   type DeviceItem,
   type ProxyTestResult,
+  type VaultEntry,
+  type TagItem,
+  type ProfileTagBinding,
 } from '../api';
 import { useI18n } from '../i18n';
 import {
@@ -27,6 +30,7 @@ import {
   RefreshIcon,
   DevicesIcon,
   ProfilesIcon,
+  KeyIcon,
 } from '../icons';
 
 export function Profiles({ initialGroupId }: { initialGroupId?: string | null } = {}) {
@@ -56,8 +60,14 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
   const [bulkTargetGroup, setBulkTargetGroup] = useState<string>('');
   const [error, setError] = useState('');
 
-  // Modal tab: 'general' | 'proxy' | 'fingerprint'
-  const [modalTab, setModalTab] = useState<'general' | 'proxy' | 'fingerprint'>('general');
+  // Modal tab: 'general' | 'proxy' | 'fingerprint' | 'vault'
+  const [modalTab, setModalTab] = useState<'general' | 'proxy' | 'fingerprint' | 'vault'>('general');
+
+  // Vault tab state (Sprint 2.1)
+  const [vaultEntries, setVaultEntries] = useState<VaultEntry[]>([]);
+  const [vaultForm, setVaultForm] = useState<{ id: string | null; label: string; login: string; password: string; totp: string; notes: string }>({ id: null, label: '', login: '', password: '', totp: '', notes: '' });
+  const [revealed, setRevealed] = useState<Record<string, string>>({});
+  const [copiedValue, setCopiedValue] = useState<string | null>(null);
 
   // Modal Profile State (Create or Edit)
   const [modalMode, setModalMode] = useState<'create' | 'edit' | null>(null);
@@ -154,6 +164,20 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
     } catch { /* ignore */ }
   }, []);
 
+  // ---- Tags (Sprint 2.3) ----
+  const [tags, setTags] = useState<TagItem[]>([]);
+  const [selectedTagFilter, setSelectedTagFilter] = useState<string>('');
+  const [profileTagMap, setProfileTagMap] = useState<Record<string, ProfileTagBinding[]>>({});
+  const [showTagModal, setShowTagModal] = useState(false);
+  const [tagForm, setTagForm] = useState<{ id: string | null; name: string; color: string }>({ id: null, name: '', color: '#6b7280' });
+
+  const loadTags = useCallback(async () => {
+    try {
+      const res = await api.tagsList();
+      if (res.code === 0) setTags(res.data.list);
+    } catch { /* ignore */ }
+  }, []);
+
   // Debounce server-side search (300 ms after the last keystroke).
   useEffect(() => {
     const t = setTimeout(() => {
@@ -166,7 +190,7 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
   // Reset to the first page whenever filters/page size change.
   useEffect(() => {
     setPage(1);
-  }, [selectedGroupFilter, selectedPlatformFilter, selectedStatusFilter, pageSize]);
+  }, [selectedGroupFilter, selectedPlatformFilter, selectedStatusFilter, pageSize, selectedTagFilter]);
 
   const loadProfiles = useCallback(async () => {
     try {
@@ -177,17 +201,27 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
         search: debouncedSearch || undefined,
         platform: selectedPlatformFilter || undefined,
         status: selectedStatusFilter || undefined,
+        tagId: selectedTagFilter || undefined,
       });
       if (res.code === 0) {
         setProfiles(res.data.list);
         setTotal(res.data.total);
+        // Tag chips for the visible rows (per-profile fetch, parallelized).
+        const ids = res.data.list.map((p) => p.user_id);
+        const maps = await Promise.all(
+          ids.map(async (uid) => {
+            const r = await api.profileTags(uid).catch(() => null);
+            return [uid, r && r.code === 0 ? r.data.tags : []] as const;
+          })
+        );
+        setProfileTagMap(Object.fromEntries(maps));
       } else {
         setError(res.msg);
       }
     } catch (err) {
       setError((err as Error).message);
     }
-  }, [selectedGroupFilter, page, pageSize, debouncedSearch, selectedPlatformFilter, selectedStatusFilter]);
+  }, [selectedGroupFilter, page, pageSize, debouncedSearch, selectedPlatformFilter, selectedStatusFilter, selectedTagFilter]);
 
   useEffect(() => {
     void loadProfiles();
@@ -196,7 +230,8 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
     void loadDevices();
     void loadMobilePresets();
     void loadExtensions();
-  }, [loadProfiles, loadGroups, loadProxies, loadDevices, loadMobilePresets, loadExtensions]);
+    void loadTags();
+  }, [loadProfiles, loadGroups, loadProxies, loadDevices, loadMobilePresets, loadExtensions, loadTags]);
 
   // Auto-refresh statuses: if the user closes the browser window manually, the
   // backend watchdog marks the profile "closed" — reflect it without a manual reload.
@@ -527,6 +562,139 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
       if (res.code === 0) {
         if (selectedGroupFilter === groupId) setSelectedGroupFilter('');
         await loadGroups();
+        await loadProfiles();
+      } else {
+        setError(res.msg);
+      }
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  // ---- Vault (Sprint 2.1) ----
+  const loadVault = useCallback(async (pid: string) => {
+    try {
+      const res = await api.vaultList(pid);
+      if (res.code === 0) setVaultEntries(res.data.list);
+    } catch { /* ignore */ }
+  }, []);
+
+  const openVaultTab = (pid: string) => {
+    setVaultForm({ id: null, label: '', login: '', password: '', totp: '', notes: '' });
+    setRevealed({});
+    void loadVault(pid);
+  };
+
+  const saveVaultEntry = async () => {
+    if (!profileId) return;
+    setBusy(true);
+    setError('');
+    try {
+      const body = {
+        label: vaultForm.label.trim() || undefined,
+        login: vaultForm.login.trim() || undefined,
+        password: vaultForm.password || undefined,
+        totp_secret: vaultForm.totp.trim() || undefined,
+        notes: vaultForm.notes.trim() || undefined,
+      };
+      const res = vaultForm.id
+        ? await api.vaultUpdate(profileId, vaultForm.id, body)
+        : await api.vaultCreate(profileId, body);
+      if (res.code === 0) {
+        setVaultForm({ id: null, label: '', login: '', password: '', totp: '', notes: '' });
+        await loadVault(profileId);
+      } else {
+        setError(res.msg);
+      }
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const editVaultEntry = (e: VaultEntry) => {
+    setVaultForm({ id: e.id, label: e.label || '', login: e.login || '', password: '', totp: '', notes: e.notes || '' });
+  };
+
+  const deleteVaultEntry = async (entryId: string) => {
+    if (!profileId) return;
+    setBusy(true);
+    setError('');
+    try {
+      const res = await api.vaultDelete(profileId, entryId);
+      if (res.code === 0) await loadVault(profileId);
+      else setError(res.msg);
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const revealVaultField = async (entry: VaultEntry, field: 'password' | 'totp_secret') => {
+    if (!profileId) return;
+    const key = `${entry.id}:${field}`;
+    if (revealed[key]) {
+      // toggle off
+      setRevealed((r) => { const n = { ...r }; delete n[key]; return n; });
+      return;
+    }
+    try {
+      const res = await api.vaultReveal(profileId, entry.id, field);
+      if (res.code === 0) {
+        setRevealed((r) => ({ ...r, [key]: res.data.value }));
+        setTimeout(() => {
+          setRevealed((r) => { const n = { ...r }; delete n[key]; return n; });
+        }, 15000);
+      } else {
+        setError(res.msg);
+      }
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  };
+
+  const copyVaultValue = (text: string) => {
+    void navigator.clipboard.writeText(text);
+    setCopiedValue(text);
+    setTimeout(() => setCopiedValue(null), 1500);
+  };
+
+  // ---- Tag management (Sprint 2.3) ----
+  const saveTag = async () => {
+    if (!tagForm.name.trim()) return;
+    setBusy(true);
+    setError('');
+    try {
+      const res = tagForm.id
+        ? await api.tagUpdate(tagForm.id, { name: tagForm.name.trim(), color: tagForm.color })
+        : await api.tagCreate(tagForm.name.trim(), tagForm.color);
+      if (res.code === 0) {
+        setTagForm({ id: null, name: '', color: '#6b7280' });
+        await loadTags();
+        await loadProfiles();
+      } else {
+        setError(res.msg);
+      }
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const deleteTagById = async (tagId: string) => {
+    if (!confirm('Delete this tag? It will be removed from all profiles.')) return;
+    setBusy(true);
+    setError('');
+    try {
+      const res = await api.tagDelete(tagId);
+      if (res.code === 0) {
+        if (selectedTagFilter === tagId) setSelectedTagFilter('');
+        await loadTags();
         await loadProfiles();
       } else {
         setError(res.msg);
@@ -908,6 +1076,19 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
             <option value="running">{t('Running')}</option>
             <option value="closed">{t('Closed')}</option>
           </select>
+
+          <select
+            className="select-input"
+            value={selectedTagFilter}
+            onChange={(e) => setSelectedTagFilter(e.target.value)}
+          >
+            <option value="">{t('All Tags')}</option>
+            {tags.map((tg) => (
+              <option key={tg.id} value={tg.id}>
+                {tg.name} ({tg.profile_count})
+              </option>
+            ))}
+          </select>
         </div>
 
         <div className="header-btn-group">
@@ -915,11 +1096,18 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
             <FolderIcon size={14} />
             <span>Groups</span>
           </button>
+          <button className="btn" onClick={() => { setTagForm({ id: null, name: '', color: '#6b7280' }); setShowTagModal(true); }}>
+            <ProxiesIcon size={14} />
+            <span>Tags</span>
+          </button>
           <button className="btn" onClick={() => setShowBatch(true)}>
             {t('Batch Create')}
           </button>
           <button className="btn" onClick={() => setShowCsv(true)}>
             {t('Import CSV')}
+          </button>
+          <button className="btn" onClick={() => window.open(api.exportCsvUrl(), '_blank')} title={t('Export all profiles to CSV')}>
+            {t('Export CSV')}
           </button>
           <button className="btn" onClick={() => document.getElementById('import-bundle-input')?.click()} disabled={busy} title={t('Import a profile bundle (.json) exported from this or another machine')}>
             {t('Import Bundle')}
@@ -1008,11 +1196,21 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
                   <td>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
                       <strong style={{ fontSize: 14, color: '#f3f4f6' }}>{p.name || 'Unnamed Profile'}</strong>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                         <span className="group-tag">
                           <FolderIcon size={10} />
                           {getGroupName(p.group_id)}
                         </span>
+                        {(profileTagMap[p.user_id] || []).map((tg) => (
+                          <span
+                            key={tg.tag_id}
+                            className="group-tag"
+                            style={{ color: tg.color || 'var(--text-secondary)', borderColor: `${tg.color || 'var(--border)'}66` }}
+                            title={tg.name}
+                          >
+                            #{tg.name}
+                          </span>
+                        ))}
                         <div className="id-badge">
                           <code>{p.user_id.slice(0, 10)}...</code>
                           <button onClick={() => copyToClipboard(p.user_id)} title="Copy ID">
@@ -1553,6 +1751,15 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
                 <FingerprintIcon size={14} />
                 <span>Fingerprint &amp; Hardware</span>
               </button>
+              {modalMode === 'edit' ? (
+                <button
+                  className={`tab-btn ${modalTab === 'vault' ? 'active' : ''}`}
+                  onClick={() => { setModalTab('vault'); openVaultTab(profileId); }}
+                >
+                  <KeyIcon size={14} />
+                  <span>Vault</span>
+                </button>
+              ) : null}
             </div>
 
             <div className="modal-body">
@@ -1609,6 +1816,130 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
                       </p>
                     </div>
                   ) : null}
+                </>
+              ) : null}
+
+              {/* TAB: VAULT (Sprint 2.1) — credentials per profile */}
+              {modalTab === 'vault' && modalMode === 'edit' ? (
+                <>
+                  <div className="form-group">
+                    <label>{vaultForm.id ? t('Edit entry') : t('Add entry')}</label>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                      <input
+                        placeholder={t('Label (e.g. main account)')}
+                        value={vaultForm.label}
+                        onChange={(e) => setVaultForm({ ...vaultForm, label: e.target.value })}
+                      />
+                      <input
+                        placeholder={t('Login')}
+                        value={vaultForm.login}
+                        onChange={(e) => setVaultForm({ ...vaultForm, login: e.target.value })}
+                      />
+                      <input
+                        type="password"
+                        placeholder={t('Password')}
+                        value={vaultForm.password}
+                        onChange={(e) => setVaultForm({ ...vaultForm, password: e.target.value })}
+                      />
+                      <input
+                        placeholder={t('TOTP secret (optional)')}
+                        value={vaultForm.totp}
+                        onChange={(e) => setVaultForm({ ...vaultForm, totp: e.target.value })}
+                      />
+                    </div>
+                    <input
+                      style={{ marginTop: 8 }}
+                      placeholder={t('Notes')}
+                      value={vaultForm.notes}
+                      onChange={(e) => setVaultForm({ ...vaultForm, notes: e.target.value })}
+                    />
+                    <div style={{ marginTop: 8, display: 'flex', gap: 8 }}>
+                      <button className="btn primary" onClick={() => void saveVaultEntry()} disabled={busy}>
+                        {vaultForm.id ? t('Save') : t('Add')}
+                      </button>
+                      {vaultForm.id ? (
+                        <button className="btn" onClick={() => setVaultForm({ id: null, label: '', login: '', password: '', totp: '', notes: '' })}>
+                          {t('Cancel')}
+                        </button>
+                      ) : null}
+                    </div>
+                  </div>
+
+                  <div className="table-container" style={{ marginTop: 10 }}>
+                    <table className="table">
+                      <thead>
+                        <tr>
+                          <th>{t('Label')}</th>
+                          <th>{t('Login')}</th>
+                          <th>{t('Password')}</th>
+                          <th style={{ width: '20%', textAlign: 'right' }}>{t('Actions')}</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {vaultEntries.length === 0 ? (
+                          <tr>
+                            <td colSpan={4} className="empty-cell" style={{ fontSize: 12.5, color: 'var(--text-muted)' }}>
+                              {t('No saved credentials yet. Passwords are encrypted (AES-256-GCM) and never leave this machine.')}
+                            </td>
+                          </tr>
+                        ) : (
+                          vaultEntries.map((e) => {
+                            const pwKey = `${e.id}:password`;
+                            const totpKey = `${e.id}:totp_secret`;
+                            return (
+                              <tr key={e.id}>
+                                <td style={{ fontSize: 12.5 }}>{e.label || '—'}</td>
+                                <td style={{ fontSize: 12.5 }}>{e.login || '—'}</td>
+                                <td style={{ fontSize: 12.5 }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                                    <code style={{ fontFamily: 'var(--font-mono)' }}>
+                                      {revealed[pwKey] || (e.has_password ? '******' : '—')}
+                                    </code>
+                                    {e.has_password ? (
+                                      <>
+                                        <button
+                                          className="btn-icon"
+                                          style={{ padding: '2px 6px' }}
+                                          onClick={() => void revealVaultField(e, 'password')}
+                                          title={t('Reveal / hide (15s)')}
+                                        >
+                                          <KeyIcon size={11} />
+                                        </button>
+                                        <button
+                                          className="btn-icon"
+                                          style={{ padding: '2px 6px' }}
+                                          onClick={() => revealed[pwKey] && copyVaultValue(revealed[pwKey])}
+                                          disabled={!revealed[pwKey]}
+                                          title={t('Copy value')}
+                                        >
+                                          {copiedValue && revealed[pwKey] === copiedValue ? <CheckIcon size={11} style={{ color: 'var(--ok)' }} /> : <CopyIcon size={11} />}
+                                        </button>
+                                      </>
+                                    ) : null}
+                                    {e.has_totp ? (
+                                      <code style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-muted)' }} title={revealed[totpKey] || t('TOTP secret stored')}>
+                                        {revealed[totpKey] ? `TOTP: ${revealed[totpKey]}` : 'TOTP: ******'}
+                                      </code>
+                                    ) : null}
+                                  </div>
+                                </td>
+                                <td>
+                                  <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
+                                    <button className="btn btn-sm" onClick={() => editVaultEntry(e)} disabled={busy}>
+                                      {t('Edit')}
+                                    </button>
+                                    <button className="btn btn-sm btn-danger" onClick={() => void deleteVaultEntry(e.id)} disabled={busy}>
+                                      <TrashIcon size={11} />
+                                    </button>
+                                  </div>
+                                </td>
+                              </tr>
+                            );
+                          })
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
                 </>
               ) : null}
 
@@ -1899,6 +2230,79 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
             </div>
             <div className="modal-footer">
               <button className="btn" onClick={() => setShowGroupModal(false)}>Close</button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {/* Tag Management Modal (Sprint 2.3) */}
+      {showTagModal ? (
+        <div className="modal-overlay" onClick={() => setShowTagModal(false)}>
+          <div className="modal-card" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 520 }}>
+            <div className="modal-header">
+              <h3>{t('Manage Tags')}</h3>
+              <button className="btn-icon" onClick={() => setShowTagModal(false)}>✕</button>
+            </div>
+            <div className="modal-body">
+              <div className="form-group">
+                <label>{tagForm.id ? t('Edit tag') : t('Create tag')}</label>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <input
+                    style={{ flex: 1 }}
+                    placeholder={t('Tag name')}
+                    value={tagForm.name}
+                    onChange={(e) => setTagForm({ ...tagForm, name: e.target.value })}
+                  />
+                  <input
+                    type="color"
+                    value={tagForm.color}
+                    onChange={(e) => setTagForm({ ...tagForm, color: e.target.value })}
+                    style={{ width: 42, height: 34, padding: 2, cursor: 'pointer' }}
+                  />
+                  <button className="btn primary" onClick={() => void saveTag()} disabled={busy || !tagForm.name.trim()}>
+                    {tagForm.id ? t('Save') : t('Create')}
+                  </button>
+                  {tagForm.id ? (
+                    <button className="btn" onClick={() => setTagForm({ id: null, name: '', color: '#6b7280' })}>
+                      {t('Cancel')}
+                    </button>
+                  ) : null}
+                </div>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 8 }}>
+                {tags.map((tg) => (
+                  <div
+                    key={tg.id}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 10,
+                      padding: '7px 10px',
+                      border: '1px solid var(--border)',
+                      borderRadius: 6,
+                    }}
+                  >
+                    <span style={{ width: 12, height: 12, borderRadius: 3, background: tg.color || 'var(--border)', display: 'inline-block' }} />
+                    <span style={{ fontSize: 13, flex: 1 }}>
+                      {tg.name} <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>({tg.profile_count})</span>
+                    </span>
+                    <button
+                      className="btn btn-sm"
+                      onClick={() => setTagForm({ id: tg.id, name: tg.name, color: tg.color || '#6b7280' })}
+                      disabled={busy}
+                    >
+                      {t('Edit')}
+                    </button>
+                    <button className="btn btn-sm btn-danger" onClick={() => void deleteTagById(tg.id)} disabled={busy}>
+                      <TrashIcon size={11} />
+                    </button>
+                  </div>
+                ))}
+                {tags.length === 0 ? <p className="hint">{t('No tags yet — create one above.')}</p> : null}
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button className="btn" onClick={() => setShowTagModal(false)}>Close</button>
             </div>
           </div>
         </div>
