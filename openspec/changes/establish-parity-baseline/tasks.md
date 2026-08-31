@@ -1,12 +1,12 @@
 ## 1. Authorization and isolated clone
 
 - [x] 1.1 Obtain explicit user approval of this complete child draft before any script, clone, code, test, corpus, or migration work; umbrella approval is insufficient.
-- [ ] 1.2 After both approvals, create a disposable isolated clone of pre-denial executable/build, DB, and profile filesystem; prove mutating fixtures can reach only clone paths while production behavior remains unchanged.
+- [x] 1.2 After both approvals, create a disposable isolated clone of pre-denial executable/build, DB, and profile filesystem; prove mutating fixtures can reach only clone paths while production behavior remains unchanged.
 
 ## 2. Create wrappers before use
 
-- [ ] 2.1 Create missing legacy-corpus, corpus-sign/verify, policy, Chromium, WebRTC, network-capture, hygiene, privacy, claims, and JSON artifact-hygiene wrapper scripts plus npm entries; test schema `{schemaVersion,command,status,passed,failed,unresolved,assertions,artifacts,startedAt,finishedAt}` and nonzero fail/unresolved exits.
-- [ ] 2.2 Create Vitest suites/wrappers using immutable `evidence/raw/<suite>.vitest.json` and separate canonical `evidence/normalized/<suite>.summary.jcs.json`; test raw non-overwrite, both digests/schema, and nonzero rules.
+- [x] 2.1 Create missing legacy-corpus, corpus-sign/verify, policy, Chromium, WebRTC, network-capture, hygiene, privacy, claims, and JSON artifact-hygiene wrapper scripts plus npm entries; test schema `{schemaVersion,command,status,passed,failed,unresolved,assertions,artifacts,startedAt,finishedAt}` and nonzero fail/unresolved exits.
+- [x] 2.2 Create Vitest suites/wrappers using immutable `evidence/raw/<suite>.vitest.json` and separate canonical `evidence/normalized/<suite>.summary.jcs.json`; test raw non-overwrite, both digests/schema, and nonzero rules.
 
 ## 3. Clone-only legacy corpus barrier
 

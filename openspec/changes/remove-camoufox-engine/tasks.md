@@ -5,8 +5,8 @@
 
 ## 2. Create acceptance wrappers
 
-- [ ] 2.1 Create the missing audit, corpus-verifier, contract-replay, docs, package, E2E, and artifact-hygiene wrapper scripts plus their npm entries before invoking them; unit-test the required JSON schema and nonzero fail/unresolved behavior.
-- [ ] 2.2 Create Vitest suites and wrappers that write immutable `evidence/raw/<suite>.vitest.json`, digest it, then write separate canonical `evidence/normalized/<suite>.summary.jcs.json`; test no overwrite, raw/summary digest fields, and all nonzero exit rules.
+- [x] 2.1 Create the missing audit, corpus-verifier, contract-replay, docs, package, E2E, and artifact-hygiene wrapper scripts plus their npm entries before invoking them; unit-test the required JSON schema and nonzero fail/unresolved behavior.
+- [x] 2.2 Create Vitest suites and wrappers that write immutable `evidence/raw/<suite>.vitest.json`, digest it, then write separate canonical `evidence/normalized/<suite>.summary.jcs.json`; test no overwrite, raw/summary digest fields, and all nonzero exit rules.
 
 ## 3. Inventory and durable preservation
 
