@@ -1,4 +1,4 @@
-import type { Database } from 'better-sqlite3';
+import type { Database } from '../index';
 
 export function migratePreservedBrowserData(db: Database): void {
   db.exec(`
