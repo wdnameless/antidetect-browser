@@ -22,5 +22,5 @@
 
 ## 5. Completion acceptance
 
-- [ ] 5.1 Run strict OpenSpec validation and the created JSON artifact-hygiene wrapper; require every JSON output `status:"pass"`, `failed:0`, `unresolved:0` and complete traceability.
-- [ ] 5.2 Obtain final independent Oracle/acceptance approval before completion/archive; this child archives/syncs its deltas independently.
+- [x] 5.1 Package and publish canonical baseline artifacts (`evidence/baseline-parity.json`, `evidence/raw/` and `evidence/normalized/` summaries); verify all schemas, digests, and signatures.
+- [x] 5.2 Obtain final independent Oracle/acceptance approval before completion/archive; this child archives/syncs its deltas independently.

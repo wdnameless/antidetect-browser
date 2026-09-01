@@ -71,4 +71,9 @@ if (require.main === module) {
     path.resolve(process.cwd(), 'evidence/normalized/camoufox-rollback-rehearsal.summary.jcs.json'),
     'unit-camoufox-rollback-rehearsal'
   );
+  normalizeReport(
+    path.resolve(process.cwd(), 'evidence/raw/camoufox-acceptance.vitest.json'),
+    path.resolve(process.cwd(), 'evidence/normalized/camoufox-acceptance.summary.jcs.json'),
+    'unit-camoufox-acceptance-verification'
+  );
 }

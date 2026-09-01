@@ -1,0 +1,113 @@
+{
+  "schemaVersion": "1",
+  "timestamp": "2026-09-01T00:18:52.122Z",
+  "change": "remove-camoufox-engine",
+  "overallStatus": "pass",
+  "checks": [
+    {
+      "id": "CHK-01-LEGACY-BARRIER",
+      "name": "Pre-denial clone run and signed LEGACY_CORPUS_SIGNED barrier verification",
+      "status": "pass",
+      "details": {
+        "exists": true,
+        "verified": true,
+        "verificationDetails": {
+          "verified": true,
+          "keyId": "9655e05d87693c4a",
+          "domain": "antidetect:legacy-corpus:v1\u0000",
+          "schemaVersion": "1",
+          "corpusSha256": "ae6d1a13709cf86a2c2e92d676dc3972f2eae3023b4ee04dbf781b7e6efa7685",
+          "signatureAlgorithm": "Ed25519",
+          "fixturesCount": 13
+        },
+        "hasClones": true,
+        "keyId": "9655e05d87693c4a",
+        "fixturesCount": 13
+      }
+    },
+    {
+      "id": "CHK-02-DATA-PRESERVATION",
+      "name": "Preserved browser data registry and filesystem inventory verification",
+      "status": "pass",
+      "details": {
+        "valid": true,
+        "schemaVersion": "1.0.0",
+        "generatedAt": "2026-09-01T00:01:13.043Z",
+        "categories": {
+          "configuration": 1,
+          "database": 2,
+          "bundle": 1,
+          "route": 2,
+          "lifecycle": 1,
+          "syncer": 1,
+          "ui": 1,
+          "docs": 1,
+          "probe": 1,
+          "package": 1,
+          "dependency": 1,
+          "data": 1
+        },
+        "totalTouchpoints": 14,
+        "inventorySha256": "c0699c438a2945566d9d700337fba064442991047c6cc5670707281855de67e5"
+      }
+    },
+    {
+      "id": "CHK-03-EVIDENCE-PIPELINE",
+      "name": "Vitest raw test runs and canonical normalized JCS summaries",
+      "status": "pass",
+      "details": {
+        "evidence/normalized/legacy-corpus.summary.jcs.json": true,
+        "evidence/normalized/camoufox-inventory.summary.jcs.json": true,
+        "evidence/normalized/camoufox-denial.summary.jcs.json": true,
+        "evidence/normalized/camoufox-export-cleanup.summary.jcs.json": true,
+        "evidence/normalized/camoufox-removal-verification.summary.jcs.json": true,
+        "evidence/normalized/camoufox-rollback-rehearsal.summary.jcs.json": true
+      }
+    },
+    {
+      "id": "CHK-04-PACKAGE-HYGIENE",
+      "name": "Dependency and source removal hygiene (no active Camoufox package or loader)",
+      "status": "pass",
+      "details": {
+        "hasCamoufoxDep": false,
+        "version": "0.2.30"
+      }
+    }
+  ],
+  "summary": {
+    "total": 4,
+    "passed": 4,
+    "failed": 0,
+    "unresolved": 0
+  },
+  "artifacts": [
+    {
+      "path": "evidence/camoufox-inventory.json",
+      "sha256": "c0699c438a2945566d9d700337fba064442991047c6cc5670707281855de67e5"
+    },
+    {
+      "path": "evidence/normalized/legacy-corpus.summary.jcs.json",
+      "sha256": "cfbe4c12ed9cf4062a9deb66de8d9d54492ae0351e8a52881d57731d3c1978b6"
+    },
+    {
+      "path": "evidence/normalized/camoufox-inventory.summary.jcs.json",
+      "sha256": "caefc3325c490a893adc7a5f582262e44beff6a06d8b226a2d51f8fb6f7dacd3"
+    },
+    {
+      "path": "evidence/normalized/camoufox-denial.summary.jcs.json",
+      "sha256": "d51450c3a6abf46984fb1120c2f51b8f008310d1c6e6bd4ce660919f4bb9f7ba"
+    },
+    {
+      "path": "evidence/normalized/camoufox-export-cleanup.summary.jcs.json",
+      "sha256": "89f8cac9e8b4bbf47aed8f459a50bc6e8ee9863a27e2c10b487edc7a3cf1d87e"
+    },
+    {
+      "path": "evidence/normalized/camoufox-removal-verification.summary.jcs.json",
+      "sha256": "0aa34affe6ffe689e5d361b574646a2b0dd103cc9d2804b094a88dc644674ef7"
+    },
+    {
+      "path": "evidence/normalized/camoufox-rollback-rehearsal.summary.jcs.json",
+      "sha256": "3567486b1e4d5f63d3dcaf48bc7865540529642f66fa251cb60e54798c2508df"
+    }
+  ]
+}

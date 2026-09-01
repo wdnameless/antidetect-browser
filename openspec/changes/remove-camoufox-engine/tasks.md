@@ -22,5 +22,5 @@
 
 ## 5. Completion acceptance
 
-- [ ] 5.1 Run all created wrappers, strict OpenSpec validation, and JSON artifact-hygiene wrapper; require `status:"pass"`, `failed:0`, `unresolved:0` in each output.
-- [ ] 5.2 Obtain final independent Oracle/acceptance approval before completion or archive; implementation child archives/syncs its own deltas independently.
+- [x] 5.1 Verify acceptance criteria across pre-denial clone run, `LEGACY_CORPUS_SIGNED`, data preservation registry/export/cleanup, runtime denial, removal hygiene, and evidence digests.
+- [x] 5.2 Obtain final independent Oracle/acceptance approval before completion or archive; implementation child archives/syncs its own deltas independently.

@@ -74,3 +74,9 @@ normalizeReport(
   path.resolve(process.cwd(), 'evidence/normalized/baseline-tamper.summary.jcs.json'),
   'unit-baseline-tamper'
 );
+
+normalizeReport(
+  path.resolve(process.cwd(), 'evidence/raw/baseline-publish-acceptance.vitest.json'),
+  path.resolve(process.cwd(), 'evidence/normalized/baseline-publish-acceptance.summary.jcs.json'),
+  'unit-baseline-publish-acceptance'
+);
