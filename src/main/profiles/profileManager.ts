@@ -133,7 +133,10 @@ export interface LaunchConfig {
   timezone?: string;
   /** Desktop screen resolution override (AdsPower-style), from fingerprint config. */
   screenOverride?: { width: number; height: number };
+  headless?: boolean;
+  temporary?: boolean;
 }
+export * from './temporaryRegistry';
 
 export interface ProfileListItem {
   user_id: string;

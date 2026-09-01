@@ -5,6 +5,7 @@ import { startApi } from './api/server';
 import { getApiKey, API_HOST, API_PORT, DATA_DIR } from './config';
 import { seedDevices } from './devices/deviceManager';
 import { recoverStaleRunning, purgeExpiredTrash } from './profiles/profileManager';
+import { startupPurgeSweep, shutdownCleanup } from './profiles/temporaryRegistry';
 import { stopAll } from './launcher/chromium';
 import { stopAllSessions } from './syncer/actionSyncer';
 import { startScheduler, stopScheduler, onProfileStatusChanged } from './scripts/triggerScheduler';
@@ -74,6 +75,11 @@ export async function shutdown(reason: string, code = 0): Promise<void> {
     // ignore
   }
   try {
+    await shutdownCleanup();
+  } catch {
+    // ignore
+  }
+  try {
     await stopAllSessions();
   } catch {
     // ignore
@@ -118,6 +124,17 @@ export async function startService(): Promise<void> {
   if (purged > 0) {
     logger.info('trash purge applied', { purged });
     console.log(`[antidetect] trash purge: ${purged} profile(s) older than 30 days removed`);
+  }
+
+  // Disposable profiles sweep: purge orphaned temporary profiles from prior sessions.
+  try {
+    const tempPurged = await startupPurgeSweep();
+    if (tempPurged.purged.length > 0) {
+      logger.info('temporary profiles startup sweep applied', { count: tempPurged.purged.length });
+      console.log(`[antidetect] temporary profiles sweep: ${tempPurged.purged.length} orphaned dir(s) removed`);
+    }
+  } catch (err) {
+    logger.warn('temporary profiles startup sweep failed', { error: String(err) });
   }
 
   // Script triggers (Sprint 4.3): scheduler tick + event hooks on status changes.

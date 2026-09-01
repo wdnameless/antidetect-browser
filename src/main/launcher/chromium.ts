@@ -5,6 +5,11 @@ import puppeteer from 'puppeteer-core';
 import { getChromiumPath, getChromedriverPath } from '../config';
 import type { LaunchConfig } from '../profiles/profileManager';
 import { setStatus } from '../profiles/profileManager';
+import {
+  isTemporaryProfile,
+  cleanTemporaryDirectory,
+  unregisterTemporaryProfile,
+} from '../profiles/temporaryRegistry';
 import { createSshTunnel, SshTunnel } from '../proxy/sshTunnel';
 import { installProxyAuth } from '../proxy/proxyAuth';
 import { applyDeviceEmulation } from '../proxy/deviceEmulation';
@@ -141,6 +146,84 @@ function cleanup(rec: RunningProfile): void {
   }
 }
 
+export async function buildChromiumArgs(
+  cfg: LaunchConfig,
+  proxyServer?: string,
+  transportFlags: string[] = []
+): Promise<string[]> {
+  const args: string[] = [
+    `--user-data-dir=${cfg.userDataDir}`,
+    '--remote-debugging-port=0',
+    '--no-first-run',
+    '--no-default-browser-check',
+    // Keep session cookies on disk too — logins must survive restarts.
+    '--persist-session-cookies',
+  ];
+  if (cfg.headless) {
+    args.push('--headless=new');
+  }
+  if (transportFlags.length > 0) {
+    args.push(...transportFlags);
+  } else if (proxyServer) {
+    args.push(`--proxy-server=${proxyServer}`);
+  }
+
+  // Desktop screen resolution override (AdsPower-style, from fingerprint config).
+  if (cfg.screenOverride) {
+    args.push(`--window-size=${cfg.screenOverride.width},${cfg.screenOverride.height}`);
+    args.push(`--window-position=0,0`);
+  }
+
+  // Kernel fingerprint flags (fingerprint-chromium). Stock Chromium ignores unknown flags,
+  // so this is safe even when a stock binary is resolved.
+  if (cfg.fingerprint && cfg.fingerprint.seed > 0) {
+    args.push(`--fingerprint=${cfg.fingerprint.seed}`);
+    if (cfg.fingerprint.platform) args.push(`--fingerprint-platform=${cfg.fingerprint.platform}`);
+    if (cfg.fingerprint.platformVersion) {
+      args.push(`--fingerprint-platform-version=${cfg.fingerprint.platformVersion}`);
+    }
+    if (cfg.fingerprint.brand) args.push(`--fingerprint-brand=${cfg.fingerprint.brand}`);
+    if (cfg.fingerprint.brandVersion) {
+      args.push(`--fingerprint-brand-version=${cfg.fingerprint.brandVersion}`);
+    }
+    if (cfg.fingerprint.hardwareConcurrency) {
+      args.push(`--fingerprint-hardware-concurrency=${cfg.fingerprint.hardwareConcurrency}`);
+    }
+    if (cfg.fingerprint.disableSpoofing) {
+      args.push(`--disable-spoofing=${cfg.fingerprint.disableSpoofing}`);
+    }
+    // Explicit profile timezone wins; otherwise auto-detect from the proxy IP;
+    // otherwise detect from the machine's egress IP (keeps timezone coherent with IP).
+    const timezone =
+      cfg.fingerprint.timezone ?? cfg.proxyTimezone ?? (await detectMachineTimezone());
+    if (timezone) args.push(`--timezone=${timezone}`);
+    if (cfg.fingerprint.lang) {
+      args.push(`--lang=${cfg.fingerprint.lang}`);
+      args.push(`--accept-lang=${cfg.fingerprint.lang}`);
+    }
+  }
+
+  // Extensions (Sprint B): load bound unpacked extensions.
+  if (cfg.extensionPaths && cfg.extensionPaths.length) {
+    const joined = cfg.extensionPaths.join(',');
+    args.push(`--load-extension=${joined}`);
+  }
+
+  // Stealth layer: per-profile MV3 extension (MAIN world, document_start).
+  // CDP script injection is broken in this kernel, so the stealth script ships as an
+  // extension loaded via --load-extension (kernel supports it, verified in Sprint B).
+  if (cfg.stealth) {
+    const stealthExtDir = path.join(cfg.userDataDir, 'stealth-ext');
+    writeStealthExtension(stealthExtDir, cfg.stealth);
+    const extArgs = cfg.extensionPaths && cfg.extensionPaths.length
+      ? [...cfg.extensionPaths, stealthExtDir]
+      : [stealthExtDir];
+    args.push(`--load-extension=${extArgs.join(',')}`);
+  }
+
+  return args;
+}
+
 export async function startProfile(cfg: LaunchConfig): Promise<StartResult> {
   const existing = running.get(cfg.profileId);
   if (existing) return toResult(existing);
@@ -195,75 +278,7 @@ export async function startProfile(cfg: LaunchConfig): Promise<StartResult> {
 
     transportFlags = composeTransportFlags(probeResult, proxyServer);
   }
-  const args: string[] = [
-    `--user-data-dir=${cfg.userDataDir}`,
-    '--remote-debugging-port=0',
-    '--no-first-run',
-    '--no-default-browser-check',
-    // Keep session cookies on disk too — logins must survive restarts.
-    '--persist-session-cookies',
-  ];
-
-  if (transportFlags.length > 0) {
-    args.push(...transportFlags);
-  } else if (proxyServer) {
-    args.push(`--proxy-server=${proxyServer}`);
-  }
-
-  // Desktop screen resolution override (AdsPower-style, from fingerprint config).
-  if (cfg.screenOverride) {
-    args.push(`--window-size=${cfg.screenOverride.width},${cfg.screenOverride.height}`);
-    args.push(`--window-position=0,0`);
-  }
-
-  // Kernel fingerprint flags (fingerprint-chromium). Stock Chromium ignores unknown flags,
-  // so this is safe even when a stock binary is resolved.
-  if (cfg.fingerprint && cfg.fingerprint.seed > 0) {
-    args.push(`--fingerprint=${cfg.fingerprint.seed}`);
-    if (cfg.fingerprint.platform) args.push(`--fingerprint-platform=${cfg.fingerprint.platform}`);
-    if (cfg.fingerprint.platformVersion) {
-      args.push(`--fingerprint-platform-version=${cfg.fingerprint.platformVersion}`);
-    }
-    if (cfg.fingerprint.brand) args.push(`--fingerprint-brand=${cfg.fingerprint.brand}`);
-    if (cfg.fingerprint.brandVersion) {
-      args.push(`--fingerprint-brand-version=${cfg.fingerprint.brandVersion}`);
-    }
-    if (cfg.fingerprint.hardwareConcurrency) {
-      args.push(`--fingerprint-hardware-concurrency=${cfg.fingerprint.hardwareConcurrency}`);
-    }
-    if (cfg.fingerprint.disableSpoofing) {
-      args.push(`--disable-spoofing=${cfg.fingerprint.disableSpoofing}`);
-    }
-    // Explicit profile timezone wins; otherwise auto-detect from the proxy IP;
-    // otherwise detect from the machine's egress IP (keeps timezone coherent with IP).
-    const timezone =
-      cfg.fingerprint.timezone ?? cfg.proxyTimezone ?? (await detectMachineTimezone());
-    if (timezone) args.push(`--timezone=${timezone}`);
-    if (cfg.fingerprint.lang) {
-      args.push(`--lang=${cfg.fingerprint.lang}`);
-      args.push(`--accept-lang=${cfg.fingerprint.lang}`);
-    }
-  }
-
-  // Extensions (Sprint B): load bound unpacked extensions.
-  if (cfg.extensionPaths && cfg.extensionPaths.length) {
-    const joined = cfg.extensionPaths.join(',');
-    args.push(`--load-extension=${joined}`);
-  }
-
-  // Stealth layer: per-profile MV3 extension (MAIN world, document_start).
-  // CDP script injection is broken in this kernel, so the stealth script ships as an
-  // extension loaded via --load-extension (kernel supports it, verified in Sprint B).
-  let stealthExtDir: string | undefined;
-  if (cfg.stealth) {
-    stealthExtDir = path.join(cfg.userDataDir, 'stealth-ext');
-    writeStealthExtension(stealthExtDir, cfg.stealth);
-    const extArgs = cfg.extensionPaths && cfg.extensionPaths.length
-      ? [...cfg.extensionPaths, stealthExtDir]
-      : [stealthExtDir];
-    args.push(`--load-extension=${extArgs.join(',')}`);
-  }
-
+  const args = await buildChromiumArgs(cfg, proxyServer, transportFlags);
   let child: ChildProcess;
   try {
     if (!fs.existsSync(executable) && executable !== 'chrome.exe') {
@@ -417,10 +432,18 @@ export async function startProfile(cfg: LaunchConfig): Promise<StartResult> {
       // Watchdog: keep the DB status in sync when the kernel exits on its own
       // (crash, manual close of the browser window). Intentionally swallows
       // errors so the exit path never throws.
-      try {
-        setStatus(cfg.profileId, 'closed');
-      } catch {
-        // ignore
+      if (!cfg.temporary && !isTemporaryProfile(cfg.profileId)) {
+        try {
+          setStatus(cfg.profileId, 'closed');
+        } catch {
+          // ignore
+        }
+      }
+
+      // Temporary profile cleanup: purge ephemeral directory on exit and unregister
+      if (cfg.temporary || isTemporaryProfile(cfg.profileId)) {
+        void cleanTemporaryDirectory(cfg.userDataDir).catch(() => {});
+        unregisterTemporaryProfile(cfg.profileId);
       }
     });
     return toResult(rec);

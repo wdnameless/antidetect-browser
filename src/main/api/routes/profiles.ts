@@ -3,6 +3,7 @@
 import { Router, Request, Response } from 'express';
 import { getDb } from '../../db';
 import * as pm from '../../profiles/profileManager';
+import { createTemporaryProfile, getTemporaryProfile } from '../../profiles/temporaryRegistry';
 import * as tags from '../../tags/tagManager';
 import { toCsv } from '../../util/csv';
 
@@ -40,5 +41,34 @@ router.get('/api/v1/profiles/export-csv', (_req: Request, res: Response) => {
   );
   res.send(csv);
 });
+
+function handleCreateTemporaryProfile(req: Request, res: Response) {
+  try {
+    const body = req.body || {};
+    const descriptor = createTemporaryProfile(body);
+    return res.json({
+      code: 0,
+      msg: 'success',
+      data: {
+        profile_id: descriptor.id,
+        name: descriptor.name,
+        temporary: true,
+        created_at: descriptor.createdAt,
+        user_data_dir: descriptor.userDataDir,
+        headless: !!descriptor.headless,
+        start_urls: descriptor.startUrls,
+      },
+    });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : 'Failed to create temporary profile';
+    return res.status(500).json({
+      code: -1,
+      msg,
+    });
+  }
+}
+
+router.post('/api/v1/profiles/temporary', handleCreateTemporaryProfile);
+router.post('/profiles/temporary', handleCreateTemporaryProfile);
 
 export default router;
