@@ -1,0 +1,39 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "version": "1.0.0",
+  "description": "Pre-approved script templates for browser.evaluate_allowlisted",
+  "scripts": {
+    "extract_form_inputs": {
+      "id": "extract_form_inputs",
+      "name": "Extract Form Inputs",
+      "description": "Extracts input field names, types, and values from visible forms",
+      "params": {
+        "formSelector": {
+          "type": "string",
+          "description": "CSS selector for the form (optional)"
+        }
+      },
+      "code": "(params) => {\n  const root = params && params.formSelector ? document.querySelector(params.formSelector) : document;\n  if (!root) return { error: 'Form element not found' };\n  const inputs = Array.from(root.querySelectorAll('input, select, textarea'));\n  return inputs.map(el => ({\n    tagName: el.tagName.toLowerCase(),\n    name: el.getAttribute('name') || '',\n    id: el.id || '',\n    type: el.getAttribute('type') || '',\n    value: (el as any).value || ''\n  }));\n}"
+    },
+    "extract_page_metadata": {
+      "id": "extract_page_metadata",
+      "name": "Extract Page Metadata",
+      "description": "Extracts page title, description, and canonical URL",
+      "params": {},
+      "code": "() => {\n  const title = document.title;\n  const metaDesc = document.querySelector('meta[name=\"description\"]');\n  const canonical = document.querySelector('link[rel=\"canonical\"]');\n  return {\n    title,\n    description: metaDesc ? metaDesc.getAttribute('content') : null,\n    canonical: canonical ? canonical.getAttribute('href') : null,\n    url: window.location.href\n  };\n}"
+    },
+    "get_element_text": {
+      "id": "get_element_text",
+      "name": "Get Element Text",
+      "description": "Extracts text content and innerHTML from an element",
+      "params": {
+        "selector": {
+          "type": "string",
+          "required": true,
+          "description": "CSS selector of the target element"
+        }
+      },
+      "code": "(params) => {\n  if (!params || !params.selector) return { error: 'selector is required' };\n  const el = document.querySelector(params.selector);\n  if (!el) return { error: 'Element not found' };\n  return {\n    textContent: el.textContent ? el.textContent.trim() : '',\n    innerText: (el as HTMLElement).innerText || ''\n  };\n}"
+    }
+  }
+}

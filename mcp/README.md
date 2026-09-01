@@ -1,0 +1,46 @@
+# @antidetect/mcp-server
+
+Constrained, audit-logged Model Context Protocol (MCP) server for Antidetect Browser.
+
+## Security Architecture
+
+The MCP server enforces defense-in-depth access controls:
+
+1. **Protocol & Transports**:
+   - JSON-RPC 2.0 interface.
+   - `stdio` transport for direct process integration.
+   - `http` transport strictly bound to loopback `127.0.0.1` (`/mcp` endpoint).
+
+2. **Tool Tiers & RBAC**:
+   - **Tier 1 (Default)**: Metadata read & standard browser automation operations (`profiles.list`, `profiles.get`, `profiles.create`, `profiles.start`, `profiles.stop`, `browser.navigate`, `browser.click`, `browser.type`, `browser.screenshot`, `diagnostics.run`).
+   - **Tier 2 (Gated)**: High-impact or destructive operations requiring `admin` or `profile:write_danger` token scope, or explicit `ANTIDETECT_MCP_GATED` environment variable allowlisting (`profiles.delete`, `profiles.restore`, `profiles.export_preserved`, `profiles.cleanup_preserved`, `browser.evaluate_allowlisted`).
+   - **Prohibited Operations**: Raw CDP execution (`cdp.send`, `Runtime.evaluate`), process execution, arbitrary filesystem manipulation, and unbounded JS evaluation are hard-blocked for all callers and roles.
+
+3. **Allowlisted Script Registry**:
+   - `browser.evaluate_allowlisted` only executes scripts defined in `mcp/allowlist.json` by matching `script_id`. Arbitrary scripts are rejected immediately.
+
+4. **Replay Defense & Audit**:
+   - Monotonic/sliding-window nonce validation rejects replayed nonces.
+   - 15-minute max TTL token validation.
+   - Hash-chained audit logger (SHA-256 prevHash chain) recording every call decision (`allow`, `deny`, `error`).
+
+## Installation & Build
+
+```bash
+cd mcp
+npm install
+npm run build
+```
+
+## Running the Server
+
+### Stdio Mode (Default)
+```bash
+node dist/index.js
+```
+
+### HTTP Mode (Loopback Only)
+```bash
+MCP_HTTP_PORT=8080 node dist/index.js
+```
+Endpoint: `http://127.0.0.1:8080/mcp`
