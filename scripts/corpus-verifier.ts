@@ -36,7 +36,9 @@ export function parseArgs(args: string[] = process.argv.slice(2)): CorpusVerifie
 }
 
 export async function runCorpusVerifier(options: CorpusVerifierOptions = {}): Promise<void> {
-  const defaultCorpus = 'evidence/raw/legacy-corpus.json';
+  const defaultCorpus = fs.existsSync('evidence/barriers/LEGACY_CORPUS_SIGNED.json')
+    ? 'evidence/barriers/LEGACY_CORPUS_SIGNED.json'
+    : 'evidence/raw/legacy-corpus.json';
   const resolvedCorpus = options.corpusPath || defaultCorpus;
   const command = `corpus:verify ${options.corpusPath ? `--corpus ${options.corpusPath}` : ''} ${options.keyPath ? `--key ${options.keyPath}` : ''} ${options.jsonPath ? `--json ${options.jsonPath}` : ''}`.trim();
 
@@ -80,22 +82,18 @@ export async function runCorpusVerifier(options: CorpusVerifierOptions = {}): Pr
       let signatureVerified = true;
       let signatureDetails: unknown = 'unverified-missing-key';
 
-      if (corpusExists && parsedCorpus && typeof parsedCorpus.signature === 'string' && options.keyPath && fs.existsSync(options.keyPath)) {
-        const publicKeyPem = fs.readFileSync(options.keyPath, 'utf8');
-        const signature = parsedCorpus.signature as string;
-        const payload = { ...parsedCorpus };
-        delete (payload as Record<string, unknown>).signature;
-        delete (payload as Record<string, unknown>).publicKey;
-        signatureVerified = verifyLegacyCorpus(payload, signature, publicKeyPem, DOMAIN_SEPARATOR_LEGACY_CORPUS);
-        signatureDetails = { verified: signatureVerified, domain: DOMAIN_SEPARATOR_LEGACY_CORPUS };
-      } else if (corpusExists && parsedCorpus && typeof parsedCorpus.signature === 'string' && typeof parsedCorpus.publicKey === 'string') {
-        const signature = parsedCorpus.signature as string;
-        const publicKeyPem = parsedCorpus.publicKey as string;
-        const payload = { ...parsedCorpus };
-        delete (payload as Record<string, unknown>).signature;
-        delete (payload as Record<string, unknown>).publicKey;
-        signatureVerified = verifyLegacyCorpus(payload, signature, publicKeyPem, DOMAIN_SEPARATOR_LEGACY_CORPUS);
-        signatureDetails = { verified: signatureVerified, domain: DOMAIN_SEPARATOR_LEGACY_CORPUS };
+      if (corpusExists && parsedCorpus && typeof parsedCorpus.signature === 'string') {
+        const publicKeyPem = (options.keyPath && fs.existsSync(options.keyPath))
+          ? fs.readFileSync(options.keyPath, 'utf8')
+          : ((parsedCorpus.publicKeyPem || parsedCorpus.publicKey) as string | undefined);
+
+        if (publicKeyPem) {
+          const signature = parsedCorpus.signature as string;
+          const payload = { ...parsedCorpus };
+          delete (payload as Record<string, unknown>).signature;
+          signatureVerified = verifyLegacyCorpus(payload, signature, publicKeyPem, DOMAIN_SEPARATOR_LEGACY_CORPUS);
+          signatureDetails = { verified: signatureVerified, domain: DOMAIN_SEPARATOR_LEGACY_CORPUS };
+        }
       }
 
       assertions.push({

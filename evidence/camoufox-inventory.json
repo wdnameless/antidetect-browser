@@ -1,0 +1,164 @@
+{
+  "schemaVersion": "1.0.0",
+  "generatedAt": "2026-09-01T00:01:13.043Z",
+  "summary": {
+    "totalTouchpoints": 14,
+    "unclassifiedPaths": 0,
+    "categories": {
+      "configuration": 1,
+      "database": 2,
+      "bundle": 1,
+      "route": 2,
+      "lifecycle": 1,
+      "syncer": 1,
+      "ui": 1,
+      "docs": 1,
+      "probe": 1,
+      "package": 1,
+      "dependency": 1,
+      "data": 1
+    }
+  },
+  "touchpoints": [
+    {
+      "path": "src/main/config/index.ts",
+      "category": "configuration",
+      "owner": "core-config",
+      "evidenceCommand": "npm run test tests/unit/camoufoxInventoryPreservation.test.ts",
+      "disposition": "refuse",
+      "preservationClass": "code_frozen",
+      "rollbackAction": "Restore configuration flag and default profile settings",
+      "description": "Engine type configuration and browser path defaults referencing Firefox/Camoufox"
+    },
+    {
+      "path": "src/main/db/schema.ts",
+      "category": "database",
+      "owner": "database-core",
+      "evidenceCommand": "npm run test tests/unit/camoufoxInventoryPreservation.test.ts",
+      "disposition": "preserve",
+      "preservationClass": "registry_durable",
+      "rollbackAction": "Re-enable profile browser_type camoufox support",
+      "description": "SQLite profiles browser_type column and preserved_browser_data registry schema"
+    },
+    {
+      "path": "src/main/db/migrations/preserved-browser-data.ts",
+      "category": "database",
+      "owner": "database-core",
+      "evidenceCommand": "npm run test tests/unit/camoufoxInventoryPreservation.test.ts",
+      "disposition": "preserve",
+      "preservationClass": "registry_durable",
+      "rollbackAction": "Drop preserved_browser_data table",
+      "description": "Dedicated migration creating preserved_browser_data registry and indices"
+    },
+    {
+      "path": "resources/camoufox",
+      "category": "bundle",
+      "owner": "build-distribution",
+      "evidenceCommand": "npm run test tests/unit/camoufoxInventoryPreservation.test.ts",
+      "disposition": "remove",
+      "preservationClass": "none",
+      "rollbackAction": "Re-extract Camoufox binary bundles into packaging pipeline",
+      "description": "Packaged / downloaded Camoufox browser binaries and geoip databases"
+    },
+    {
+      "path": "src/main/api/v1/profiles.ts",
+      "category": "route",
+      "owner": "api-team",
+      "evidenceCommand": "npm run test tests/unit/camoufoxInventoryPreservation.test.ts",
+      "disposition": "refuse",
+      "preservationClass": "audit_retained",
+      "rollbackAction": "Restore HTTP 200 creation and launch handler for browser_type=camoufox",
+      "description": "V1 profiles creation and launch endpoints rejecting or routing Camoufox"
+    },
+    {
+      "path": "src/main/api/v2/profiles.ts",
+      "category": "route",
+      "owner": "api-team",
+      "evidenceCommand": "npm run test tests/unit/camoufoxInventoryPreservation.test.ts",
+      "disposition": "refuse",
+      "preservationClass": "audit_retained",
+      "rollbackAction": "Restore v2 profile engine dispatch",
+      "description": "V2 profiles endpoints with engine refusal and structured error envelope"
+    },
+    {
+      "path": "src/main/browser/lifecycle.ts",
+      "category": "lifecycle",
+      "owner": "browser-runtime",
+      "evidenceCommand": "npm run test tests/unit/camoufoxInventoryPreservation.test.ts",
+      "disposition": "remove",
+      "preservationClass": "none",
+      "rollbackAction": "Restore Camoufox process spawn and CDP / Marionette event loops",
+      "description": "Browser launch/terminate lifecycle hooks for Firefox/Camoufox engine"
+    },
+    {
+      "path": "src/main/sync/profile-sync.ts",
+      "category": "syncer",
+      "owner": "cloud-sync",
+      "evidenceCommand": "npm run test tests/unit/camoufoxInventoryPreservation.test.ts",
+      "disposition": "preserve",
+      "preservationClass": "registry_durable",
+      "rollbackAction": "Enable camoufox profile cloud backup synchronization",
+      "description": "Cloud and local profile data synchronization preserving legacy Firefox profiles"
+    },
+    {
+      "path": "src/renderer/components/ProfileForm.tsx",
+      "category": "ui",
+      "owner": "frontend-team",
+      "evidenceCommand": "npm run test tests/unit/camoufoxInventoryPreservation.test.ts",
+      "disposition": "remove",
+      "preservationClass": "none",
+      "rollbackAction": "Re-enable Camoufox option in browser engine dropdown",
+      "description": "Renderer profile creation engine dropdown and Firefox specific settings"
+    },
+    {
+      "path": "docs/engines/camoufox.md",
+      "category": "docs",
+      "owner": "technical-writing",
+      "evidenceCommand": "npm run test tests/unit/camoufoxInventoryPreservation.test.ts",
+      "disposition": "preserve",
+      "preservationClass": "audit_retained",
+      "rollbackAction": "Unmark migration deprecation notices",
+      "description": "Technical and user documentation describing Camoufox deprecation and preservation"
+    },
+    {
+      "path": "src/main/browser/probe.ts",
+      "category": "probe",
+      "owner": "browser-runtime",
+      "evidenceCommand": "npm run test tests/unit/camoufoxInventoryPreservation.test.ts",
+      "disposition": "remove",
+      "preservationClass": "none",
+      "rollbackAction": "Re-add Firefox executable path scanning",
+      "description": "Browser installation detection, version check, and health probe"
+    },
+    {
+      "path": "package.json",
+      "category": "package",
+      "owner": "infra",
+      "evidenceCommand": "npm run test tests/unit/camoufoxInventoryPreservation.test.ts",
+      "disposition": "remove",
+      "preservationClass": "code_frozen",
+      "rollbackAction": "Re-add camoufox dependency to package.json",
+      "description": "NPM package dependencies including camoufox-js or playwright-firefox bindings"
+    },
+    {
+      "path": "package-lock.json",
+      "category": "dependency",
+      "owner": "infra",
+      "evidenceCommand": "npm run test tests/unit/camoufoxInventoryPreservation.test.ts",
+      "disposition": "remove",
+      "preservationClass": "code_frozen",
+      "rollbackAction": "Re-lock dependencies with camoufox packages",
+      "description": "Resolved dependencies lockfile"
+    },
+    {
+      "path": "data/profiles",
+      "category": "data",
+      "owner": "storage-team",
+      "evidenceCommand": "npm run test tests/unit/camoufoxInventoryPreservation.test.ts",
+      "disposition": "preserve",
+      "preservationClass": "registry_durable",
+      "rollbackAction": "Restore profile storage pointers",
+      "description": "On-disk profile directories containing preserved Firefox/Camoufox user data"
+    }
+  ]
+}

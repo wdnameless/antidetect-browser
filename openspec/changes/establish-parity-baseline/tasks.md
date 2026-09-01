@@ -10,9 +10,9 @@
 
 ## 3. Clone-only legacy corpus barrier
 
-- [ ] 3.1 Run create/import/duplicate/start/stop/bulk/script/sync fixtures only inside the disposable clone; capture exact V1/V2 request/response headers/content types/status/envelope/application codes, precedence, side effects, and mixed-bulk semantics to JSON.
-- [ ] 3.2 Canonicalize corpus with RFC 8785 JCS, digest SHA-256, create the domain-separated Ed25519 envelope fields from design.md, publish content-addressed immutable artifacts, and run the created verifier/replay wrapper.
-- [ ] 3.3 Emit `LEGACY_CORPUS_SIGNED` only on trusted key/schema/digest/signature/provenance/replay pass; then unblock removal production denial without waiting for Phase B.
+- [x] 3.1 Run create/import/duplicate/start/stop/bulk/script/sync fixtures only inside the disposable clone; capture exact V1/V2 request/response headers/content types/status/envelope/application codes, precedence, side effects, and mixed-bulk semantics to JSON.
+- [x] 3.2 Canonicalize corpus with RFC 8785 JCS, digest SHA-256, create the domain-separated Ed25519 envelope fields from design.md, publish content-addressed immutable artifacts, and run the created verifier/replay wrapper.
+- [x] 3.3 Emit `LEGACY_CORPUS_SIGNED` only on trusted key/schema/digest/signature/provenance/replay pass; then unblock removal production denial without waiting for Phase B.
 
 ## 4. Chromium and release baseline
 
