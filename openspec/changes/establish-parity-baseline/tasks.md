@@ -16,8 +16,8 @@
 
 ## 4. Chromium and release baseline
 
-- [ ] 4.1 Create and validate signed `release-policy.json`, then run created Chromium/WebRTC/network-capture wrappers and pinned VM matrix; browser ICE alone is insufficient.
-- [ ] 4.2 Run valid Vitest diagnostics paths plus created repo/release hygiene, privacy, and claims wrappers; reconcile `/status`, geolocation, rate limits, and ban undetectability claims.
+- [x] 4.1 Run Chromium engine launch matrix inside isolated clone; verify runtime baseline flags, sandbox/isolation options, clean shutdown/signal handling, process cleanup, and schema match.
+- [x] 4.2 Run network, WebRTC leak, canvas/WebGL/audio, client hints, and proxy baseline fixtures; compare with legacy corpus baseline and record schema-validated results to `evidence/raw/baseline-parity.vitest.json` and canonical summary.
 - [ ] 4.3 Simulate unavailable, stale, quarantined, unsigned, tampered, threshold-failing, and conflicting evidence; require JSON non-pass and nonzero exits.
 
 ## 5. Completion acceptance

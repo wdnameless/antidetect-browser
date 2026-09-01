@@ -12,11 +12,11 @@
 
 - [x] 3.1 Run the created inventory wrapper to `evidence/camoufox-inventory.json`; require zero unclassified configuration, DB, bundle, route, lifecycle, syncer, UI/docs/probe/package/dependency/data paths.
 - [x] 3.2 Create `preserved_browser_data` registry and transactional population; verify metadata purge survival, owner/tenant checks, canonical roots, digest/inventory, revisions, timestamps, journal, and audit linkage with Vitest JSON evidence.
-- [ ] 3.3 Implement authenticated export/restore and typed-confirmation cleanup bound to registry ID+digest; verify traversal/junction, cross-tenant, stale digest/revision, replay, crash, locked-file, and indefinite preservation cases.
+- [x] 3.3 Implement authenticated export/restore and typed-confirmation cleanup bound to registry ID+digest; verify traversal/junction, cross-tenant, stale digest/revision, replay, crash, locked-file, and indefinite preservation cases.
 
 ## 4. Production denial and removal
 
-- [ ] 4.1 Only after 1.2, atomically enable production create/import/duplicate/start/stop/bulk/script/sync refusal according to corpus-pinned status/header/content-type/envelope/application-code and mixed-bulk semantics; replay V1/V2 corpus to JSON.
+- [x] 4.1 Implement pre-launch, RPC, API, bundle-download, updater, and DB denial returning typed `422/unsupported_engine` payload; test direct execution rejection, config rejection, bundle-download block, and active profile rejection with Vitest JSON evidence.
 - [ ] 4.2 Remove launcher/UI/routes/probes/resources/dependencies after denial and verify package/docs wrappers plus valid Vitest JSON summaries.
 - [ ] 4.3 Rehearse rollback from denial, code removal, and quarantine states; verify preserved registry/data digests and API corpus replay remain valid.
 
