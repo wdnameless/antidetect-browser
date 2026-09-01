@@ -104,6 +104,14 @@ export interface StealthConfig {
   hardwareConcurrency?: number;
   deviceMemory?: number;
   maxTouchPoints?: number;
+  seed?: number;
+  locale?: string;
+  canvasNoise?: boolean;
+  audioNoise?: boolean;
+  rectsNoise?: boolean;
+  webglNoise?: boolean;
+  webglVendor?: string;
+  webglRenderer?: string;
 }
 
 export interface SshTunnelConfig {

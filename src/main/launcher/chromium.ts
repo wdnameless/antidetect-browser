@@ -203,22 +203,20 @@ export async function buildChromiumArgs(
     }
   }
 
-  // Extensions (Sprint B): load bound unpacked extensions.
-  if (cfg.extensionPaths && cfg.extensionPaths.length) {
-    const joined = cfg.extensionPaths.join(',');
-    args.push(`--load-extension=${joined}`);
-  }
-
-  // Stealth layer: per-profile MV3 extension (MAIN world, document_start).
+  // Extensions & Stealth layer: load bound unpacked extensions and stealth MV3 extension.
   // CDP script injection is broken in this kernel, so the stealth script ships as an
   // extension loaded via --load-extension (kernel supports it, verified in Sprint B).
+  const extensionsToLoad: string[] = [];
+  if (cfg.extensionPaths && cfg.extensionPaths.length) {
+    extensionsToLoad.push(...cfg.extensionPaths);
+  }
   if (cfg.stealth) {
     const stealthExtDir = path.join(cfg.userDataDir, 'stealth-ext');
     writeStealthExtension(stealthExtDir, cfg.stealth);
-    const extArgs = cfg.extensionPaths && cfg.extensionPaths.length
-      ? [...cfg.extensionPaths, stealthExtDir]
-      : [stealthExtDir];
-    args.push(`--load-extension=${extArgs.join(',')}`);
+    extensionsToLoad.push(stealthExtDir);
+  }
+  if (extensionsToLoad.length > 0) {
+    args.push(`--load-extension=${extensionsToLoad.join(',')}`);
   }
 
   return args;
