@@ -72,3 +72,42 @@ export function verifyLegacyCorpus(
 ): boolean {
   return verifyCorpusPayload(payloadWithoutSignature, signatureHex, publicKeyPem, DOMAIN_SEPARATOR_LEGACY_CORPUS);
 }
+
+export interface SignedLegacyCorpusEnvelope {
+  schemaVersion: string;
+  envelope: string;
+  timestamp: string;
+  publicKey: string;
+  signature: string;
+  fixtures: Array<{
+    path: string;
+    method: string;
+    body?: Record<string, unknown>;
+    expectedStatus?: number;
+    expectedErrorCode?: string;
+    [key: string]: unknown;
+  }>;
+  [key: string]: unknown;
+}
+
+export function verifyLegacyCorpusSignature(envelope: SignedLegacyCorpusEnvelope): { valid: boolean; error?: string } {
+  if (!envelope || typeof envelope !== 'object') {
+    return { valid: false, error: 'Invalid envelope object' };
+  }
+  if (!envelope.publicKey || !envelope.signature) {
+    return { valid: false, error: 'Missing publicKey or signature' };
+  }
+
+  const { signature, ...payloadWithoutSignature } = envelope;
+  const isValid = verifyLegacyCorpus(
+    payloadWithoutSignature as Record<string, unknown>,
+    signature,
+    envelope.publicKey
+  );
+
+  if (!isValid) {
+    return { valid: false, error: 'Signature mismatch or payload tampered' };
+  }
+
+  return { valid: true };
+}

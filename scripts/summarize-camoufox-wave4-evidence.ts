@@ -26,7 +26,7 @@ interface VitestReport {
   testResults: VitestTestResult[];
 }
 
-function normalizeReport(rawPath: string, normalizedPath: string, testType: string) {
+export function normalizeReport(rawPath: string, normalizedPath: string, testType: string): void {
   if (fs.existsSync(rawPath)) {
     const vitestData = JSON.parse(fs.readFileSync(rawPath, 'utf8')) as VitestReport;
     const summary = {
@@ -54,23 +54,21 @@ function normalizeReport(rawPath: string, normalizedPath: string, testType: stri
     fs.mkdirSync(path.dirname(normalizedPath), { recursive: true });
     fs.writeFileSync(normalizedPath, canonicalizeJson(summary), 'utf8');
     console.log('Successfully written normalized summary to', normalizedPath);
+  } else {
+    console.error('Raw vitest file not found at:', rawPath);
   }
 }
 
-normalizeReport(
-  path.resolve(process.cwd(), 'evidence/raw/baseline-chromium.vitest.json'),
-  path.resolve(process.cwd(), 'evidence/normalized/baseline-chromium.summary.jcs.json'),
-  'unit-baseline-chromium'
-);
+if (require.main === module) {
+  normalizeReport(
+    path.resolve(process.cwd(), 'evidence/raw/camoufox-removal-verification.vitest.json'),
+    path.resolve(process.cwd(), 'evidence/normalized/camoufox-removal-verification.summary.jcs.json'),
+    'unit-camoufox-removal-verification'
+  );
 
-normalizeReport(
-  path.resolve(process.cwd(), 'evidence/raw/baseline-fingerprint.vitest.json'),
-  path.resolve(process.cwd(), 'evidence/normalized/baseline-fingerprint.summary.jcs.json'),
-  'unit-baseline-fingerprint'
-);
-
-normalizeReport(
-  path.resolve(process.cwd(), 'evidence/raw/baseline-tamper.vitest.json'),
-  path.resolve(process.cwd(), 'evidence/normalized/baseline-tamper.summary.jcs.json'),
-  'unit-baseline-tamper'
-);
+  normalizeReport(
+    path.resolve(process.cwd(), 'evidence/raw/camoufox-rollback-rehearsal.vitest.json'),
+    path.resolve(process.cwd(), 'evidence/normalized/camoufox-rollback-rehearsal.summary.jcs.json'),
+    'unit-camoufox-rollback-rehearsal'
+  );
+}

@@ -76,11 +76,14 @@ describe('Remove-Camoufox Acceptance Wrappers', () => {
       ],
     };
 
-    const signature = signLegacyCorpus(payload, privateKey, DOMAIN_SEPARATOR_LEGACY_CORPUS);
-    const corpusFileContent = {
+    const payloadWithoutSignature = {
       ...payload,
-      signature,
       publicKey,
+    };
+    const signature = signLegacyCorpus(payloadWithoutSignature, privateKey);
+    const corpusFileContent = {
+      ...payloadWithoutSignature,
+      signature,
     };
     fs.writeFileSync(corpusPath, JSON.stringify(corpusFileContent, null, 2));
 

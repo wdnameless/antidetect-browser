@@ -8,6 +8,7 @@
  * - Express middleware and RPC dispatch guards.
  */
 
+import * as path from 'path';
 import type { Request, Response, NextFunction } from 'express';
 
 export const CAMOUFOX_ENGINE_REMOVED = 'CAMOUFOX_ENGINE_REMOVED';
@@ -15,6 +16,7 @@ export const CAMOUFOX_ENGINE_REMOVED = 'CAMOUFOX_ENGINE_REMOVED';
 export class UnsupportedEngineError extends Error {
   public readonly code: string = CAMOUFOX_ENGINE_REMOVED;
   public readonly statusCode: number = 422;
+  public readonly error: string = 'unsupported_engine';
   public readonly engine: string;
 
   constructor(engine: string, message?: string) {
@@ -54,6 +56,9 @@ export function assertEngineSupported(engine?: string): void {
     throw new UnsupportedEngineError(engine);
   }
 }
+
+/** Alias for assertEngineSupported */
+export const assertEngineAllowed = assertEngineSupported;
 
 export interface SanitizeProfileEngineOptions {
   mode?: 'reject' | 'migrate';
@@ -164,5 +169,44 @@ export function guardRpcEngineCall<TArgs extends unknown[], TResult>(
       }
     }
     return await fn(...args);
+  };
+}
+
+/**
+ * Check executable path and reject if pointing to camoufox binaries
+ */
+export function checkCamoufoxExecutablePath(executablePath: string): void {
+  const base = path.basename(executablePath).toLowerCase();
+  const normalized = executablePath.toLowerCase().replace(/\\/g, '/');
+  if (base.includes('camoufox') || base.includes('firefox') || normalized.includes('/camoufox/') || normalized.includes('/camoufox.exe')) {
+    throw new UnsupportedEngineError('camoufox');
+  }
+}
+
+export interface CleanEngineSurfacesResult {
+  clean: boolean;
+  prohibitedSurfaceViolations: string[];
+}
+
+/**
+ * Verify that routes/surfaces do not expose prohibited camoufox endpoints
+ */
+export function verifyCleanEngineSurfaces(
+  surfaces?: Array<{ route: string; engine: string }>
+): CleanEngineSurfacesResult {
+  const prohibitedSurfaceViolations: string[] = [];
+
+  if (surfaces) {
+    for (const surface of surfaces) {
+      const normalized = (surface.route + ' ' + surface.engine).toLowerCase();
+      if (normalized.includes('camoufox') || (normalized.includes('firefox') && !normalized.includes('firefox-compat-stub'))) {
+        prohibitedSurfaceViolations.push(surface.route);
+      }
+    }
+  }
+
+  return {
+    clean: prohibitedSurfaceViolations.length === 0,
+    prohibitedSurfaceViolations,
   };
 }

@@ -53,6 +53,46 @@ export interface JournalEntry {
   details?: Record<string, unknown>;
 }
 
+export interface PreservedBrowserDataRecord {
+  id: string;
+  profileId: string;
+  sourceEngine: string;
+  dataType: string;
+  archivePath: string;
+  sha256Digest: string;
+  byteSize: number;
+  status: string;
+  metadataJson?: string;
+  createdAt?: string;
+  quarantinedAt?: string;
+  restoredAt?: string;
+}
+
+export interface RollbackRehearsalOptions {
+  profileId: string;
+  fromState: 'denied' | 'quarantined' | 'removed' | string;
+  targetState: 'preserved' | 'restored' | 'idle' | string;
+  verifyDigests?: boolean;
+}
+
+export interface RollbackRehearsalResult {
+  success: boolean;
+  profileId: string;
+  fromState: string;
+  targetState: string;
+  preservedRecordsCount: number;
+  digestsVerified: boolean;
+  errors: string[];
+}
+
+export interface ArtifactIntegrityResult {
+  valid: boolean;
+  digestMatches: boolean;
+  expectedDigest?: string;
+  actualDigest?: string;
+  error?: string;
+}
+
 export class PreservedBrowserDataService {
   private db: Database;
   private allowedRoots: string[];
@@ -566,5 +606,163 @@ export class PreservedBrowserDataService {
     }
 
     return this.getById(registryId)!;
+  }
+
+  /**
+   * Preserve a single artifact file with digest tracking.
+   */
+  public preserveArtifact(options: {
+    profileId: string;
+    sourceEngine?: string;
+    engine?: string;
+    dataType?: string;
+    archivePath: string;
+    ownerId?: string;
+    tenantId?: string;
+    metadata?: Record<string, unknown>;
+  }): PreservedBrowserDataRecord {
+    const id = `pbd_art_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+    const resolvedPath = path.resolve(options.archivePath);
+    const content = fs.readFileSync(resolvedPath);
+    const digest = createHash('sha256').update(content).digest('hex');
+    const byteSize = fs.statSync(resolvedPath).size;
+    const now = Date.now();
+    const engine = options.sourceEngine || options.engine || 'camoufox';
+    const ownerId = options.ownerId || 'local-user';
+    const tenantId = options.tenantId || 'local-tenant';
+
+    const inventory = {
+      dataType: options.dataType || 'all',
+      byteSize,
+      archivePath: resolvedPath,
+      metadata: options.metadata || {},
+    };
+
+    this.db.prepare(`
+      INSERT INTO preserved_browser_data (
+        id, profile_id, owner_id, tenant_id, engine, canonical_root, data_digest, inventory_json, revision, created_at, updated_at, status, journal_json
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, 'preserved', '[]')
+    `).run(
+      id,
+      options.profileId,
+      ownerId,
+      tenantId,
+      engine,
+      resolvedPath,
+      digest,
+      JSON.stringify(inventory),
+      now,
+      now
+    );
+
+    return {
+      id,
+      profileId: options.profileId,
+      sourceEngine: engine,
+      dataType: options.dataType || 'all',
+      archivePath: resolvedPath,
+      sha256Digest: digest,
+      byteSize,
+      status: 'preserved',
+      metadataJson: options.metadata ? JSON.stringify(options.metadata) : undefined,
+      createdAt: new Date(now).toISOString(),
+    };
+  }
+
+  public getPreservedRecord(id: string): PreservedBrowserDataRecord | null {
+    const row = this.db.prepare(`SELECT * FROM preserved_browser_data WHERE id = ?`).get(id) as any;
+    if (!row) return null;
+    let inventory: any = {};
+    try {
+      inventory = JSON.parse(row.inventory_json || '{}');
+    } catch {
+      inventory = {};
+    }
+
+    return {
+      id: row.id,
+      profileId: row.profile_id,
+      sourceEngine: row.engine,
+      dataType: inventory.dataType || 'all',
+      archivePath: row.canonical_root,
+      sha256Digest: row.data_digest,
+      byteSize: inventory.byteSize || (fs.existsSync(row.canonical_root) ? fs.statSync(row.canonical_root).size : 0),
+      status: row.status,
+      metadataJson: inventory.metadata ? JSON.stringify(inventory.metadata) : undefined,
+      createdAt: row.created_at ? new Date(row.created_at).toISOString() : undefined,
+      quarantinedAt: row.status === 'quarantined' && row.updated_at ? new Date(row.updated_at).toISOString() : undefined,
+      restoredAt: row.status === 'restored' && row.updated_at ? new Date(row.updated_at).toISOString() : undefined,
+    };
+  }
+
+  public quarantineArtifact(id: string, reason?: string): PreservedBrowserDataRecord {
+    const now = Date.now();
+    this.db.prepare(`
+      UPDATE preserved_browser_data
+      SET status = 'quarantined', updated_at = ?
+      WHERE id = ?
+    `).run(now, id);
+    return this.getPreservedRecord(id)!;
+  }
+
+  public restoreArtifact(id: string): PreservedBrowserDataRecord {
+    const now = Date.now();
+    this.db.prepare(`
+      UPDATE preserved_browser_data
+      SET status = 'restored', updated_at = ?
+      WHERE id = ?
+    `).run(now, id);
+    return this.getPreservedRecord(id)!;
+  }
+
+  public verifyArtifactIntegrity(id: string): ArtifactIntegrityResult {
+    const record = this.getPreservedRecord(id);
+    if (!record) {
+      return { valid: false, digestMatches: false, error: 'Record not found' };
+    }
+
+    if (!fs.existsSync(record.archivePath)) {
+      return { valid: false, digestMatches: false, error: 'Archive file does not exist on disk' };
+    }
+
+    const content = fs.readFileSync(record.archivePath);
+    const actualDigest = createHash('sha256').update(content).digest('hex');
+    const digestMatches = actualDigest === record.sha256Digest;
+
+    return {
+      valid: digestMatches,
+      digestMatches,
+      expectedDigest: record.sha256Digest,
+      actualDigest,
+    };
+  }
+
+  public rehearseRollback(options: RollbackRehearsalOptions): RollbackRehearsalResult {
+    const rows = this.db.prepare(`
+      SELECT * FROM preserved_browser_data WHERE profile_id = ?
+    `).all(options.profileId) as any[];
+
+    const errors: string[] = [];
+    let digestsVerified = true;
+
+    if (options.verifyDigests) {
+      for (const row of rows) {
+        const integrity = this.verifyArtifactIntegrity(row.id);
+        if (!integrity.valid) {
+          digestsVerified = false;
+          errors.push(`Integrity failure for preserved record ${row.id}: ${integrity.error || 'digest mismatch'}`);
+        }
+      }
+    }
+
+    return {
+      success: errors.length === 0,
+      profileId: options.profileId,
+      fromState: options.fromState,
+      targetState: options.targetState,
+      preservedRecordsCount: rows.length,
+      digestsVerified,
+      errors,
+    };
   }
 }

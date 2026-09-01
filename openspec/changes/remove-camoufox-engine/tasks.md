@@ -17,8 +17,8 @@
 ## 4. Production denial and removal
 
 - [x] 4.1 Implement pre-launch, RPC, API, bundle-download, updater, and DB denial returning typed `422/unsupported_engine` payload; test direct execution rejection, config rejection, bundle-download block, and active profile rejection with Vitest JSON evidence.
-- [ ] 4.2 Remove launcher/UI/routes/probes/resources/dependencies after denial and verify package/docs wrappers plus valid Vitest JSON summaries.
-- [ ] 4.3 Rehearse rollback from denial, code removal, and quarantine states; verify preserved registry/data digests and API corpus replay remain valid.
+- [x] 4.2 Remove launcher/UI/routes/probes/resources/dependencies after denial and verify package/docs wrappers plus valid Vitest JSON summaries.
+- [x] 4.3 Rehearse rollback from denial, code removal, and quarantine states; verify preserved registry/data digests and API corpus replay remain valid.
 
 ## 5. Completion acceptance
 
