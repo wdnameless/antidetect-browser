@@ -1,4 +1,5 @@
 import * as fs from 'fs';
+import { deriveHardwareVector } from '../fingerprints/derivation';
 import * as path from 'path';
 import {
   deriveSubSeeds,
@@ -87,28 +88,29 @@ export function buildStealthScript(opts: StealthOptions): string {
   const subSeeds: SubSeeds = deriveSubSeeds(masterSeed);
   const voices: SyntheticVoice[] = getSyntheticVoicePool(opts.logicalPlatform, opts.locale ?? 'en-US');
   const mediaDevices: SyntheticMediaDevice[] = getSyntheticMediaDevices(masterSeed, opts.mobile);
+  const hwVector = opts.logicalPlatform === 'windows' ? deriveHardwareVector(masterSeed) : null;
 
   const cfg = {
     mobile: opts.mobile,
     logicalPlatform: opts.logicalPlatform,
-    locale: opts.locale ?? 'en-US',
+    locale: opts.locale ?? (hwVector ? hwVector.locale : 'en-US'),
     uaPlatform: uaPlatform(opts.logicalPlatform),
     navPlatform: navPlatform(opts.logicalPlatform),
-    platformVersion: opts.platformVersion ?? defaultPlatformVersion(opts.logicalPlatform),
+    platformVersion: opts.platformVersion ?? (hwVector ? hwVector.platformVersion : defaultPlatformVersion(opts.logicalPlatform)),
     architecture: architecture(opts.logicalPlatform),
     bitness: '64',
     model: opts.model ?? (opts.logicalPlatform === 'android' ? 'Pixel 8' : opts.logicalPlatform === 'ios' ? 'iPhone' : ''),
     brands: BRANDS,
     fullVersionList: FULL_VERSION_LIST,
-    hardwareConcurrency: opts.hardwareConcurrency ?? null,
-    deviceMemory: opts.deviceMemory ?? null,
+    hardwareConcurrency: opts.hardwareConcurrency ?? (hwVector ? hwVector.cpuCores : null),
+    deviceMemory: opts.deviceMemory ?? (hwVector ? hwVector.ramGB : null),
     maxTouchPoints: opts.maxTouchPoints ?? null,
     canvasNoise: opts.canvasNoise ?? true,
     audioNoise: opts.audioNoise ?? true,
     rectsNoise: opts.rectsNoise ?? true,
     webglNoise: opts.webglNoise ?? true,
-    webglVendor: opts.webglVendor ?? 'Google Inc. (NVIDIA)',
-    webglRenderer: opts.webglRenderer ?? 'ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 Direct3D11 vs_5_0 ps_5_0, D3D11)',
+    webglVendor: opts.webglVendor ?? (hwVector ? hwVector.gpuVendor : 'Google Inc. (NVIDIA)'),
+    webglRenderer: opts.webglRenderer ?? (hwVector ? hwVector.gpuRenderer : 'ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 Direct3D11 vs_5_0 ps_5_0, D3D11)'),
     seeds: subSeeds,
     voices,
     mediaDevices,
