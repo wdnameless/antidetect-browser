@@ -7,3 +7,9 @@ transcript*.txt
 *.log
 .DS_Store
 Thumbs.db
+
+# Compiled SDK artifacts inside src (tsc build output belongs in dist/)
+packages/sdk-node/src/*.js
+packages/sdk-node/src/*.js.map
+packages/sdk-node/src/*.d.ts
+packages/sdk-node/src/*.d.ts.map
