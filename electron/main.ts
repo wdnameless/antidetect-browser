@@ -234,18 +234,27 @@ function initAutoUpdater(): void {
     autoUpdater.quitAndInstall(true, true);
   });
 }
-
-app.whenReady().then(async () => {
-  await bootstrap();
+app.whenReady().then(() => {
   createWindow();
   initAutoUpdater();
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
-}).catch((err) => {
-  console.error('[antidetect] bootstrap failed', err);
-});
 
+  bootstrap().catch(async (err) => {
+    const errMsg = String(err?.stack || err?.message || err);
+    console.error('[antidetect] startup failed', err);
+    try {
+      const { logger } = await import('../src/main/util/logger');
+      logger.error('startup failed', { error: errMsg });
+    } catch {
+      // ignore if logger is unavailable
+    }
+    dialog.showErrorBox('[antidetect] startup failed', errMsg);
+  });
+}).catch((err) => {
+  console.error('[antidetect] app ready failed', err);
+});
 // Graceful shutdown: stop all running browser profiles and flush the DB
 // before quitting.
 app.on('before-quit', () => {

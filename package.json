@@ -11,6 +11,7 @@
     "typecheck": "npm run typecheck:main && npm run typecheck:renderer",
     "test": "vitest run",
     "typecheck:main": "tsc -p tsconfig.main.json --noEmit",
+    "typecheck:node": "tsc -p tsconfig.main.json --noEmit",
     "typecheck:renderer": "tsc -p src/renderer/tsconfig.json --noEmit",
     "build:main": "tsc -p tsconfig.main.json",
     "build:renderer": "vite build --config src/renderer/vite.config.ts",

@@ -106,11 +106,22 @@ export interface ProxyTestResult {
 
 export async function initApiKey(): Promise<void> {
   if (window.antidetect?.getApiKey) {
-    try {
-      apiKey = await window.antidetect.getApiKey();
-      return;
-    } catch {
-      // fall through to manual entry
+    const start = Date.now();
+    const timeoutMs = 30000;
+    let attempt = 0;
+    while (Date.now() - start < timeoutMs) {
+      try {
+        const key = await window.antidetect.getApiKey();
+        if (key) {
+          apiKey = key;
+          return;
+        }
+      } catch {
+        // Wait and retry if IPC is not yet registered or service is starting up
+      }
+      attempt++;
+      const delay = Math.min(100 * Math.pow(1.5, attempt), 1000);
+      await new Promise((resolve) => setTimeout(resolve, delay));
     }
   }
   const stored = localStorage.getItem('apiKey');
@@ -139,10 +150,21 @@ async function request<T>(path: string, options: RequestInit = {}, retries = 3):
     headers['Authorization'] = `Bearer ${apiKey}`;
   }
 
-  const res = await fetch(`${getApiBase()}${path}`, {
-    ...options,
-    headers,
-  });
+  let res: Response;
+  try {
+    res = await fetch(`${getApiBase()}${path}`, {
+      ...options,
+      headers,
+    });
+  } catch (fetchErr) {
+    // If service is still spinning up, retry with exponential backoff up to retries
+    if (retries > 0) {
+      const delayMs = Math.min(250 * Math.pow(2, 3 - retries), 2000);
+      await new Promise((r) => setTimeout(r, delayMs));
+      return request<T>(path, options, retries - 1);
+    }
+    throw fetchErr;
+  }
 
   if (res.status === 429 && retries > 0) {
     let delayMs = 250;

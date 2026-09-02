@@ -1,3 +1,4 @@
+import * as child_process from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 import { initDb, closeDb, flushDb } from './db';
@@ -16,39 +17,139 @@ import { logger, initLogger, flushLogs } from './util/logger';
 // ---------------------------------------------------------------------------
 // Single-instance lock: two service instances would race on the DB file.
 // ---------------------------------------------------------------------------
-const LOCK_FILE = path.join(DATA_DIR, 'service.lock');
+export const LOCK_FILE = path.join(DATA_DIR, 'service.lock');
+export interface ProcessInspectorOptions {
+  execFileSync?: (file: string, args: string[], options?: child_process.ExecFileSyncOptions) => string | Buffer;
+}
 
-function acquireInstanceLock(): void {
+let defaultExecFileSync = child_process.execFileSync;
+
+export function setProcessInspectorExec(fn: typeof child_process.execFileSync | undefined): void {
+  defaultExecFileSync = fn || child_process.execFileSync;
+}
+
+/**
+ * Inspects the process command line / image name.
+ * Allows 'Antidetect Browser.exe', 'electron', or 'node' running our service/entry script.
+ * If probe fails, throws, or process is something else, returns false.
+ */
+export function isProcessOurApp(pid: number, options?: ProcessInspectorOptions): boolean {
+  const runner = options?.execFileSync || defaultExecFileSync;
+  try {
+    if (process.platform === 'win32') {
+      let cmdLine = '';
+      try {
+        const raw = runner(
+          'wmic',
+          ['process', 'where', `ProcessId=${pid}`, 'get', 'CommandLine'],
+          { encoding: 'utf8', timeout: 2000, stdio: ['pipe', 'pipe', 'ignore'] }
+        );
+        cmdLine = typeof raw === 'string' ? raw : raw ? raw.toString('utf8') : '';
+      } catch {
+        // Fallback to powershell Get-CimInstance if wmic is missing or fails
+        try {
+          const raw = runner(
+            'powershell.exe',
+            [
+              '-NoProfile',
+              '-NonInteractive',
+              '-Command',
+              `(Get-CimInstance Win32_Process -Filter "ProcessId = ${pid}").CommandLine`
+            ],
+            { encoding: 'utf8', timeout: 2000, stdio: ['pipe', 'pipe', 'ignore'] }
+          );
+          cmdLine = typeof raw === 'string' ? raw : raw ? raw.toString('utf8') : '';
+        } catch {
+          return false;
+        }
+      }
+
+      const normalized = (cmdLine || '').toLowerCase();
+
+      // Packaged app
+      if (normalized.includes('antidetect browser.exe') || normalized.includes('antidetect browser')) {
+        return true;
+      }
+      // Dev electron app
+      if (normalized.includes('electron')) {
+        return true;
+      }
+      // Node running our service or entry point
+      if (
+        normalized.includes('node') &&
+        (normalized.includes('antidetect') ||
+          normalized.includes('src/main') ||
+          normalized.includes('src\\main') ||
+          normalized.includes('dist/electron') ||
+          normalized.includes('dist\\electron') ||
+          normalized.includes('dist/src/main') ||
+          normalized.includes('dist\\src\\main'))
+      ) {
+        return true;
+      }
+
+      return false;
+    } else {
+      // POSIX fallback: check /proc/<pid>/cmdline or ps -p <pid> -o args=
+      try {
+        const args = child_process.execFileSync('ps', ['-p', String(pid), '-o', 'args='], {
+          encoding: 'utf8',
+          timeout: 2000,
+          stdio: ['pipe', 'pipe', 'ignore']
+        }).toLowerCase();
+        if (!args.trim()) return false;
+        if (args.includes('antidetect') || args.includes('electron')) return true;
+        if (args.includes('node') && (args.includes('main') || args.includes('service'))) return true;
+      } catch {
+        return false;
+      }
+      return false;
+    }
+  } catch {
+    return false;
+  }
+}
+
+export function acquireInstanceLock(): void {
   try {
     if (fs.existsSync(LOCK_FILE)) {
       const raw = fs.readFileSync(LOCK_FILE, 'utf8').trim();
       const stalePid = Number(raw);
-      let alive = false;
+      let isRunningApp = false;
       if (Number.isFinite(stalePid) && stalePid > 0 && stalePid !== process.pid) {
+        let alive = false;
         try {
           process.kill(stalePid, 0); // signal 0 = liveness probe
           alive = true;
         } catch {
           alive = false;
         }
+
+        if (alive) {
+          isRunningApp = isProcessOurApp(stalePid);
+        }
       }
-      if (alive) {
+
+      if (isRunningApp) {
         throw new Error(
-          `another Antidetect service instance is already running (pid ${stalePid}). Close it first.`
+          `Another instance is already running (pid ${stalePid}). Close it first.`
         );
       }
-      // stale lock from a crashed session — remove it
+
+      // Stale lock: either non-existent pid, own pid, process died, or recycled PID belonging to another process
+      logger.warn('stale instance lock removed', { stalePid, ownPid: process.pid });
       fs.rmSync(LOCK_FILE, { force: true });
     }
     fs.writeFileSync(LOCK_FILE, String(process.pid), 'utf8');
   } catch (err) {
     if ((err as Error).message.includes('already running')) throw err;
     // lock file issues must never prevent startup
+    logger.warn('instance lock warning', { error: (err as Error).message });
     console.error('[antidetect] instance lock warning:', (err as Error).message);
   }
 }
 
-function releaseInstanceLock(): void {
+export function releaseInstanceLock(): void {
   try {
     if (fs.existsSync(LOCK_FILE)) {
       const raw = fs.readFileSync(LOCK_FILE, 'utf8').trim();
