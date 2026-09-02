@@ -14,6 +14,7 @@ import { getCdpEndpoint } from '../launcher/chromium';
 import { getApiKey } from '../config';
 import browserRoutes from './routes/browser';
 import proxyRoutes from './routes/proxy';
+import proxyHealthRoutes from './routes/proxyHealth';
 import deviceRoutes from './routes/device';
 import cookiesRoutes from './routes/cookies';
 import extensionsRoutes from './routes/extensions';
@@ -33,7 +34,9 @@ import syncerRoutes from './routes/syncer';
 import scriptsRoutes from './routes/scripts';
 import keysRoutes from './routes/keys';
 import triggersRoutes from './routes/triggers';
+import taskGroupsRoutes from './routes/taskGroups';
 import catalogRoutes from './routes/catalog';
+import preflightRoutes from './routes/preflight';
 
 const LOOPBACK_HOST_RE = /^(127\.0\.0\.1|localhost|\[::1\])(:\d+)?$/i;
 
@@ -105,6 +108,7 @@ export function startApi(): Promise<void> {
   app.use(rateLimitMiddleware);
   app.use(browserRoutes);
   app.use(proxyRoutes);
+  app.use(proxyHealthRoutes);
   app.use(deviceRoutes);
   app.use(cookiesRoutes);
   app.use(extensionsRoutes);
@@ -124,7 +128,9 @@ app.use(syncerRoutes);
 app.use(scriptsRoutes);
 app.use(keysRoutes);
 app.use(triggersRoutes);
+app.use(taskGroupsRoutes);
 app.use(catalogRoutes);
+app.use(preflightRoutes);
 
   // JSON 404 for unknown routes (Express default would return HTML).
   app.use((_req: Request, res: Response) => {

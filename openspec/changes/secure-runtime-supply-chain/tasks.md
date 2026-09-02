@@ -1,8 +1,8 @@
 ## 1. Signing core
 
-- [ ] 1.1 Implement `src/main/security/signing.ts`: Ed25519 keypair handling, JCS canonicalization, sign/verify over md5 file manifests.
-- [ ] 1.2 Key-ring store: rotation, revocation list, recovery procedure; offline verification without network.
-- [ ] 1.3 Unit tests: sign/verify round-trip, tamper detection per byte-flip, revoked key rejection, anti-rollback monotonic version check.
+- [x] 1.1 Implement `src/main/security/signing.ts`: Ed25519 keypair handling, JCS canonicalization, sign/verify over md5 file manifests.
+- [x] 1.2 Key-ring store: rotation, revocation list, recovery procedure; offline verification without network.
+- [x] 1.3 Unit tests: sign/verify round-trip, tamper detection per byte-flip, revoked key rejection, anti-rollback monotonic version check.
 
 ## 2. Enforcement points
 
@@ -13,5 +13,5 @@
 
 ## 3. CI and evidence
 
-- [ ] 3.1 SBOM generation + verification job; Authenticode check for all shipped PE/DLL on Windows.
-- [ ] 3.2 Key compromise runbook documented; dated verification evidence under evidence/.
+- [x] 3.1 SBOM generation + verification job; Authenticode check for all shipped PE/DLL on Windows.
+- [x] 3.2 Key compromise runbook documented; dated verification evidence under evidence/.

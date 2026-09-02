@@ -1,4 +1,6 @@
 export type WindowsFamilyArch = 'x64' | 'arm64' | 'x86';
+export type CatalogPlatform = 'windows' | 'macos' | 'linux';
+export type AppleChipFamily = 'M1' | 'M2' | 'M3' | 'M4' | 'Intel';
 
 export interface WindowsGpuSpec {
   vendor: string;
@@ -19,7 +21,52 @@ export interface WindowsScreenSpec {
   colorDepth: number;
 }
 
-export type FontClass = 'win11-modern' | 'win10-legacy' | 'win11-arm';
+export interface AudioSignatureSpec {
+  sampleRate: number;
+  channelCount: number;
+  oscillatorLatencyMs?: number;
+  noiseOffset?: number;
+  dynamicsCompressorParams?: {
+    threshold: number;
+    knee: number;
+    ratio: number;
+    attack: number;
+    release: number;
+  };
+}
+
+export interface ScreenProfileSpec {
+  width: number;
+  height: number;
+  availWidth: number;
+  availHeight: number;
+  colorDepth: number;
+  pixelDepth: number;
+  scaleFactor: number;
+  isRetina: boolean;
+}
+
+export interface UaProfileSpec {
+  userAgent: string;
+  platformVersion: string;
+  architecture: 'x86' | 'arm';
+  bitness: '64' | '32';
+  brands: Array<{ brand: string; version: string }>;
+  fullVersionList?: Array<{ brand: string; version: string }>;
+}
+
+export interface MacHostTellPolicy {
+  tell: string;
+  strategy: 'mask' | 'exclude' | 'shim';
+  rationale: string;
+}
+
+export type FontClass =
+  | 'win11-modern'
+  | 'win10-legacy'
+  | 'win11-arm'
+  | 'macos-modern'
+  | 'macos-intel';
 
 export interface FingerprintCatalogFamily {
   id: string;
@@ -29,21 +76,35 @@ export interface FingerprintCatalogFamily {
   cpu: WindowsCpuSpec;
   ramGB: number[];
   screen: WindowsScreenSpec;
-  platformVersionRange: string[]; // e.g. ["10.0.19045", "10.0.22631", "10.0.26100"]
+  platformVersionRange: string[]; // e.g. ["10.0.19045", "10.0.22631", "10.0.26100", "14.4.1", "15.2"]
   fontsClass: FontClass;
   localePool: string[];
   coherenceConstraints: {
     mobile: false;
-    platform: 'windows';
+    platform: CatalogPlatform;
     platformArch: 'x86' | 'arm';
     bitness: '64' | '32';
     direct3dFeatureLevel?: string;
+    metalSupport?: boolean;
   };
   citation: {
-    source: string; // e.g. "Steam Hardware Survey / StatCounter Windows Market Share"
+    source: string; // e.g. "Steam Hardware Survey / Apple Developer Specs"
     date: string;   // e.g. "2026-08"
     notes: string;
   };
+
+  // --- Extended fields (v2 migration) ---
+  gpuRenderer?: string;
+  audioSignature?: AudioSignatureSpec;
+  fontInventory?: string[];
+  screenProfile?: ScreenProfileSpec;
+  scaleFactor?: number;
+
+  // macOS specific metadata
+  os?: CatalogPlatform;
+  chip?: AppleChipFamily;
+  uaProfile?: UaProfileSpec;
+  hostTellsPolicy?: MacHostTellPolicy[];
 }
 
 export interface HardwareVector {
@@ -62,6 +123,16 @@ export interface HardwareVector {
   bitness: string;
   fontClass: FontClass;
   locale: string;
+
+  // Extended fields
+  platform?: CatalogPlatform;
+  navigatorPlatform?: string;
+  chip?: AppleChipFamily;
+  audioSignature?: AudioSignatureSpec;
+  fontInventory?: string[];
+  screenProfile?: ScreenProfileSpec;
+  scaleFactor?: number;
+  uaProfile?: UaProfileSpec;
 }
 
 export interface SubSeeds {
@@ -73,4 +144,14 @@ export interface SubSeeds {
   devices: number;
   platform: number;
   screen: number;
+}
+
+export interface CoherenceViolation {
+  fieldPair: [string, string];
+  message: string;
+}
+
+export interface ValidationResult {
+  valid: boolean;
+  violations: CoherenceViolation[];
 }

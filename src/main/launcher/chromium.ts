@@ -23,7 +23,14 @@ import {
   registerActiveProfile,
   unregisterActiveProfile,
   TransportProbeTarget,
+  TransportProbeResult,
 } from '../proxy/transportPolicy';
+import {
+  startUdpRelay,
+  registerUdpRelayState,
+  unregisterUdpRelayState,
+  UdpRelayState,
+} from '../proxy/udpRelay';
 
 interface RunningProfile {
   pid: number;
@@ -37,6 +44,8 @@ interface RunningProfile {
   cleanupGeo?: () => void;
   cleanupStealth?: () => void;
   cleanupTransport?: () => void;
+  cleanupRelay?: () => void;
+  relayState?: UdpRelayState;
 }
 
 export interface StartResult {
@@ -44,8 +53,8 @@ export interface StartResult {
   debug_port: string;
   webdriver: string;
   pid: number;
+  relayState?: UdpRelayState;
 }
-
 const running = new Map<string, RunningProfile>();
 
 export function isRunning(profileId: string): boolean {
@@ -76,6 +85,7 @@ function toResult(r: RunningProfile): StartResult {
     // Selenium via debuggerAddress: path to chromedriver matching the kernel (Chromium 148).
     webdriver: getChromedriverPath() ?? '',
     pid: r.pid,
+    relayState: r.relayState,
   };
 }
 
@@ -111,6 +121,13 @@ function cleanup(rec: RunningProfile): void {
   if (rec.cleanupTransport) {
     try {
       rec.cleanupTransport();
+    } catch {
+      // ignore
+    }
+  }
+  if (rec.cleanupRelay) {
+    try {
+      rec.cleanupRelay();
     } catch {
       // ignore
     }
@@ -246,6 +263,9 @@ export async function startProfile(cfg: LaunchConfig): Promise<StartResult> {
 
   // Network Transport Policy pre-launch probe & flag composition
   let transportFlags: string[] = [];
+  let relayCleanup: (() => void) | undefined;
+  let profileRelayState: UdpRelayState = proxyServer || cfg.sshTunnel ? 'quic-disabled' : 'unavailable';
+
   if (proxyServer || cfg.sshTunnel) {
     let target: TransportProbeTarget;
     if (cfg.sshTunnel) {
@@ -274,7 +294,28 @@ export async function startProfile(cfg: LaunchConfig): Promise<StartResult> {
       throw err;
     }
 
+    if (probeResult.status === 'SOCKS5_FULL_PASS' && target.protocol === 'socks5') {
+      try {
+        const relaySession = await startUdpRelay(cfg.profileId, {
+          host: target.host,
+          port: target.port,
+          username: target.username,
+          password: target.password,
+        });
+        profileRelayState = 'relay';
+        relayCleanup = relaySession.stop;
+      } catch {
+        profileRelayState = 'quic-disabled';
+      }
+    } else {
+      profileRelayState = 'quic-disabled';
+    }
+
+    registerUdpRelayState(cfg.profileId, profileRelayState);
+
     transportFlags = composeTransportFlags(probeResult, proxyServer);
+  } else {
+    registerUdpRelayState(cfg.profileId, 'unavailable');
   }
   const args = await buildChromiumArgs(cfg, proxyServer, transportFlags);
   let child: ChildProcess;
@@ -384,6 +425,8 @@ export async function startProfile(cfg: LaunchConfig): Promise<StartResult> {
       cleanupEmulation,
       cleanupGeo,
       cleanupStealth,
+      cleanupRelay: relayCleanup,
+      relayState: profileRelayState,
     };
     const unregisterTransport = registerActiveProfile(cfg.profileId, (reason) => {
       // Immediate mid-session termination on transport loss (zero direct fallback)
@@ -398,6 +441,14 @@ export async function startProfile(cfg: LaunchConfig): Promise<StartResult> {
     child.on('exit', () => {
       running.delete(cfg.profileId);
       unregisterTransport();
+      if (rec.cleanupRelay) {
+        try {
+          rec.cleanupRelay();
+        } catch {
+          // ignore
+        }
+      }
+      unregisterUdpRelayState(cfg.profileId);
       if (rec.tunnel) void rec.tunnel.close();
       if (rec.cleanupAuth) {
         try {

@@ -1,4 +1,9 @@
-import { FingerprintCatalogFamily } from './types';
+import { MACOS_FINGERPRINT_CATALOG } from './macosFamilies';
+import { WINDOWS_11_REFRESH_FAMILIES } from './win11Families';
+export { MACOS_FINGERPRINT_CATALOG } from './macosFamilies';
+export { WINDOWS_11_REFRESH_FAMILIES } from './win11Families';
+import { migrateFamilyRecord } from './migration';
+import type { FingerprintCatalogFamily } from './types';
 
 /**
  * CATALOG_VERSION: 2026.08
@@ -715,3 +720,30 @@ export const WINDOWS_FINGERPRINT_CATALOG: FingerprintCatalogFamily[] = [
     citation: { source: 'StatCounter Windows Telemetry', date: '2026-08', notes: 'Low-cost educational and office Jasper Lake budget laptops' },
   },
 ];
+
+/**
+ * Combined catalog containing:
+ * - Original 30 Windows families (migrated with default extended fields)
+ * - Curated macOS Apple Silicon & Intel families
+ * - Modern Windows 11 refresh families
+ */
+export const EXTENDED_FINGERPRINT_CATALOG: FingerprintCatalogFamily[] = [
+  ...WINDOWS_FINGERPRINT_CATALOG.map(migrateFamilyRecord),
+  ...MACOS_FINGERPRINT_CATALOG,
+  ...WINDOWS_11_REFRESH_FAMILIES,
+];
+
+/**
+ * Returns all catalog families, optionally filtered by platform or chip.
+ */
+export function getCatalogFamilies(filter?: {
+  platform?: 'windows' | 'macos' | 'linux';
+  chip?: 'M1' | 'M2' | 'M3' | 'M4' | 'Intel';
+}): FingerprintCatalogFamily[] {
+  if (!filter) return EXTENDED_FINGERPRINT_CATALOG;
+  return EXTENDED_FINGERPRINT_CATALOG.filter((f) => {
+    if (filter.platform && f.coherenceConstraints.platform !== filter.platform) return false;
+    if (filter.chip && f.chip !== filter.chip) return false;
+    return true;
+  });
+}

@@ -185,3 +185,18 @@ export async function checkProxy(proxy: ProxyRow): Promise<ProxyCheckResult> {
     if (tunnel) await tunnel.close();
   }
 }
+
+export {
+  checkSingleProxyHealth,
+  checkProxiesBulk,
+  getCachedHealth,
+  clearHealthCache,
+  recordProxyUsage,
+  getProfileProxyUsage,
+  checkCandidateProxyDrift,
+  classifyError,
+  type HealthReasonCode,
+  type ProxyHealthResult,
+  type ProxyUsageRecord,
+  type ProxyUsageResponse,
+} from './proxyHealth';

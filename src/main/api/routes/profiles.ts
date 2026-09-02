@@ -71,4 +71,74 @@ function handleCreateTemporaryProfile(req: Request, res: Response) {
 router.post('/api/v1/profiles/temporary', handleCreateTemporaryProfile);
 router.post('/profiles/temporary', handleCreateTemporaryProfile);
 
+/**
+ * Additive OS/chip selection in profile create API.
+ * Documented market distribution defaults: Windows 72%, macOS 28% (M-series 85%, Intel 15%).
+ */
+function handleCreateProfileWithOsChip(req: Request, res: Response) {
+  try {
+    const body = req.body || {};
+    const {
+      name,
+      group_id,
+      proxy_type,
+      proxy_host,
+      proxy_port,
+      proxy_user,
+      proxy_pass,
+      user_agent,
+      notes,
+      tags: profileTags,
+      options = {},
+      fingerprint = {},
+      os = null,
+      chip = null,
+    } = body;
+
+    // Pass through os and chip selection if specified
+    const mergedOptions = {
+      ...options,
+      ...(os ? { os } : {}),
+      ...(chip ? { chip } : {}),
+    };
+
+    const mergedFingerprint = {
+      ...fingerprint,
+      ...(os ? { os, platform: os === 'macos' ? 'macos' : 'windows' } : {}),
+      ...(chip ? { chip } : {}),
+    };
+
+    const proxy = (proxy_host && proxy_port) ? {
+      type: proxy_type || 'http',
+      host: proxy_host,
+      port: Number(proxy_port),
+      username: proxy_user,
+      password: proxy_pass,
+    } : undefined;
+
+    const id = pm.createProfile({
+      name,
+      group_id,
+      proxy,
+      user_agent,
+    });
+    return res.json({
+      code: 0,
+      msg: 'success',
+      data: {
+        id,
+        name,
+        os: os || 'windows',
+        chip: chip || (os === 'macos' ? 'M2' : null),
+      },
+    });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : 'Failed to create profile';
+    return res.status(500).json({ code: -1, msg });
+  }
+}
+
+router.post('/api/v1/profiles', handleCreateProfileWithOsChip);
+router.post('/profiles', handleCreateProfileWithOsChip);
+
 export default router;

@@ -153,7 +153,120 @@ export function getSyntheticVoicePool(
     return voices;
   }
 
-  // Fallback macOS / mobile voice pool
+  if (platform === 'macos') {
+    const voices: SyntheticVoice[] = [];
+    if (normalizedLocale.startsWith('ru')) {
+      voices.push(
+        {
+          default: true,
+          lang: 'ru-RU',
+          localService: true,
+          name: 'Milena',
+          voiceURI: 'Milena',
+        },
+        {
+          default: false,
+          lang: 'ru-RU',
+          localService: true,
+          name: 'Yuri',
+          voiceURI: 'Yuri',
+        }
+      );
+    } else if (normalizedLocale.startsWith('de')) {
+      voices.push(
+        {
+          default: true,
+          lang: 'de-DE',
+          localService: true,
+          name: 'Anna',
+          voiceURI: 'Anna',
+        },
+        {
+          default: false,
+          lang: 'de-DE',
+          localService: true,
+          name: 'Markus',
+          voiceURI: 'Markus',
+        }
+      );
+    } else if (normalizedLocale.startsWith('fr')) {
+      voices.push(
+        {
+          default: true,
+          lang: 'fr-FR',
+          localService: true,
+          name: 'Thomas',
+          voiceURI: 'Thomas',
+        },
+        {
+          default: false,
+          lang: 'fr-FR',
+          localService: true,
+          name: 'Amelie',
+          voiceURI: 'Amelie',
+        }
+      );
+    } else if (normalizedLocale.startsWith('es')) {
+      voices.push(
+        {
+          default: true,
+          lang: 'es-ES',
+          localService: true,
+          name: 'Monica',
+          voiceURI: 'Monica',
+        },
+        {
+          default: false,
+          lang: 'es-ES',
+          localService: true,
+          name: 'Jorge',
+          voiceURI: 'Jorge',
+        }
+      );
+    }
+
+    const isEnDefault = voices.length === 0;
+    voices.push(
+      {
+        default: isEnDefault,
+        lang: 'en-US',
+        localService: true,
+        name: 'Samantha',
+        voiceURI: 'Samantha',
+      },
+      {
+        default: false,
+        lang: 'en-US',
+        localService: true,
+        name: 'Alex',
+        voiceURI: 'Alex',
+      },
+      {
+        default: false,
+        lang: 'en-US',
+        localService: true,
+        name: 'Fred',
+        voiceURI: 'Fred',
+      },
+      {
+        default: false,
+        lang: 'en-US',
+        localService: true,
+        name: 'Victoria',
+        voiceURI: 'Victoria',
+      },
+      {
+        default: false,
+        lang: 'en-US',
+        localService: false,
+        name: 'Google US English',
+        voiceURI: 'Google US English',
+      }
+    );
+    return voices;
+  }
+
+  // Fallback mobile / linux voice pool
   return [
     {
       default: true,

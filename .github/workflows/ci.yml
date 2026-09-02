@@ -25,6 +25,9 @@ jobs:
       - name: Unit tests
         run: npm test
 
+      - name: Verify SBOM and Supply Chain
+        run: npm run sbom:verify
+
   release:
     # Build and publish the Windows installer when a v* tag is pushed.
     if: startsWith(github.ref, 'refs/tags/v')
