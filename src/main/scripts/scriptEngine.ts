@@ -21,6 +21,13 @@ import { getDb } from '../db';
 import { API_HOST, API_PORT, getApiKey } from '../config';
 import { logger } from '../util/logger';
 import { listKeys, getKeyValueForScript, setKeyValue } from './keyStore';
+import {
+  verifyScriptModule,
+  getDefaultKeyRing,
+  ArtifactVerificationResult,
+  SecurityPolicyOptions,
+} from '../security/enforcement';
+import { KeyRingStore, SignedManifestEnvelope } from '../security/signing';
 
 export const SCRIPT_TIMEOUT_MS = 60_000;
 export const MAX_HTTP_CALLS = 100;
@@ -271,9 +278,36 @@ function preloadKeyValues(): Record<string, string> {
  * Start a script run across profiles: one worker per profile, FIFO queue with
  * at most MAX_WORKERS concurrent workers. Returns immediately.
  */
-export function runScript(scriptId: string, profileIds: string[]): RunHandle {
+export function runScript(
+  scriptId: string,
+  profileIds: string[],
+  options?: {
+    manifestEnvelope?: SignedManifestEnvelope | null;
+    modulePath?: string;
+    keyRing?: KeyRingStore;
+    policyOpts?: SecurityPolicyOptions;
+  }
+): RunHandle {
   const script = getScript(scriptId);
   if (!script) throw new Error('script not found');
+
+  const keyRing = options?.keyRing ?? getDefaultKeyRing();
+  const modulePath = options?.modulePath ?? script.name ?? scriptId;
+  const envelope = options?.manifestEnvelope ?? null;
+  const verification = verifyScriptModule(scriptId, modulePath, envelope, keyRing, {
+    logger,
+    ...options?.policyOpts,
+  });
+
+  if (!verification.allowed) {
+    logger.error(`[AUDIT REFUSAL] Refused execution of script module '${scriptId}': signature verification failed`, {
+      scriptId,
+      reason: verification.reason,
+      auditRecord: verification.auditRecord,
+    });
+    throw new Error(`Execution refused for script '${scriptId}': ${verification.reason}`);
+  }
+
   const runIds: string[] = [];
   let queued = 0;
   for (const pid of profileIds) {
@@ -417,11 +451,16 @@ export interface InvokeScriptTaskOptions {
   code?: string;
   profileId: string;
   timeoutMs?: number;
+  manifestEnvelope?: SignedManifestEnvelope | null;
+  modulePath?: string;
+  keyRing?: KeyRingStore;
+  policyOpts?: SecurityPolicyOptions;
 }
 
 export function invokeScriptTask(opts: InvokeScriptTaskOptions): TaskInvocationHandle {
   const taskUuid = opts.taskUuid || randomUUID();
   let scriptCode = opts.code;
+  const scriptId = opts.scriptId || taskUuid;
   if (!scriptCode && opts.scriptId) {
     const script = getScript(opts.scriptId);
     if (!script) throw new Error(`script not found: ${opts.scriptId}`);
@@ -431,6 +470,23 @@ export function invokeScriptTask(opts: InvokeScriptTaskOptions): TaskInvocationH
     throw new Error('either code or valid scriptId must be provided');
   }
 
+  const keyRing = opts.keyRing ?? getDefaultKeyRing();
+  const modulePath = opts.modulePath ?? scriptId;
+  const envelope = opts.manifestEnvelope ?? null;
+  const verification = verifyScriptModule(scriptId, modulePath, envelope, keyRing, {
+    logger,
+    ...opts.policyOpts,
+  });
+
+  if (!verification.allowed) {
+    logger.error(`[AUDIT REFUSAL] Refused execution of script task '${scriptId}': signature verification failed`, {
+      scriptId,
+      taskUuid,
+      reason: verification.reason,
+      auditRecord: verification.auditRecord,
+    });
+    throw new Error(`Execution refused for script task '${scriptId}': ${verification.reason}`);
+  }
   const logStream = new EventEmitter();
   const capturedLogs: string[] = [];
   const timeoutMs = opts.timeoutMs ?? SCRIPT_TIMEOUT_MS;

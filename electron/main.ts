@@ -2,7 +2,7 @@ import { app, BrowserWindow, ipcMain, dialog, shell } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
 import { autoUpdater } from 'electron-updater';
-
+import { attachSecureUpdater } from '../src/main/security/updaterIntegration';
 const isDev = process.env.NODE_ENV === 'development';
 
 // electron-updater logs through its own logger; keep it quiet unless verbose.
@@ -181,6 +181,18 @@ function updaterEnabled(): boolean {
 
 function initAutoUpdater(): void {
   if (!updaterEnabled()) return;
+
+  // Wire secure runtime supply-chain verification into autoUpdater
+  attachSecureUpdater(autoUpdater, {
+    currentInstalledVersion: app.getVersion(),
+    onVerificationFailure: (result) => {
+      sendToRenderers('update:status', {
+        state: 'error',
+        message: `Security verification failed: ${result.reason} - ${result.error ?? 'Refused by supply chain policy'}`,
+      });
+    },
+  });
+
   if (!process.env.GH_TOKEN && !process.env.GITHUB_TOKEN) {
     // Public repo: releases are public, no token needed to download updates.
   }

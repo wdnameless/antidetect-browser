@@ -124,6 +124,19 @@ export function registerActiveProfile(profileId: string, listener?: (reason: str
 export function unregisterActiveProfile(profileId: string): void {
   activeProfiles.delete(profileId);
 }
+export class StrictQuicRelayError extends Error {
+  public readonly profileId?: string;
+  public readonly cause?: unknown;
+
+  constructor(message: string, options?: { profileId?: string; cause?: unknown }) {
+    super(message);
+    this.name = 'StrictQuicRelayError';
+    this.profileId = options?.profileId;
+    this.cause = options?.cause;
+    Object.setPrototypeOf(this, StrictQuicRelayError.prototype);
+  }
+}
+
 
 export function notifyTransportLoss(reason: string, profileId?: string): void {
   if (profileId) {

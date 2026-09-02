@@ -5,7 +5,21 @@ import {
   VerificationResult,
   verifySignedManifest,
   KeyRingStore,
+  computeFileMd5,
 } from './signing';
+let defaultKeyRingInstance: KeyRingStore | null = null;
+
+export function getDefaultKeyRing(): KeyRingStore {
+  if (!defaultKeyRingInstance) {
+    defaultKeyRingInstance = new KeyRingStore();
+  }
+  return defaultKeyRingInstance;
+}
+
+export function setDefaultKeyRing(ring: KeyRingStore): void {
+  defaultKeyRingInstance = ring;
+}
+
 
 export interface SecurityPolicyOptions {
   allowUnsignedDev?: boolean;
@@ -40,8 +54,25 @@ export function isUnsignedDevAllowed(opts?: {
   allowUnsignedDev?: boolean;
   isPackaged?: boolean;
 }): boolean {
+  // Check electron app.isPackaged dynamically if opts.isPackaged is not provided
+  let electronPackaged: boolean | undefined = undefined;
+  if (opts?.isPackaged === undefined) {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const electron = require('electron');
+      if (electron?.app?.isPackaged !== undefined) {
+        electronPackaged = electron.app.isPackaged;
+      }
+    } catch {
+      // Not running in Electron environment or not available
+    }
+  }
+
   // If explicitly packaged or running in production NODE_ENV, always false
-  const isProd = opts?.isPackaged === true || process.env.NODE_ENV === 'production';
+  const isProd =
+    opts?.isPackaged === true ||
+    electronPackaged === true ||
+    process.env.NODE_ENV === 'production';
   if (isProd) {
     return false;
   }
@@ -99,11 +130,16 @@ export function verifyScriptModule(
       },
     };
   }
-
-  // Verify against target dir if moduleDirOrFiles is a directory
-  const targetDir = fs.existsSync(moduleDirOrFiles) && fs.statSync(moduleDirOrFiles).isDirectory()
-    ? moduleDirOrFiles
-    : undefined;
+  // Verify against target dir if moduleDirOrFiles is provided
+  let targetDir: string | undefined;
+  if (fs.existsSync(moduleDirOrFiles)) {
+    const st = fs.statSync(moduleDirOrFiles);
+    if (st.isDirectory()) {
+      targetDir = moduleDirOrFiles;
+    } else if (st.isFile()) {
+      targetDir = path.dirname(moduleDirOrFiles);
+    }
+  }
 
   const result = verifySignedManifest(manifestEnvelope, keyRing, { targetDir });
 

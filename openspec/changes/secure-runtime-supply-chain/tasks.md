@@ -6,10 +6,10 @@
 
 ## 2. Enforcement points
 
-- [ ] 2.1 Script-engine loader verifies module signature before execution; refuse unsigned/tampered with audit log entry.
-- [ ] 2.2 Stealth-extension artifact verification at profile launch; fail closed with remediation error.
-- [ ] 2.3 Runtime release manifest verification on update/download incl. rollback-state integrity and locked-file recovery.
-- [ ] 2.4 Explicit `--allow-unsigned-dev` escape hatch, never default, logged loudly; tests prove production builds ignore it.
+- [x] 2.1 Script-engine loader verifies module signature before execution; refuse unsigned/tampered with audit log entry.
+- [x] 2.2 Stealth-extension artifact verification at profile launch; fail closed with remediation error.
+- [x] 2.3 Runtime release manifest verification on update/download incl. rollback-state integrity and locked-file recovery.
+- [x] 2.4 Explicit `--allow-unsigned-dev` escape hatch, never default, logged loudly; tests prove production builds ignore it.
 
 ## 3. CI and evidence
 
