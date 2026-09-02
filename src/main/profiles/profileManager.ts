@@ -8,6 +8,7 @@ import { pickMobilePreset, buildMobileUa, getMobilePreset, type MobilePreset } f
 import { protectSecret, revealSecret } from '../util/secretStore';
 import { deleteEntriesForProfile } from '../vault/accountVault';
 import { removeBindingsForProfile } from '../tags/tagManager';
+import { deriveHardwareVector, migrateLegacySeed } from '../fingerprints/derivation';
 
 export type ProxyType = 'http' | 'https' | 'socks5' | 'ssh';
 
@@ -103,6 +104,14 @@ export interface StealthConfig {
   hardwareConcurrency?: number;
   deviceMemory?: number;
   maxTouchPoints?: number;
+  seed?: number;
+  locale?: string;
+  canvasNoise?: boolean;
+  audioNoise?: boolean;
+  rectsNoise?: boolean;
+  webglNoise?: boolean;
+  webglVendor?: string;
+  webglRenderer?: string;
 }
 
 export interface SshTunnelConfig {
@@ -133,7 +142,10 @@ export interface LaunchConfig {
   timezone?: string;
   /** Desktop screen resolution override (AdsPower-style), from fingerprint config. */
   screenOverride?: { width: number; height: number };
+  headless?: boolean;
+  temporary?: boolean;
 }
+export * from './temporaryRegistry';
 
 export interface ProfileListItem {
   user_id: string;
@@ -930,22 +942,24 @@ export function resolveLaunchConfig(id: string): LaunchConfig {
       .prepare('SELECT seed, config_json FROM fingerprints WHERE id = ?')
       .get(profile.fingerprint_id) as { seed: number; config_json: string } | undefined;
     if (fp) {
-      fingerprintSeed = fp.seed;
+      fingerprintSeed = migrateLegacySeed(id, fp.seed);
       let fpCfg: Record<string, unknown> = {};
       try {
         fpCfg = JSON.parse(fp.config_json || '{}') as Record<string, unknown>;
       } catch {
         fpCfg = {};
       }
+      const hwVector = deriveHardwareVector(fingerprintSeed);
       fingerprint = {
-        seed: fp.seed,
+        seed: fingerprintSeed,
         platform: typeof fpCfg.platform === 'string' ? fpCfg.platform : 'windows',
+        platformVersion: typeof fpCfg.platformVersion === 'string' ? fpCfg.platformVersion : hwVector.platformVersion,
         brand: typeof fpCfg.brand === 'string' ? fpCfg.brand : 'Chrome',
         brandVersion: typeof fpCfg.brandVersion === 'string' ? fpCfg.brandVersion : undefined,
         hardwareConcurrency:
-          typeof fpCfg.hardwareConcurrency === 'number' ? fpCfg.hardwareConcurrency : undefined,
+          typeof fpCfg.hardwareConcurrency === 'number' ? fpCfg.hardwareConcurrency : hwVector.cpuCores,
         timezone: profile.timezone ?? undefined,
-        lang: typeof fpCfg.lang === 'string' ? fpCfg.lang : 'en-US',
+        lang: typeof fpCfg.lang === 'string' ? fpCfg.lang : hwVector.locale,
         disableSpoofing: typeof fpCfg.disableSpoofing === 'string' ? fpCfg.disableSpoofing : undefined,
       };
       // AdsPower-style desktop screen resolution override (fingerprint config).
@@ -959,12 +973,17 @@ export function resolveLaunchConfig(id: string): LaunchConfig {
         if (s.width >= 320 && s.width <= 7680 && s.height >= 240 && s.height <= 4320) {
           screenOverride = { width: s.width, height: s.height };
         }
+      } else if (hwVector.screenResolution) {
+        screenOverride = hwVector.screenResolution;
       }
-      // navigator.deviceMemory override (GB) from the fingerprint config.
-      if (typeof fpCfg.deviceMemory === 'number' && fingerprint) {
-        (fingerprint as { deviceMemory?: number }).deviceMemory = fpCfg.deviceMemory;
+      // navigator.deviceMemory override (GB) from fingerprint config or hwVector
+      const mem = typeof fpCfg.deviceMemory === 'number' ? fpCfg.deviceMemory : hwVector.ramGB;
+      if (fingerprint) {
+        (fingerprint as { deviceMemory?: number }).deviceMemory = mem;
       }
     }
+  } else {
+    fingerprintSeed = migrateLegacySeed(id, null);
   }
 
   // Device preset (Phase 4): desktop presets override kernel fingerprint parameters;
@@ -1062,13 +1081,17 @@ export function resolveLaunchConfig(id: string): LaunchConfig {
   // Stealth layer applies to every profile (headless-trace fixes are universal);
   // device presets above refine it for mobile/desktop consistency.
   if (!stealth) {
+    const hwVector = deriveHardwareVector(fingerprintSeed);
     stealth = {
       mobile: false,
       logicalPlatform: 'windows',
+      platformVersion: hwVector.platformVersion,
       hardwareConcurrency:
         typeof fingerprint?.hardwareConcurrency === 'number'
           ? fingerprint.hardwareConcurrency
-          : undefined,
+          : hwVector.cpuCores,
+      deviceMemory: hwVector.ramGB,
+      locale: hwVector.locale,
     };
   }
 

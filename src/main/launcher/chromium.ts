@@ -5,6 +5,11 @@ import puppeteer from 'puppeteer-core';
 import { getChromiumPath, getChromedriverPath } from '../config';
 import type { LaunchConfig } from '../profiles/profileManager';
 import { setStatus } from '../profiles/profileManager';
+import {
+  isTemporaryProfile,
+  cleanTemporaryDirectory,
+  unregisterTemporaryProfile,
+} from '../profiles/temporaryRegistry';
 import { createSshTunnel, SshTunnel } from '../proxy/sshTunnel';
 import { installProxyAuth } from '../proxy/proxyAuth';
 import { applyDeviceEmulation } from '../proxy/deviceEmulation';
@@ -12,6 +17,13 @@ import { applyStealth, writeStealthExtension, LogicalPlatform } from '../proxy/s
 import { applyGeolocation } from '../proxy/geoEmulation';
 import { injectCookies } from '../proxy/cookieInjector';
 import { detectMachineTimezone } from '../util/ipInfo';
+import {
+  probeTransportTarget,
+  composeTransportFlags,
+  registerActiveProfile,
+  unregisterActiveProfile,
+  TransportProbeTarget,
+} from '../proxy/transportPolicy';
 
 interface RunningProfile {
   pid: number;
@@ -24,6 +36,7 @@ interface RunningProfile {
   cleanupEmulation?: () => void;
   cleanupGeo?: () => void;
   cleanupStealth?: () => void;
+  cleanupTransport?: () => void;
 }
 
 export interface StartResult {
@@ -95,6 +108,13 @@ function killTree(rec: RunningProfile): void {
 
 function cleanup(rec: RunningProfile): void {
   killTree(rec);
+  if (rec.cleanupTransport) {
+    try {
+      rec.cleanupTransport();
+    } catch {
+      // ignore
+    }
+  }
   if (rec.tunnel) void rec.tunnel.close();
   if (rec.cleanupAuth) {
     try {
@@ -126,28 +146,11 @@ function cleanup(rec: RunningProfile): void {
   }
 }
 
-export async function startProfile(cfg: LaunchConfig): Promise<StartResult> {
-  const existing = running.get(cfg.profileId);
-  if (existing) return toResult(existing);
-
-  const executable = getChromiumPath();
-  fs.mkdirSync(cfg.userDataDir, { recursive: true });
-  // Remove a stale DevToolsActivePort from a previous run: otherwise waitForDevToolsPort
-  // may read the old (dead) port before the new process writes its own.
-  try {
-    fs.rmSync(path.join(cfg.userDataDir, 'DevToolsActivePort'), { force: true });
-  } catch {
-    // ignore
-  }
-
-  // SSH proxies are tunneled to a local SOCKS5 endpoint first.
-  let tunnel: SshTunnel | undefined;
-  let proxyServer = cfg.proxyServer;
-  if (cfg.sshTunnel) {
-    tunnel = await createSshTunnel(cfg.sshTunnel);
-    proxyServer = `socks5://127.0.0.1:${tunnel.port}`;
-  }
-
+export async function buildChromiumArgs(
+  cfg: LaunchConfig,
+  proxyServer?: string,
+  transportFlags: string[] = []
+): Promise<string[]> {
   const args: string[] = [
     `--user-data-dir=${cfg.userDataDir}`,
     '--remote-debugging-port=0',
@@ -156,11 +159,13 @@ export async function startProfile(cfg: LaunchConfig): Promise<StartResult> {
     // Keep session cookies on disk too — logins must survive restarts.
     '--persist-session-cookies',
   ];
-
-  if (proxyServer) {
+  if (cfg.headless) {
+    args.push('--headless=new');
+  }
+  if (transportFlags.length > 0) {
+    args.push(...transportFlags);
+  } else if (proxyServer) {
     args.push(`--proxy-server=${proxyServer}`);
-    // NOTE: --proxy-server does not accept inline credentials; authenticated
-    // proxies are handled via CDP Fetch.continueWithAuth below.
   }
 
   // Desktop screen resolution override (AdsPower-style, from fingerprint config).
@@ -198,25 +203,80 @@ export async function startProfile(cfg: LaunchConfig): Promise<StartResult> {
     }
   }
 
-  // Extensions (Sprint B): load bound unpacked extensions.
-  if (cfg.extensionPaths && cfg.extensionPaths.length) {
-    const joined = cfg.extensionPaths.join(',');
-    args.push(`--load-extension=${joined}`);
-  }
-
-  // Stealth layer: per-profile MV3 extension (MAIN world, document_start).
+  // Extensions & Stealth layer: load bound unpacked extensions and stealth MV3 extension.
   // CDP script injection is broken in this kernel, so the stealth script ships as an
   // extension loaded via --load-extension (kernel supports it, verified in Sprint B).
-  let stealthExtDir: string | undefined;
+  const extensionsToLoad: string[] = [];
+  if (cfg.extensionPaths && cfg.extensionPaths.length) {
+    extensionsToLoad.push(...cfg.extensionPaths);
+  }
   if (cfg.stealth) {
-    stealthExtDir = path.join(cfg.userDataDir, 'stealth-ext');
+    const stealthExtDir = path.join(cfg.userDataDir, 'stealth-ext');
     writeStealthExtension(stealthExtDir, cfg.stealth);
-    const extArgs = cfg.extensionPaths && cfg.extensionPaths.length
-      ? [...cfg.extensionPaths, stealthExtDir]
-      : [stealthExtDir];
-    args.push(`--load-extension=${extArgs.join(',')}`);
+    extensionsToLoad.push(stealthExtDir);
+  }
+  if (extensionsToLoad.length > 0) {
+    args.push(`--load-extension=${extensionsToLoad.join(',')}`);
   }
 
+  return args;
+}
+
+export async function startProfile(cfg: LaunchConfig): Promise<StartResult> {
+  const existing = running.get(cfg.profileId);
+  if (existing) return toResult(existing);
+
+  const executable = getChromiumPath();
+  fs.mkdirSync(cfg.userDataDir, { recursive: true });
+  // Remove a stale DevToolsActivePort from a previous run: otherwise waitForDevToolsPort
+  // may read the old (dead) port before the new process writes its own.
+  try {
+    fs.rmSync(path.join(cfg.userDataDir, 'DevToolsActivePort'), { force: true });
+  } catch {
+    // ignore
+  }
+
+  // SSH proxies are tunneled to a local SOCKS5 endpoint first.
+  let tunnel: SshTunnel | undefined;
+  let proxyServer = cfg.proxyServer;
+  if (cfg.sshTunnel) {
+    tunnel = await createSshTunnel(cfg.sshTunnel);
+    proxyServer = `socks5://127.0.0.1:${tunnel.port}`;
+  }
+
+  // Network Transport Policy pre-launch probe & flag composition
+  let transportFlags: string[] = [];
+  if (proxyServer || cfg.sshTunnel) {
+    let target: TransportProbeTarget;
+    if (cfg.sshTunnel) {
+      target = { protocol: 'ssh', host: cfg.sshTunnel.host, port: cfg.sshTunnel.port };
+    } else {
+      try {
+        const url = new URL(proxyServer!.startsWith('http') || proxyServer!.startsWith('socks') ? proxyServer! : `http://${proxyServer!}`);
+        const protocol = url.protocol.replace(':', '') as TransportProbeTarget['protocol'];
+        target = {
+          protocol,
+          host: url.hostname,
+          port: parseInt(url.port, 10) || (protocol === 'socks5' ? 1080 : 80),
+          username: cfg.proxyAuth?.username,
+          password: cfg.proxyAuth?.password,
+        };
+      } catch {
+        target = { protocol: 'socks5', host: '127.0.0.1', port: 1080 };
+      }
+    }
+
+    const probeResult = await probeTransportTarget(target);
+    if (probeResult.status === 'REFUSE') {
+      const err = new Error(`Proxy transport probe failed at stage ${probeResult.error?.stage}: ${probeResult.error?.message}`);
+      (err as unknown as { stage?: string; code?: string }).stage = probeResult.error?.stage;
+      (err as unknown as { stage?: string; code?: string }).code = probeResult.error?.code;
+      throw err;
+    }
+
+    transportFlags = composeTransportFlags(probeResult, proxyServer);
+  }
+  const args = await buildChromiumArgs(cfg, proxyServer, transportFlags);
   let child: ChildProcess;
   try {
     if (!fs.existsSync(executable) && executable !== 'chrome.exe') {
@@ -325,9 +385,19 @@ export async function startProfile(cfg: LaunchConfig): Promise<StartResult> {
       cleanupGeo,
       cleanupStealth,
     };
-    running.set(cfg.profileId, rec);
+    const unregisterTransport = registerActiveProfile(cfg.profileId, (reason) => {
+      // Immediate mid-session termination on transport loss (zero direct fallback)
+      const current = running.get(cfg.profileId);
+      if (current) {
+        cleanup(current);
+        running.delete(cfg.profileId);
+      }
+    });
+    rec.cleanupTransport = unregisterTransport;
+
     child.on('exit', () => {
       running.delete(cfg.profileId);
+      unregisterTransport();
       if (rec.tunnel) void rec.tunnel.close();
       if (rec.cleanupAuth) {
         try {
@@ -360,10 +430,18 @@ export async function startProfile(cfg: LaunchConfig): Promise<StartResult> {
       // Watchdog: keep the DB status in sync when the kernel exits on its own
       // (crash, manual close of the browser window). Intentionally swallows
       // errors so the exit path never throws.
-      try {
-        setStatus(cfg.profileId, 'closed');
-      } catch {
-        // ignore
+      if (!cfg.temporary && !isTemporaryProfile(cfg.profileId)) {
+        try {
+          setStatus(cfg.profileId, 'closed');
+        } catch {
+          // ignore
+        }
+      }
+
+      // Temporary profile cleanup: purge ephemeral directory on exit and unregister
+      if (cfg.temporary || isTemporaryProfile(cfg.profileId)) {
+        void cleanTemporaryDirectory(cfg.userDataDir).catch(() => {});
+        unregisterTemporaryProfile(cfg.profileId);
       }
     });
     return toResult(rec);

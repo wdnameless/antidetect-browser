@@ -1,3 +1,4 @@
+import { invalidateTransportCache } from './transportPolicy';
 // Proxy manager: CRUD, connectivity check (http/https/socks5/ssh) and
 // automatic timezone detection from the proxy's egress IP.
 import { randomUUID } from 'crypto';
@@ -100,6 +101,7 @@ export function updateProxy(id: string, input: Partial<ProxyInput>): boolean {
     input.privateKey !== undefined ? protectSecret(input.privateKey) : existing.private_key,
     id
   );
+  invalidateTransportCache();
   return true;
 }
 
@@ -109,7 +111,9 @@ export function deleteProxy(id: string): boolean {
   if (used.c > 0) {
     throw new Error('proxy is assigned to a profile');
   }
-  return db.prepare('DELETE FROM proxies WHERE id = ?').run(id).changes > 0;
+  const deleted = db.prepare('DELETE FROM proxies WHERE id = ?').run(id).changes > 0;
+  if (deleted) invalidateTransportCache();
+  return deleted;
 }
 
 export function setProxyResult(id: string, result: ProxyCheckResult): void {

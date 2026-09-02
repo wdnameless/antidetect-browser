@@ -7,28 +7,43 @@ TBD - created by archiving change add-action-syncer. Update Purpose after archiv
 
 ### Requirement: Sync session lifecycle
 
-The system SHALL store sync sessions in `sync_sessions` (id, master_profile_id, created_at, status, members JSON). Creating a session (`POST /api/v1/sync/sessions` with `{profile_ids: [...]}`) SHALL require every profile to be a RUNNING Chromium profile; otherwise the API SHALL answer `code:"NOT_RUNNING"` (not running) or `code:"UNSUPPORTED"` (Firefox/Camoufox). The first profile in the list becomes the master, the rest become slaves. `GET /api/v1/sync/sessions` SHALL list active sessions; `POST /api/v1/sync/sessions/:id/stop` SHALL detach all CDP listeners and mark the session stopped.
+The system SHALL preserve the sync-session model while requiring every member to be a running Chromium profile. Stopped Chromium uses existing `NOT_RUNNING`; Firefox/Camoufox refusal status, headers, content type, envelope, and application code MUST be whatever the isolated signed V1/V2 corpus pins and MUST NOT be invented. Validation and creation MUST commit atomically. Authentication/authorization precedence MUST remain corpus-compatible.
 
-#### Scenario: Create a session from running Chromium profiles
+#### Scenario: Create from running Chromium profiles
+- **WHEN** an authorized user posts two or more running Chromium profile IDs
+- **THEN** an active session is atomically created with the first as master
 
-- **WHEN** the user posts two or more running Chromium profile ids
-- **THEN** a session row is created with `master_profile_id` = the first id, `status='active'` and `members` containing the remaining ids
-- **AND** each slave receives the mirror injection (navigate, click, input)
+#### Scenario: Negative input - removed engine member
+- **WHEN** any posted ID belongs to Firefox/Camoufox
+- **THEN** the corpus-pinned refusal MUST be returned and no session/listener row MUST be created
 
-#### Scenario: Not-running profile is rejected
+#### Scenario: State or race - member stops during creation
+- **WHEN** a member stops or is disabled during session validation
+- **THEN** creation MUST roll back with `NOT_RUNNING` or the corpus-pinned removed-engine refusal and attach no listener
 
-- **WHEN** one of the posted profile ids is not running
-- **THEN** the response is `code:"NOT_RUNNING"` and no session is created
+#### Scenario: Boundary or null - empty member list
+- **WHEN** `profile_ids` is null, empty, duplicated, or contains fewer than two distinct IDs
+- **THEN** validation MUST fail without creating a session
 
-#### Scenario: Firefox profile is rejected
-
-- **WHEN** a posted profile id belongs to a Firefox/Camoufox profile
-- **THEN** the response is `code:"UNSUPPORTED"` and no session is created
+#### Scenario: Auth or permission - unauthorized sync
+- **WHEN** a caller lacks sync permission
+- **THEN** authorization MUST fail before profile engine/state details are disclosed
 
 #### Scenario: Stop a session
+- **WHEN** an authorized user stops a session
+- **THEN** all CDP bindings/listeners are detached, slaves are cleared, and status becomes `stopped`
 
-- **WHEN** the user stops a session
-- **THEN** all CDP bindings/listeners are detached, slaves are cleared and the row status becomes `stopped`
+#### Scenario: Create a session from running Chromium profiles
+- **WHEN** an authorized user posts two or more distinct running Chromium profile IDs
+- **THEN** the first becomes master and the remaining profiles become slaves in one active session
+
+#### Scenario: Not-running profile is rejected
+- **WHEN** any Chromium profile is not running
+- **THEN** `NOT_RUNNING` MUST be returned and no session MUST be created
+
+#### Scenario: Firefox profile is rejected
+- **WHEN** any profile belongs to Firefox/Camoufox
+- **THEN** the corpus-pinned refusal MUST be returned and no session MUST be created
 
 ### Requirement: Action mirroring
 

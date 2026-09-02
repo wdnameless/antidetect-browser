@@ -1,0 +1,32 @@
+{
+  "name": "@antidetect/mcp-server",
+  "version": "0.1.0",
+  "description": "Constrained, audit-logged Model Context Protocol (MCP) server for Antidetect Browser",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "bin": {
+    "antidetect-mcp": "./dist/index.js"
+  },
+  "type": "commonjs",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/index.js"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "antidetect",
+    "browser-automation"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.21.0",
+    "puppeteer-core": "^25.9.0"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/node": "^22.7.4",
+    "typescript": "^5.6.2"
+  }
+}

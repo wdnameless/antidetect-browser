@@ -1,4 +1,5 @@
 import type { Database } from './index';
+import { migratePreservedBrowserData } from './migrations/preserved-browser-data';
 
 /** Add a column to an existing table if it is missing (CREATE TABLE IF NOT EXISTS does not migrate). */
 function ensureColumn(db: Database, table: string, column: string, ddl: string): void {
@@ -206,4 +207,5 @@ export function migrate(db: Database): void {
   ensureColumn(db, 'profiles', 'mobile_model_id', 'TEXT');
   // Trash (soft delete): NULL = live profile, timestamp = moved to trash.
   ensureColumn(db, 'profiles', 'deleted_at', 'INTEGER');
+  migratePreservedBrowserData(db);
 }

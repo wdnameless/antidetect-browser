@@ -1,0 +1,272 @@
+import * as crypto from 'crypto';
+import {
+  FingerprintCatalogFamily,
+  HardwareVector,
+  SubSeeds,
+} from './types';
+import { WINDOWS_FINGERPRINT_CATALOG } from './catalog';
+
+const HMAC_SECRET = 'antidetect-fingerprint-catalog-domain-v1';
+
+/**
+ * Valid primary seed range: [1, 2147483647] (positive 31-bit signed int32)
+ */
+export const MIN_SEED = 1;
+export const MAX_SEED = 2147483647;
+
+export type SubSeedDomain =
+  | 'canvas'
+  | 'webgl'
+  | 'audio'
+  | 'domrect'
+  | 'voices'
+  | 'devices'
+  | 'platform'
+  | 'screen';
+
+const ALL_DOMAINS: SubSeedDomain[] = [
+  'canvas',
+  'webgl',
+  'audio',
+  'domrect',
+  'voices',
+  'devices',
+  'platform',
+  'screen',
+];
+
+/**
+ * Standard CRC32 table implementation for deterministic seed derivation from strings.
+ */
+function makeCrcTable(): Uint32Array {
+  const table = new Uint32Array(256);
+  for (let n = 0; n < 256; n++) {
+    let c = n;
+    for (let k = 0; k < 8; k++) {
+      if (c & 1) {
+        c = 0xedb88320 ^ (c >>> 1);
+      } else {
+        c = c >>> 1;
+      }
+    }
+    table[n] = c >>> 0;
+  }
+  return table;
+}
+
+const CRC_TABLE = makeCrcTable();
+
+export function crc32(str: string): number {
+  let crc = 0 ^ -1;
+  const buf = Buffer.from(str, 'utf8');
+  for (let i = 0; i < buf.length; i++) {
+    crc = (crc >>> 8) ^ CRC_TABLE[(crc ^ buf[i]) & 0xff];
+  }
+  return (crc ^ -1) >>> 0;
+}
+
+/**
+ * Legacy seed migration function:
+ * Converts invalid or non-positive seeds into deterministic positive int32 in [1, 2147483647].
+ * Replay-safe and deterministic.
+ */
+export function migrateLegacySeed(profileId: string, oldSeed?: number | null): number {
+  if (
+    typeof oldSeed === 'number' &&
+    Number.isInteger(oldSeed) &&
+    oldSeed >= MIN_SEED &&
+    oldSeed <= MAX_SEED
+  ) {
+    return oldSeed;
+  }
+
+  // Derive deterministic 31-bit integer from profile.id using CRC32
+  const hash = crc32(`profile-seed-migration:${profileId}`);
+  const positive31 = (hash & 0x7fffffff) >>> 0;
+  // Map 0 -> 1 to guarantee [1, 2147483647]
+  return positive31 === 0 ? 1 : positive31;
+}
+
+/**
+ * Primary seed positive signed int32 1..2147483647 -> domain-separated sub-seeds via HMAC-SHA256.
+ * HMAC-SHA256(secret, seed || ':' || domain)
+ * Derived sub-seed = first 4 bytes read UInt32 BE / LE forced positive with (val & 0x7fffffff) or >>> 1.
+ */
+export function deriveCatalogSubSeeds(primarySeed: number): SubSeeds {
+  const safeSeed = Math.max(MIN_SEED, Math.min(MAX_SEED, primarySeed >>> 0 || 1));
+  const result: Record<string, number> = {};
+
+  for (const domain of ALL_DOMAINS) {
+    const hmac = crypto.createHmac('sha256', HMAC_SECRET);
+    hmac.update(`${safeSeed}:${domain}`);
+    const digest = hmac.digest();
+    // First 4 bytes as unsigned 32-bit int, forced positive (31-bit)
+    const rawVal = digest.readUInt32BE(0);
+    const positiveSubSeed = (rawVal >>> 1) || 1;
+    result[domain] = positiveSubSeed;
+  }
+
+  return result as unknown as SubSeeds;
+}
+
+/**
+ * Deterministic weighted selection of a fingerprint family based on primary seed.
+ */
+export function selectFamilyBySeed(
+  primarySeed: number,
+  catalog: FingerprintCatalogFamily[] = WINDOWS_FINGERPRINT_CATALOG
+): FingerprintCatalogFamily {
+  const safeSeed = Math.max(MIN_SEED, Math.min(MAX_SEED, primarySeed >>> 0 || 1));
+
+  // Pseudo-random uniform fraction in [0, 1) derived from primary seed HMAC
+  const hmac = crypto.createHmac('sha256', HMAC_SECRET);
+  hmac.update(`${safeSeed}:family-selection`);
+  const digest = hmac.digest();
+  const rawUint32 = digest.readUInt32BE(0);
+  const fraction = rawUint32 / 0x100000000; // 0.0 <= fraction < 1.0
+
+  let cumulative = 0;
+  for (const family of catalog) {
+    cumulative += family.weight;
+    if (fraction < cumulative) {
+      return family;
+    }
+  }
+
+  // Fallback to last family if floating point rounding slightly exceeds
+  return catalog[catalog.length - 1];
+}
+
+/**
+ * Deterministically pick an element from an array based on an integer sub-seed.
+ */
+function pickFromSubSeed<T>(arr: readonly T[], subSeed: number): T {
+  if (arr.length === 0) {
+    throw new Error('Cannot pick from empty array');
+  }
+  const index = (subSeed % arr.length + arr.length) % arr.length;
+  return arr[index];
+}
+
+/**
+ * Generate a complete, coherent hardware vector for a given primary seed.
+ */
+export function deriveHardwareVector(
+  primarySeed: number,
+  catalog: FingerprintCatalogFamily[] = WINDOWS_FINGERPRINT_CATALOG
+): HardwareVector {
+  const safeSeed = Math.max(MIN_SEED, Math.min(MAX_SEED, primarySeed >>> 0 || 1));
+  const subSeeds = deriveCatalogSubSeeds(safeSeed);
+  const family = selectFamilyBySeed(safeSeed, catalog);
+
+  // CPU Cores selection (jitter within min/max bounds)
+  const coreRange = family.cpu.coresMax - family.cpu.coresMin + 1;
+  const cpuCores = family.cpu.coresMin + (subSeeds.platform % coreRange);
+
+  // RAM selection from family set
+  const ramGB = pickFromSubSeed(family.ramGB, subSeeds.devices);
+
+  // Screen resolution selection from family set
+  const screenResolution = pickFromSubSeed(family.screen.resolutions, subSeeds.screen);
+
+  // Platform version from range
+  const platformVersion = pickFromSubSeed(family.platformVersionRange, subSeeds.platform);
+
+  // Locale from family pool
+  const locale = pickFromSubSeed(family.localePool, subSeeds.voices);
+
+  const vector: HardwareVector = {
+    familyId: family.id,
+    displayName: family.displayName,
+    cpuCores,
+    ramGB,
+    gpuVendor: family.gpu.vendor,
+    gpuRenderer: family.gpu.renderer,
+    webgpuAdapter: family.gpu.webgpuAdapter,
+    screenResolution,
+    devicePixelRatio: family.screen.dpr,
+    colorDepth: family.screen.colorDepth,
+    platformVersion,
+    architecture: family.coherenceConstraints.platformArch,
+    bitness: family.coherenceConstraints.bitness,
+    fontClass: family.fontsClass,
+    locale,
+  };
+
+  validateCoherence(vector, family);
+
+  return vector;
+}
+
+/**
+ * Invariant coherence validation suite asserting GPU/CPU/RAM/Screen/Font cross-surface rules.
+ */
+export function validateCoherence(
+  vector: HardwareVector,
+  family?: FingerprintCatalogFamily
+): { valid: boolean; violations: string[] } {
+  const violations: string[] = [];
+
+  const matchedFamily =
+    family || WINDOWS_FINGERPRINT_CATALOG.find((f) => f.id === vector.familyId);
+  if (!matchedFamily) {
+    violations.push(`Unknown familyId: ${vector.familyId}`);
+    return { valid: false, violations };
+  }
+
+  // 1. GPU <-> CPU Cores constraint
+  if (matchedFamily.gpu.limitsClass === 'integrated' && vector.cpuCores > 16) {
+    violations.push(`Integrated GPU cannot have > 16 CPU cores (found ${vector.cpuCores})`);
+  }
+
+  // 2. RAM constraints
+  if (matchedFamily.gpu.limitsClass === 'budget' && vector.ramGB > 16) {
+    violations.push(`Budget systems cannot have > 16GB RAM (found ${vector.ramGB}GB)`);
+  }
+  if (!matchedFamily.ramGB.includes(vector.ramGB)) {
+    violations.push(`RAM ${vector.ramGB}GB not in family allowed set [${matchedFamily.ramGB.join(', ')}]`);
+  }
+
+  // 3. CPU Cores range
+  if (vector.cpuCores < matchedFamily.cpu.coresMin || vector.cpuCores > matchedFamily.cpu.coresMax) {
+    violations.push(
+      `CPU cores ${vector.cpuCores} outside bounds [${matchedFamily.cpu.coresMin}, ${matchedFamily.cpu.coresMax}]`
+    );
+  }
+
+  // 4. Screen resolution
+  const resValid = matchedFamily.screen.resolutions.some(
+    (r) => r.width === vector.screenResolution.width && r.height === vector.screenResolution.height
+  );
+  if (!resValid) {
+    violations.push(
+      `Screen resolution ${vector.screenResolution.width}x${vector.screenResolution.height} not in family allowed resolutions`
+    );
+  }
+
+  // 5. Screen color depth and DPR
+  if (vector.colorDepth !== 24 && vector.colorDepth !== 30) {
+    violations.push(`Invalid screen color depth ${vector.colorDepth}`);
+  }
+  if (vector.devicePixelRatio > 2.5) {
+    violations.push(`DPR ${vector.devicePixelRatio} exceeds desktop limit 2.5`);
+  }
+
+  // 6. Architecture & Platform
+  if (matchedFamily.cpu.arch === 'arm64' && vector.architecture !== 'arm') {
+    violations.push(`ARM64 CPU must have arm architecture (found ${vector.architecture})`);
+  }
+  if (matchedFamily.cpu.arch === 'x64' && vector.architecture !== 'x86') {
+    violations.push(`x64 CPU must have x86 architecture (found ${vector.architecture})`);
+  }
+
+  // 7. Locale
+  if (!matchedFamily.localePool.includes(vector.locale)) {
+    violations.push(`Locale ${vector.locale} not in family pool [${matchedFamily.localePool.join(', ')}]`);
+  }
+
+  return {
+    valid: violations.length === 0,
+    violations,
+  };
+}

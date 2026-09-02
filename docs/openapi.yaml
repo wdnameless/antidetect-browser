@@ -1,0 +1,704 @@
+openapi: 3.1.0
+info:
+  title: Antidetect Browser Local API
+  description: Local REST API for controlling Antidetect Browser profiles, sessions, proxies, diagnostics, and AdsPower compatibility endpoints.
+  version: 1.0.0
+servers:
+  - url: http://127.0.0.1:3000
+    description: Local API Server
+security:
+  - BearerAuth: []
+paths:
+  /status:
+    get:
+      summary: Health check and service status
+      security: []
+      responses:
+        '200':
+          description: Status response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+                  version:
+                    type: string
+                    example: 1.0.0
+
+  /api/v1/browser/start:
+    get:
+      summary: Start a browser session (GET query param)
+      parameters:
+        - name: user_id
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: headless
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Browser startup details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BrowserStartResponse'
+    post:
+      summary: Start a browser session (POST JSON body)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - user_id
+              properties:
+                user_id:
+                  type: string
+                headless:
+                  type: boolean
+                proxy_id:
+                  type: string
+                url:
+                  type: string
+      responses:
+        '200':
+          description: Browser startup details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BrowserStartResponse'
+
+  /api/v1/browser/stop:
+    get:
+      summary: Stop a running browser session (GET query param)
+      parameters:
+        - name: user_id
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Stop response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+    post:
+      summary: Stop a running browser session (POST JSON body)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - user_id
+              properties:
+                user_id:
+                  type: string
+      responses:
+        '200':
+          description: Stop response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+
+  /api/v1/browser/list:
+    get:
+      summary: List profiles with pagination
+      parameters:
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 1
+        - name: page_size
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 100
+        - name: group_id
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: name
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Profile list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProfileListResponse'
+
+  /api/v1/browser/active:
+    get:
+      summary: List currently active browser sessions (AdsPower compatibility)
+      responses:
+        '200':
+          description: Active sessions list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+
+  /api/v1/browser-profile/create:
+    post:
+      summary: Create a new browser profile
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateProfileRequest'
+      responses:
+        '200':
+          description: Created profile response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+
+  /api/v1/browser-profile/update:
+    post:
+      summary: Update an existing profile
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateProfileRequest'
+      responses:
+        '200':
+          description: Updated profile response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+
+  /api/v1/browser-profile/delete:
+    post:
+      summary: Delete/trash a browser profile
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - user_id
+              properties:
+                user_id:
+                  type: string
+      responses:
+        '200':
+          description: Delete confirmation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+
+  /api/v1/browser-profile/detail:
+    get:
+      summary: Get details for a single profile
+      parameters:
+        - name: user_id
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Detailed profile information
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+
+  /api/v1/profiles/temporary:
+    post:
+      summary: Create an ephemeral / disposable profile
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                browser_type:
+                  type: string
+                  enum: [chrome, firefox]
+                proxy_id:
+                  type: string
+                os:
+                  type: string
+                  enum: [windows, macos, linux]
+                ttl_minutes:
+                  type: integer
+      responses:
+        '200':
+          description: Temporary profile created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+
+  /api/v1/proxy/create:
+    post:
+      summary: Create a proxy configuration
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateProxyRequest'
+      responses:
+        '200':
+          description: Proxy creation result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+
+  /api/v1/proxy/list:
+    get:
+      summary: List all saved proxy configurations
+      responses:
+        '200':
+          description: Proxy list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+
+  /api/v1/proxy/update:
+    post:
+      summary: Update a proxy configuration
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - proxy_id
+              properties:
+                proxy_id:
+                  type: string
+                type:
+                  type: string
+                  enum: [http, https, socks5, ssh]
+                host:
+                  type: string
+                port:
+                  type: integer
+                username:
+                  type: string
+                password:
+                  type: string
+      responses:
+        '200':
+          description: Update result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+
+  /api/v1/proxy/delete:
+    post:
+      summary: Delete a saved proxy configuration
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - proxy_id
+              properties:
+                proxy_id:
+                  type: string
+      responses:
+        '200':
+          description: Deletion result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+
+  /api/v1/proxy/check:
+    post:
+      summary: Check connectivity for a saved proxy by proxy_id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - proxy_id
+              properties:
+                proxy_id:
+                  type: string
+      responses:
+        '200':
+          description: Connectivity status result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+
+  /api/v1/proxy/test:
+    post:
+      summary: Test connectivity for raw proxy credentials without saving
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateProxyRequest'
+      responses:
+        '200':
+          description: Connection test result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+
+  /api/v1/diagnostics/{profileId}:
+    get:
+      summary: Retrieve diagnostic report for a given profile ID
+      parameters:
+        - name: profileId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Diagnostic report data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+
+  /api/v1/user/list:
+    get:
+      summary: AdsPower V1 user list compatibility
+      parameters:
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 1
+        - name: page_size
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 100
+        - name: group_id
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        '200':
+          description: AdsPower user list response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+
+  /api/v1/user/create:
+    post:
+      summary: AdsPower V1 create user/profile compatibility
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                group_id:
+                  type: string
+                user_proxy_config:
+                  type: object
+      responses:
+        '200':
+          description: AdsPower user create response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+
+  /api/v1/user/update:
+    post:
+      summary: AdsPower V1 update user/profile compatibility
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - user_id
+              properties:
+                user_id:
+                  type: string
+                name:
+                  type: string
+      responses:
+        '200':
+          description: AdsPower user update response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+
+  /api/v1/user/delete:
+    post:
+      summary: AdsPower V1 delete user/profile compatibility
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - user_ids
+              properties:
+                user_ids:
+                  type: array
+                  items:
+                    type: string
+      responses:
+        '200':
+          description: AdsPower user delete response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+
+  /api/v2/browser-profile/start:
+    post:
+      summary: AdsPower V2 browser profile start
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - user_id
+              properties:
+                user_id:
+                  type: string
+                headless:
+                  type: boolean
+      responses:
+        '200':
+          description: AdsPower V2 start response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BrowserStartResponse'
+
+  /api/v2/browser-profile/stop:
+    post:
+      summary: AdsPower V2 browser profile stop
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - user_id
+              properties:
+                user_id:
+                  type: string
+      responses:
+        '200':
+          description: AdsPower V2 stop response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+
+  /api/v2/browser-profile/list:
+    post:
+      summary: AdsPower V2 browser profile list
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                page:
+                  type: integer
+                page_size:
+                  type: integer
+                group_id:
+                  type: string
+      responses:
+        '200':
+          description: AdsPower V2 list response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProfileListResponse'
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: API_KEY
+  schemas:
+    ApiResponse:
+      type: object
+      required:
+        - code
+        - msg
+      properties:
+        code:
+          type: integer
+          example: 0
+        msg:
+          type: string
+          example: success
+        data:
+          type: object
+
+    BrowserStartResponse:
+      type: object
+      required:
+        - code
+        - msg
+        - data
+      properties:
+        code:
+          type: integer
+          example: 0
+        msg:
+          type: string
+          example: success
+        data:
+          type: object
+          properties:
+            ws:
+              type: object
+              properties:
+                puppeteer:
+                  type: string
+                selenium:
+                  type: string
+            pid:
+              type: integer
+            debug_port:
+              type: integer
+
+    ProfileListResponse:
+      type: object
+      required:
+        - code
+        - msg
+        - data
+      properties:
+        code:
+          type: integer
+        msg:
+          type: string
+        data:
+          type: object
+          properties:
+            list:
+              type: array
+              items:
+                type: object
+            total:
+              type: integer
+            page:
+              type: integer
+            page_size:
+              type: integer
+
+    CreateProfileRequest:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          type: string
+        group_id:
+          type: string
+        proxy_id:
+          type: string
+        browser_type:
+          type: string
+          enum: [chrome, firefox]
+        os:
+          type: string
+          enum: [windows, macos, linux, android, ios]
+        notes:
+          type: string
+
+    UpdateProfileRequest:
+      type: object
+      required:
+        - user_id
+      properties:
+        user_id:
+          type: string
+        name:
+          type: string
+        group_id:
+          type: string
+        proxy_id:
+          type: string
+        notes:
+          type: string
+
+    CreateProxyRequest:
+      type: object
+      required:
+        - type
+        - host
+        - port
+      properties:
+        type:
+          type: string
+          enum: [http, https, socks5, ssh]
+        host:
+          type: string
+        port:
+          type: integer
+        username:
+          type: string
+        password:
+          type: string
+        name:
+          type: string
