@@ -1,3 +1,4 @@
+import type { PreflightVerdict } from './preflight';
 let apiKey = '';
 
 export interface ApiEnvelope<T> {
@@ -800,4 +801,19 @@ export const api = {
   catalogGetUrl: () => request<{ url: string }>('/api/v1/catalog/url'),
   catalogSetUrl: (url: string) =>
     request<{ url: string }>('/api/v1/catalog/url', { method: 'POST', body: JSON.stringify({ url }) }),
+  // ---- Preflight & Launch Guard (Task 3.1 & 3.2) ----
+  preflightRun: (profileId: string) =>
+    request<PreflightVerdict>(`/api/profiles/${encodeURIComponent(profileId)}/preflight`, {
+      method: 'POST',
+    }),
+  preflightLast: (profileId: string) =>
+    request<PreflightVerdict>(`/api/profiles/${encodeURIComponent(profileId)}/preflight/last`),
+  startWithPreflight: (profileId: string, blockOnFail: boolean = false) =>
+    request<{ profileId: string; allowed: boolean; verdict?: PreflightVerdict }>(
+      `/api/profiles/${encodeURIComponent(profileId)}/start-with-preflight`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ blockOnFail }),
+      }
+    ),
 };

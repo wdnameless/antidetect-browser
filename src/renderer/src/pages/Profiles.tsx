@@ -14,6 +14,8 @@ import {
 } from '../api';
 import { useI18n } from '../i18n';
 import { SyncPanel } from '../components/SyncPanel';
+import { PreflightModal, PreflightBadge } from '../components/PreflightModal';
+import type { PreflightVerdict, PreflightStatus } from '../preflight';
 import {
   PlayIcon,
   StopIcon,
@@ -34,8 +36,8 @@ import {
   ProfilesIcon,
   KeyIcon,
   UsersIcon,
+  ShieldCheckIcon,
 } from '../icons';
-
 export function Profiles({ initialGroupId }: { initialGroupId?: string | null } = {}) {
   const { t } = useI18n();
   const [profiles, setProfiles] = useState<ProfileListItem[]>([]);
@@ -184,6 +186,152 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
       if (res.code === 0) setTags(res.data.list);
     } catch { /* ignore */ }
   }, []);
+  // ---- Preflight Inspection & Launch Guard (Task 3.1 & 3.2) ----
+  const [preflightModal, setPreflightModal] = useState<{
+    isOpen: boolean;
+    profileId: string;
+    profileName?: string;
+    verdict: PreflightVerdict | null;
+    loading: boolean;
+    error: string | null;
+  }>({
+    isOpen: false,
+    profileId: '',
+    profileName: '',
+    verdict: null,
+    loading: false,
+    error: null,
+  });
+  const [preflightCache, setPreflightCache] = useState<Record<string, { status: PreflightStatus | 'loading' | 'error'; verdict?: PreflightVerdict }>>({});
+  const [blockOnFail, setBlockOnFail] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('preflight_block_on_fail') === 'true';
+    } catch {
+      return false;
+    }
+  });
+
+  const toggleBlockOnFail = () => {
+    setBlockOnFail((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem('preflight_block_on_fail', String(next));
+      } catch {
+        // ignore
+      }
+      return next;
+    });
+  };
+
+  const runPreflight = async (profileId: string, profileName?: string, openModalAfter: boolean = false) => {
+    setPreflightCache((prev) => ({
+      ...prev,
+      [profileId]: { status: 'loading' },
+    }));
+    if (openModalAfter) {
+      setPreflightModal({
+        isOpen: true,
+        profileId,
+        profileName: profileName || profileId,
+        verdict: null,
+        loading: true,
+        error: null,
+      });
+    }
+    try {
+      const res = await api.preflightRun(profileId);
+      if (res.code === 0 && res.data) {
+        const verdict = res.data;
+        setPreflightCache((prev) => ({
+          ...prev,
+          [profileId]: { status: verdict.overall, verdict },
+        }));
+        if (openModalAfter) {
+          setPreflightModal((m) => ({
+            ...m,
+            loading: false,
+            verdict,
+            error: null,
+          }));
+        }
+        return verdict;
+      } else {
+        const errMsg = res.msg || 'Preflight probe failed';
+        setPreflightCache((prev) => ({
+          ...prev,
+          [profileId]: { status: 'error' },
+        }));
+        if (openModalAfter) {
+          setPreflightModal((m) => ({
+            ...m,
+            loading: false,
+            error: errMsg,
+          }));
+        }
+        return null;
+      }
+    } catch (err) {
+      const errMsg = (err as Error).message || 'Network error running preflight';
+      setPreflightCache((prev) => ({
+        ...prev,
+        [profileId]: { status: 'error' },
+      }));
+      if (openModalAfter) {
+        setPreflightModal((m) => ({
+          ...m,
+          loading: false,
+          error: errMsg,
+        }));
+      }
+      return null;
+    }
+  };
+
+  const inspectPreflight = async (profileId: string, profileName?: string) => {
+    const cached = preflightCache[profileId]?.verdict;
+    if (cached) {
+      setPreflightModal({
+        isOpen: true,
+        profileId,
+        profileName: profileName || profileId,
+        verdict: cached,
+        loading: false,
+        error: null,
+      });
+      return;
+    }
+
+    setPreflightModal({
+      isOpen: true,
+      profileId,
+      profileName: profileName || profileId,
+      verdict: null,
+      loading: true,
+      error: null,
+    });
+
+    try {
+      const res = await api.preflightLast(profileId);
+      if (res.code === 0 && res.data) {
+        setPreflightCache((prev) => ({
+          ...prev,
+          [profileId]: { status: res.data.overall, verdict: res.data },
+        }));
+        setPreflightModal((m) => ({
+          ...m,
+          loading: false,
+          verdict: res.data,
+          error: null,
+        }));
+      } else {
+        // Run fresh if no last verdict cached
+        await runPreflight(profileId, profileName, true);
+      }
+    } catch {
+      // Run fresh if 404 or missing
+      await runPreflight(profileId, profileName, true);
+    }
+  };
 
   // Debounce server-side search (300 ms after the last keystroke).
   useEffect(() => {
@@ -713,10 +861,21 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
     }
   };
 
-  const start = async (id: string) => {
+  const start = async (id: string, profileName?: string) => {
     setBusy(true);
     setError('');
     try {
+      // If blockOnFail is enabled, run startWithPreflight guard check
+      if (blockOnFail) {
+        const guardRes = await api.startWithPreflight(id, true);
+        if (guardRes.code !== 0 || !guardRes.data?.allowed) {
+          const errMsg = guardRes.msg || 'Launch blocked by preflight check failure';
+          setError(errMsg);
+          // Automatically trigger inspection modal to show details and remediation hints
+          await inspectPreflight(id, profileName);
+          return;
+        }
+      }
       const res = await api.start(id);
       if (res.code === 0) {
         setEndpoint({ id, ws: res.data.ws.puppeteer });
@@ -1129,6 +1288,19 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
             <ProxiesIcon size={14} />
             <span>Tags</span>
           </button>
+          <button
+            className={`btn ${blockOnFail ? 'active' : ''}`}
+            onClick={toggleBlockOnFail}
+            title={t('Block profile launch if preflight check fails (enforces proxy & fingerprint health before start)')}
+            style={{
+              borderColor: blockOnFail ? 'var(--accent)' : undefined,
+              color: blockOnFail ? 'var(--accent)' : undefined,
+              background: blockOnFail ? 'rgba(59, 130, 246, 0.1)' : undefined,
+            }}
+          >
+            <ShieldCheckIcon size={14} />
+            <span>{blockOnFail ? t('Preflight Guard: ON') : t('Preflight Guard: OFF')}</span>
+          </button>
           <button className="btn" onClick={() => setShowBatch(true)}>
             {t('Batch Create')}
           </button>
@@ -1185,17 +1357,18 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
                 />
               </th>
               <th style={{ width: '22%' }}>{t('Profile Name')}</th>
-              <th style={{ width: '20%' }}>{t('Proxy')}</th>
-              <th style={{ width: '15%' }}>{t('Device / OS')}</th>
-              <th style={{ width: '15%' }}>{t('Fingerprint')}</th>
-              <th style={{ width: '10%' }}>{t('Status')}</th>
-              <th style={{ width: '18%', textAlign: 'right' }}>{t('Actions')}</th>
+              <th style={{ width: '18%' }}>{t('Proxy')}</th>
+              <th style={{ width: '13%' }}>{t('Device / OS')}</th>
+              <th style={{ width: '13%' }}>{t('Fingerprint')}</th>
+              <th style={{ width: '12%' }}>{t('Preflight')}</th>
+              <th style={{ width: '8%' }}>{t('Status')}</th>
+              <th style={{ width: '16%', textAlign: 'right' }}>{t('Actions')}</th>
             </tr>
           </thead>
           <tbody>
             {filteredProfiles.length === 0 ? (
               <tr>
-                <td colSpan={7} className="empty-cell">
+                <td colSpan={8} className="empty-cell">
                   {searchQuery ? (
                     t('No profiles match your search criteria.')
                   ) : (
@@ -1307,6 +1480,16 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
                     </div>
                   </td>
                   <td>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <PreflightBadge
+                        status={preflightCache[p.user_id]?.status}
+                        verdict={preflightCache[p.user_id]?.verdict}
+                        onClick={() => void inspectPreflight(p.user_id, p.name || undefined)}
+                        onRun={() => void runPreflight(p.user_id, p.name || undefined, true)}
+                      />
+                    </div>
+                  </td>
+                  <td>
                     <span className={`badge ${p.status}`}>
                       {p.status === 'running' ? t('Running') : t('Closed')}
                     </span>
@@ -1327,13 +1510,22 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
                         <button
                           type="button"
                           className="btn-icon play-btn"
-                          onClick={() => void start(p.user_id)}
+                          onClick={() => void start(p.user_id, p.name || undefined)}
                           disabled={busy}
-                          title="Start Profile"
+                          title={blockOnFail ? t('Start Profile (with Preflight Guard)') : t('Start Profile')}
                         >
                           <PlayIcon size={13} />
                         </button>
                       )}
+                      <button
+                        type="button"
+                        className="btn-icon"
+                        onClick={() => void inspectPreflight(p.user_id, p.name || undefined)}
+                        disabled={busy || preflightCache[p.user_id]?.status === 'loading'}
+                        title={t('Run / Inspect Preflight Check')}
+                      >
+                        <ShieldCheckIcon size={14} />
+                      </button>
 
                       <button
                         type="button"
@@ -1491,6 +1683,30 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
                                 <CookieIcon size={13} />
                                 <span>Manage Cookies</span>
                               </button>
+                              <button
+                                type="button"
+                                style={{
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: 8,
+                                  padding: '7px 12px',
+                                  background: 'transparent',
+                                  border: 'none',
+                                  color: 'var(--text)',
+                                  fontSize: 12,
+                                  cursor: 'pointer',
+                                  textAlign: 'left',
+                                  width: '100%',
+                                }}
+                                onClick={() => {
+                                  setActiveMenuId(null);
+                                    void inspectPreflight(p.user_id, p.name || undefined);
+                                }}
+                              >
+                                <ShieldCheckIcon size={13} />
+                                <span>Run Preflight Check</span>
+                              </button>
+
 
                               <button
                                 type="button"
@@ -2635,6 +2851,24 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
             </div>
           </div>
         </div>
+      ) : null}
+
+      {preflightModal.isOpen ? (
+        <PreflightModal
+          isOpen={preflightModal.isOpen}
+          onClose={() => setPreflightModal((prev) => ({ ...prev, isOpen: false }))}
+          profileId={preflightModal.profileId}
+          profileName={preflightModal.profileName}
+          verdict={preflightModal.verdict}
+          loading={preflightModal.loading}
+          error={preflightModal.error}
+          onRecheck={async (id: string) => {
+            await runPreflight(id, preflightModal.profileName, false);
+          }}
+          onStartProfile={async (id: string) => {
+            await start(id, preflightModal.profileName);
+          }}
+        />
       ) : null}
     </div>
   );

@@ -1,0 +1,310 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`Flow Compiler - Determinism & Per-Node Codegen > generates expected code for condition, loop, extract, screenshot, eval, module 1`] = `
+"// Flow: Complex Flow (id: complex-flow, version: undefined)
+// Deterministically compiled by Afina FlowCompiler
+(async function runFlow() {
+  const __vars = {
+  "count": 0
+};
+  const __results = {};
+  let __currentNodeId = "n-cond";
+
+  function __logSpanStart(nodeId, type) {
+    app.log('[FLOW_SPAN_START] ' + nodeId + ' ' + type + ' ' + Date.now());
+  }
+
+  function __logSpanEnd(nodeId, startMs) {
+    const duration = Date.now() - startMs;
+    app.log('[FLOW_SPAN_END] ' + nodeId + ' ' + duration);
+  }
+
+  function __logNodeError(nodeId, err) {
+    const msg = (err && err.message) || String(err);
+    app.log('[FLOW_NODE_ERROR] ' + nodeId + ' ' + msg);
+  }
+
+  async function __executeNode_n_cond() {
+    const __t0 = Date.now();
+    __logSpanStart("n-cond", "condition");
+    try {
+      // Action: condition
+      const __test = (() => {
+        const vars = __vars;
+        return Boolean(vars.count > 0);
+      })();
+      app.log('Condition evaluated: ' + __test);
+      if (__test) {
+        return "n-loop";
+      } else {
+        return "n-extract";
+      }
+      __logSpanEnd("n-cond", __t0);
+    } catch (err) {
+      __logNodeError("n-cond", err);
+      throw Object.assign(new Error('[FLOW_FAILED_AT_NODE:' + "n-cond" + '] ' + ((err && err.message) || String(err))), { nodeId: "n-cond", originalError: err });
+    }
+  }
+
+  async function __executeNode_n_eval() {
+    const __t0 = Date.now();
+    __logSpanStart("n-eval", "eval");
+    try {
+      // Action: eval
+      const __evalResult = await (async () => {
+        const vars = __vars;
+        vars.count += 1;
+      })();
+      app.log('Evaluated code snippet for node ' + "n-eval");
+      return null;
+      __logSpanEnd("n-eval", __t0);
+    } catch (err) {
+      __logNodeError("n-eval", err);
+      throw Object.assign(new Error('[FLOW_FAILED_AT_NODE:' + "n-eval" + '] ' + ((err && err.message) || String(err))), { nodeId: "n-eval", originalError: err });
+    }
+  }
+
+  async function __executeNode_n_extract() {
+    const __t0 = Date.now();
+    __logSpanStart("n-extract", "extract");
+    try {
+      // Action: extract
+      const __selector = "h1";
+      const __attr = "";
+      let __extracted = null;
+      if (typeof app.browser?.extract === 'function') {
+        __extracted = await app.browser.extract(__selector, { attribute: __attr, multiple: false });
+      } else {
+        __extracted = 'simulated_extracted_value';
+      }
+      __vars["title"] = __extracted;
+      app.log('Extracted value for ' + "title" + ': ' + JSON.stringify(__extracted));
+      return "n-mod";
+      __logSpanEnd("n-extract", __t0);
+    } catch (err) {
+      __logNodeError("n-extract", err);
+      throw Object.assign(new Error('[FLOW_FAILED_AT_NODE:' + "n-extract" + '] ' + ((err && err.message) || String(err))), { nodeId: "n-extract", originalError: err });
+    }
+  }
+
+  async function __executeNode_n_loop() {
+    const __t0 = Date.now();
+    __logSpanStart("n-loop", "loop");
+    try {
+      // Action: loop
+      if (!__results["n-loop"]) {
+        __results["n-loop"] = { iteration: 0 };
+      }
+      const __loopState = __results["n-loop"];
+      const __maxIter = 5;
+      let __continueLoop = false;
+      if (__loopState.iteration < 3 && __loopState.iteration < __maxIter) {
+        __continueLoop = true;
+        __loopState.iteration++;
+      }
+      if (__continueLoop) {
+        app.log('Loop iteration ' + __loopState.iteration + ' for node ' + "n-loop");
+        return "n-shot";
+      } else {
+        app.log('Loop complete for node ' + "n-loop");
+        return "n-eval";
+      }
+      __logSpanEnd("n-loop", __t0);
+    } catch (err) {
+      __logNodeError("n-loop", err);
+      throw Object.assign(new Error('[FLOW_FAILED_AT_NODE:' + "n-loop" + '] ' + ((err && err.message) || String(err))), { nodeId: "n-loop", originalError: err });
+    }
+  }
+
+  async function __executeNode_n_mod() {
+    const __t0 = Date.now();
+    __logSpanStart("n-mod", "module");
+    try {
+      // Action: module
+      const __moduleId = "auth-mod";
+      const __args = {};
+      app.log('Calling script module ' + __moduleId);
+      // Module calls run via app.http or script engine invocation if supported
+      const __moduleResult = { success: true, moduleId: __moduleId, args: __args };
+      return null;
+      __logSpanEnd("n-mod", __t0);
+    } catch (err) {
+      __logNodeError("n-mod", err);
+      throw Object.assign(new Error('[FLOW_FAILED_AT_NODE:' + "n-mod" + '] ' + ((err && err.message) || String(err))), { nodeId: "n-mod", originalError: err });
+    }
+  }
+
+  async function __executeNode_n_shot() {
+    const __t0 = Date.now();
+    __logSpanStart("n-shot", "screenshot");
+    try {
+      // Action: screenshot
+      let __shot = null;
+      if (typeof app.browser?.screenshot === 'function') {
+        __shot = await app.browser.screenshot({ fullPage: true, selector: "" });
+      } else {
+        __shot = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+      }
+      app.log('Captured screenshot' + ("Shot" ? ' (' + "Shot" + ')' : ''));
+      return null;
+      __logSpanEnd("n-shot", __t0);
+    } catch (err) {
+      __logNodeError("n-shot", err);
+      throw Object.assign(new Error('[FLOW_FAILED_AT_NODE:' + "n-shot" + '] ' + ((err && err.message) || String(err))), { nodeId: "n-shot", originalError: err });
+    }
+  }
+
+  while (__currentNodeId) {
+    const nextNodeId = await (async () => {
+      switch (__currentNodeId) {
+        case "n-cond":
+          return await __executeNode_n_cond();
+        case "n-eval":
+          return await __executeNode_n_eval();
+        case "n-extract":
+          return await __executeNode_n_extract();
+        case "n-loop":
+          return await __executeNode_n_loop();
+        case "n-mod":
+          return await __executeNode_n_mod();
+        case "n-shot":
+          return await __executeNode_n_shot();
+        default:
+          throw new Error('Unknown flow node ID: ' + __currentNodeId);
+      }
+    })();
+    __currentNodeId = nextNodeId;
+  }
+
+  return {
+    status: 'completed',
+    variables: __vars,
+    results: __results,
+  };
+})();"
+`;
+
+exports[`Flow Compiler - Determinism & Per-Node Codegen > generates expected code for navigate, click, type, wait 1`] = `
+"// Flow: Browser Flow (id: browser-flow, version: undefined)
+// Deterministically compiled by Afina FlowCompiler
+(async function runFlow() {
+  const __vars = {};
+  const __results = {};
+  let __currentNodeId = "n-nav";
+
+  function __logSpanStart(nodeId, type) {
+    app.log('[FLOW_SPAN_START] ' + nodeId + ' ' + type + ' ' + Date.now());
+  }
+
+  function __logSpanEnd(nodeId, startMs) {
+    const duration = Date.now() - startMs;
+    app.log('[FLOW_SPAN_END] ' + nodeId + ' ' + duration);
+  }
+
+  function __logNodeError(nodeId, err) {
+    const msg = (err && err.message) || String(err);
+    app.log('[FLOW_NODE_ERROR] ' + nodeId + ' ' + msg);
+  }
+
+  async function __executeNode_n_click() {
+    const __t0 = Date.now();
+    __logSpanStart("n-click", "click");
+    try {
+      // Action: click
+      const __selector = "#btn";
+      app.log('Clicking selector: ' + __selector);
+      if (typeof app.browser?.click === 'function') {
+        await app.browser.click(__selector, { waitForSelector: false, timeout: 10000 });
+      } else {
+        app.log('Simulated click on ' + __selector);
+      }
+      return "n-type";
+      __logSpanEnd("n-click", __t0);
+    } catch (err) {
+      __logNodeError("n-click", err);
+      throw Object.assign(new Error('[FLOW_FAILED_AT_NODE:' + "n-click" + '] ' + ((err && err.message) || String(err))), { nodeId: "n-click", originalError: err });
+    }
+  }
+
+  async function __executeNode_n_nav() {
+    const __t0 = Date.now();
+    __logSpanStart("n-nav", "navigate");
+    try {
+      // Action: navigate
+      const __targetUrl = "https://example.com";
+      app.log('Navigating to ' + __targetUrl);
+      if (typeof app.browser?.navigate === 'function') {
+        await app.browser.navigate(__targetUrl, { timeout: 30000 });
+      } else {
+        // HTTP fallback / simulated fetch
+        await app.http.fetch(__targetUrl, { method: 'GET' });
+      }
+      return "n-click";
+      __logSpanEnd("n-nav", __t0);
+    } catch (err) {
+      __logNodeError("n-nav", err);
+      throw Object.assign(new Error('[FLOW_FAILED_AT_NODE:' + "n-nav" + '] ' + ((err && err.message) || String(err))), { nodeId: "n-nav", originalError: err });
+    }
+  }
+
+  async function __executeNode_n_type() {
+    const __t0 = Date.now();
+    __logSpanStart("n-type", "type");
+    try {
+      // Action: type
+      const __selector = "#input";
+      const __text = "hello";
+      app.log('Typing into selector ' + __selector + ' (length: ' + __text.length + ')');
+      if (typeof app.browser?.type === 'function') {
+        await app.browser.type(__selector, __text, { clear: false, delay: 0 });
+      } else {
+        app.log('Simulated typing into ' + __selector);
+      }
+      return "n-wait";
+      __logSpanEnd("n-type", __t0);
+    } catch (err) {
+      __logNodeError("n-type", err);
+      throw Object.assign(new Error('[FLOW_FAILED_AT_NODE:' + "n-type" + '] ' + ((err && err.message) || String(err))), { nodeId: "n-type", originalError: err });
+    }
+  }
+
+  async function __executeNode_n_wait() {
+    const __t0 = Date.now();
+    __logSpanStart("n-wait", "wait");
+    try {
+      // Action: wait
+      app.log('Waiting for ' + 1000 + 'ms');
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+      return null;
+      __logSpanEnd("n-wait", __t0);
+    } catch (err) {
+      __logNodeError("n-wait", err);
+      throw Object.assign(new Error('[FLOW_FAILED_AT_NODE:' + "n-wait" + '] ' + ((err && err.message) || String(err))), { nodeId: "n-wait", originalError: err });
+    }
+  }
+
+  while (__currentNodeId) {
+    const nextNodeId = await (async () => {
+      switch (__currentNodeId) {
+        case "n-click":
+          return await __executeNode_n_click();
+        case "n-nav":
+          return await __executeNode_n_nav();
+        case "n-type":
+          return await __executeNode_n_type();
+        case "n-wait":
+          return await __executeNode_n_wait();
+        default:
+          throw new Error('Unknown flow node ID: ' + __currentNodeId);
+      }
+    })();
+    __currentNodeId = nextNodeId;
+  }
+
+  return {
+    status: 'completed',
+    variables: __vars,
+    results: __results,
+  };
+})();"
+`;

@@ -19,6 +19,12 @@ export interface RollbackState {
   stateChecksum?: string;
 }
 
+export interface SecurityLogger {
+  warn: (msg: string) => void;
+  error: (msg: string) => void;
+  info: (msg: string) => void;
+}
+
 export interface ReleaseUpdateOptions {
   manifestEnvelope: SignedManifestEnvelope;
   targetDir: string;
@@ -28,6 +34,7 @@ export interface ReleaseUpdateOptions {
   keyRing: KeyRingStore;
   currentInstalledVersion: string;
   allowRollback?: boolean;
+  logger?: SecurityLogger;
 }
 
 export interface UpdateExecutionResult {
@@ -45,13 +52,19 @@ export function verifyReleaseManifest(
   envelope: SignedManifestEnvelope,
   keyRing: KeyRingStore,
   targetDir: string,
-  currentInstalledVersion: string
+  currentInstalledVersion: string,
+  logger?: SecurityLogger
 ): VerificationResult {
-  return verifySignedManifest(envelope, keyRing, {
+  const result = verifySignedManifest(envelope, keyRing, {
     targetDir,
     currentInstalledVersion,
     allowRollback: false,
   });
+  if (!result.valid) {
+    const log = logger ?? console;
+    log.error(`[AUDIT REFUSAL] Release manifest verification failed: ${result.reason} - ${result.error ?? 'unknown error'}`);
+  }
+  return result;
 }
 
 /**
@@ -166,7 +179,9 @@ export function applyReleaseUpdate(options: ReleaseUpdateOptions): UpdateExecuti
     stateFile,
     keyRing,
     currentInstalledVersion,
+    logger,
   } = options;
+  const log = logger ?? console;
 
   // 1. Verify manifest envelope and staged files first
   const verification = verifySignedManifest(manifestEnvelope, keyRing, {
@@ -176,6 +191,7 @@ export function applyReleaseUpdate(options: ReleaseUpdateOptions): UpdateExecuti
   });
 
   if (!verification.valid) {
+    log.error(`[AUDIT REFUSAL] Refused release update to '${manifestEnvelope.payload.version}' (current: '${currentInstalledVersion}'): ${verification.reason} - ${verification.error}`);
     return {
       success: false,
       installedVersion: currentInstalledVersion,
@@ -185,6 +201,9 @@ export function applyReleaseUpdate(options: ReleaseUpdateOptions): UpdateExecuti
 
   // 2. Initialize rollback state as pending
   const rollbackState = loadRollbackState(stateFile);
+  if (!rollbackState.currentVersion || rollbackState.currentVersion === '0.0.0') {
+    rollbackState.currentVersion = currentInstalledVersion;
+  }
   rollbackState.updatePending = true;
   rollbackState.pendingVersion = manifestEnvelope.payload.version;
   rollbackState.backupDir = backupDir;
@@ -208,6 +227,7 @@ export function applyReleaseUpdate(options: ReleaseUpdateOptions): UpdateExecuti
       rollbackState.pendingVersion = undefined;
       saveRollbackState(stateFile, rollbackState);
 
+      log.error(`[AUDIT REFUSAL] Refused release update due to ${applyLockedFiles.length} locked files. Rolled back to '${currentInstalledVersion}'. Files: ${applyLockedFiles.join(', ')}`);
       return {
         success: false,
         installedVersion: currentInstalledVersion,
@@ -224,6 +244,7 @@ export function applyReleaseUpdate(options: ReleaseUpdateOptions): UpdateExecuti
     });
 
     if (!finalCheck.valid) {
+      log.error(`[AUDIT REFUSAL] Final verification failed on target directory: ${finalCheck.reason} - ${finalCheck.error}. Rolled back to '${currentInstalledVersion}'.`);
       // Integrity check failed post-copy, restore backup
       copyDirRecursiveWithLockedTracking(backupDir, targetDir, []);
       rollbackState.updatePending = false;
@@ -252,6 +273,7 @@ export function applyReleaseUpdate(options: ReleaseUpdateOptions): UpdateExecuti
     };
   } catch (err: unknown) {
     const e = err as Error;
+    log.error(`[AUDIT REFUSAL] Release update exception: ${e.message}. Attempting rollback to '${currentInstalledVersion}'.`);
     // Attempt automatic rollback
     if (fs.existsSync(backupDir)) {
       try {

@@ -1,12 +1,25 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import express, { Express } from 'express';
+import express, { Express, Request, Response } from 'express';
 import preflightRoutes from '../../../src/main/api/routes/preflight';
 import * as pm from '../../../src/main/profiles/profileManager';
 import * as preflightService from '../../../src/main/preflight/preflightService';
+import * as chromium from '../../../src/main/launcher/chromium';
 import { clearLastVerdicts, storeVerdict } from '../../../src/main/preflight/store';
-
+import type { Profile } from '../../../src/main/profiles/profileManager';
+import type { LaunchConfig } from '../../../src/main/profiles/profileManager';
 vi.mock('../../../src/main/profiles/profileManager', () => ({
   getProfile: vi.fn(),
+  resolveLaunchConfig: vi.fn(),
+  setStatus: vi.fn(),
+}));
+
+vi.mock('../../../src/main/launcher/chromium', () => ({
+  startProfile: vi.fn(),
+  getCdpEndpoint: vi.fn(),
+}));
+
+vi.mock('../../../src/main/launcher/firefox', () => ({
+  startFirefox: vi.fn(),
 }));
 
 vi.mock('../../../src/main/preflight/preflightService', async () => {
@@ -166,6 +179,227 @@ describe('Preflight Routes API Integration Tests', () => {
       expect.objectContaining({
         code: -1,
         msg: 'Launch blocked by preflight failure',
+      })
+    );
+  });
+
+  it('POST /api/profiles/:id/start-with-preflight with autoStart=false (default) does not spawn browser', async () => {
+    const req = {
+      params: { id: 'p-default' },
+      body: {},
+      query: {},
+    } as unknown as Request;
+    const res = {
+      status: vi.fn().mockReturnThis(),
+      json: vi.fn(),
+    } as unknown as Response;
+
+    const routes = (preflightRoutes as unknown as { stack: Array<{ route?: { path: string; methods: Record<string, boolean>; stack: Array<{ handle: (req: Request, res: Response) => Promise<void> }> } }> }).stack;
+    const startRoute = routes.find(
+      (r) => r.route && r.route.path === '/api/profiles/:id/start-with-preflight' && r.route.methods.post
+    );
+    await startRoute?.route?.stack[0].handle(req, res);
+
+    expect(chromium.startProfile).not.toHaveBeenCalled();
+    expect(res.json).toHaveBeenCalledWith(
+      expect.objectContaining({
+        code: 0,
+        msg: 'Preflight launch guard passed',
+        data: expect.objectContaining({
+          profileId: 'p-default',
+          allowed: true,
+        }),
+      })
+    );
+  });
+
+  it('POST /api/profiles/:id/start-with-preflight with autoStart=true spawns launcher and returns merged payload on pass', async () => {
+    vi.mocked(pm.getProfile).mockReturnValueOnce({
+      user_id: 'p-pass',
+      name: 'Test Profile',
+    } as unknown as Profile);
+    vi.mocked(pm.resolveLaunchConfig).mockReturnValueOnce({
+      profileId: 'p-pass',
+      browserType: 'chromium',
+      headless: false,
+    } as unknown as LaunchConfig);
+    vi.mocked(chromium.startProfile).mockResolvedValueOnce({
+      ws: {
+        puppeteer: 'ws://127.0.0.1:9222/devtools/browser/abc-123',
+        selenium: 'http://127.0.0.1:9222',
+      },
+      debug_port: '9222',
+      webdriver: 'http://127.0.0.1:9222',
+      pid: 12345,
+    });
+    vi.mocked(preflightService.blockOnFailLaunchGuard).mockResolvedValueOnce({
+      allowed: true,
+      verdict: {
+        profileId: 'p-pass',
+        overall: 'pass',
+        passed: true,
+        timestamp: 456,
+        checks: {} as unknown as preflightService.PreflightVerdict['checks'],
+        checkList: [],
+      },
+    });
+
+    const req = {
+      params: { id: 'p-pass' },
+      body: { blockOnFail: true, autoStart: true },
+      query: {},
+      headers: {},
+    } as unknown as Request;
+    const res = {
+      status: vi.fn().mockReturnThis(),
+      json: vi.fn(),
+    } as unknown as Response;
+
+    const routes = (preflightRoutes as unknown as { stack: Array<{ route?: { path: string; methods: Record<string, boolean>; stack: Array<{ handle: (req: Request, res: Response) => Promise<void> }> } }> }).stack;
+    const startRoute = routes.find(
+      (r) => r.route && r.route.path === '/api/profiles/:id/start-with-preflight' && r.route.methods.post
+    );
+    await startRoute?.route?.stack[0].handle(req, res);
+
+    expect(chromium.startProfile).toHaveBeenCalledWith(
+      expect.objectContaining({ profileId: 'p-pass' })
+    );
+    expect(pm.setStatus).toHaveBeenCalledWith('p-pass', 'running');
+    expect(res.json).toHaveBeenCalledWith(
+      expect.objectContaining({
+        code: 0,
+        msg: 'success',
+        data: expect.objectContaining({
+          profileId: 'p-pass',
+          allowed: true,
+          wsEndpoint: 'ws://127.0.0.1:9222/devtools/browser/abc-123',
+          debug_port: '9222',
+          verdict: expect.objectContaining({
+            profileId: 'p-pass',
+            overall: 'pass',
+          }),
+        }),
+      })
+    );
+  });
+
+  it('POST /api/profiles/:id/start-with-preflight with autoStart=true returns 412 and does NOT spawn on preflight fail', async () => {
+    vi.mocked(pm.getProfile).mockReturnValueOnce({
+      user_id: 'p-fail-auto',
+      name: 'Failing Profile',
+    } as unknown as Profile);
+    vi.mocked(preflightService.blockOnFailLaunchGuard).mockResolvedValueOnce({
+      allowed: false,
+      verdict: {
+        profileId: 'p-fail-auto',
+        overall: 'fail',
+        passed: false,
+        timestamp: 789,
+        checks: {} as unknown as preflightService.PreflightVerdict['checks'],
+        checkList: [],
+      },
+    });
+
+    const req = {
+      params: { id: 'p-fail-auto' },
+      body: { blockOnFail: true, autoStart: true },
+      query: {},
+      headers: {},
+    } as unknown as Request;
+    const res = {
+      status: vi.fn().mockReturnThis(),
+      json: vi.fn(),
+    } as unknown as Response;
+
+    const routes = (preflightRoutes as unknown as { stack: Array<{ route?: { path: string; methods: Record<string, boolean>; stack: Array<{ handle: (req: Request, res: Response) => Promise<void> }> } }> }).stack;
+    const startRoute = routes.find(
+      (r) => r.route && r.route.path === '/api/profiles/:id/start-with-preflight' && r.route.methods.post
+    );
+    await startRoute?.route?.stack[0].handle(req, res);
+
+    expect(chromium.startProfile).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(412);
+    expect(res.json).toHaveBeenCalledWith(
+      expect.objectContaining({
+        code: -1,
+        msg: 'Launch blocked by preflight failure',
+        data: expect.objectContaining({
+          profileId: 'p-fail-auto',
+          overall: 'fail',
+        }),
+      })
+    );
+  });
+
+  it('POST /api/profiles/:id/start-with-preflight with autoStart=true fails when overall verdict is fail even without blockOnFail flag', async () => {
+    vi.mocked(pm.getProfile).mockReturnValueOnce({
+      user_id: 'p-fail-noflag',
+      name: 'Failing Profile',
+    } as unknown as Profile);
+    vi.mocked(preflightService.runPreflight).mockResolvedValueOnce({
+      profileId: 'p-fail-noflag',
+      overall: 'fail',
+      passed: false,
+      timestamp: 789,
+      checks: {} as unknown as preflightService.PreflightVerdict['checks'],
+      checkList: [],
+    });
+
+    const req = {
+      params: { id: 'p-fail-noflag' },
+      body: { autoStart: true },
+      query: {},
+      headers: {},
+    } as unknown as Request;
+    const res = {
+      status: vi.fn().mockReturnThis(),
+      json: vi.fn(),
+    } as unknown as Response;
+
+    const routes = (preflightRoutes as unknown as { stack: Array<{ route?: { path: string; methods: Record<string, boolean>; stack: Array<{ handle: (req: Request, res: Response) => Promise<void> }> } }> }).stack;
+    const startRoute = routes.find(
+      (r) => r.route && r.route.path === '/api/profiles/:id/start-with-preflight' && r.route.methods.post
+    );
+    await startRoute?.route?.stack[0].handle(req, res);
+
+    expect(chromium.startProfile).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(412);
+    expect(res.json).toHaveBeenCalledWith(
+      expect.objectContaining({
+        code: -1,
+        msg: 'Launch blocked by preflight failure',
+        data: expect.objectContaining({
+          profileId: 'p-fail-noflag',
+          overall: 'fail',
+        }),
+      })
+    );
+  });
+
+  it('POST /api/profiles/:id/start-with-preflight with autoStart=true returns 404 if profile not found', async () => {
+    vi.mocked(pm.getProfile).mockReturnValueOnce(null);
+
+    const req = {
+      params: { id: 'p-nonexistent' },
+      body: { autoStart: true },
+      query: {},
+    } as unknown as Request;
+    const res = {
+      status: vi.fn().mockReturnThis(),
+      json: vi.fn(),
+    } as unknown as Response;
+
+    const routes = (preflightRoutes as unknown as { stack: Array<{ route?: { path: string; methods: Record<string, boolean>; stack: Array<{ handle: (req: Request, res: Response) => Promise<void> }> } }> }).stack;
+    const startRoute = routes.find(
+      (r) => r.route && r.route.path === '/api/profiles/:id/start-with-preflight' && r.route.methods.post
+    );
+    await startRoute?.route?.stack[0].handle(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(404);
+    expect(res.json).toHaveBeenCalledWith(
+      expect.objectContaining({
+        code: -1,
+        msg: 'profile not found',
       })
     );
   });

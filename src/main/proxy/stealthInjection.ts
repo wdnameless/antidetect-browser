@@ -9,6 +9,8 @@ import {
   SyntheticVoice,
   SyntheticMediaDevice,
 } from './stealthNoise';
+import { signStealthExtension } from '../security/extensionVerifier';
+import type { KeyPairPem } from '../security/signing';
 
 export type LogicalPlatform = 'windows' | 'macos' | 'linux' | 'android' | 'ios';
 
@@ -779,7 +781,16 @@ export async function applyStealth(wsEndpoint: string, opts: StealthOptions): Pr
   return () => {};
 }
 
-export function writeStealthExtension(dir: string, opts: StealthOptions): string {
+export interface WriteStealthExtensionOptions {
+  signingKey?: KeyPairPem;
+  version?: string;
+}
+
+export function writeStealthExtension(
+  dir: string,
+  opts: StealthOptions,
+  signingOpts?: WriteStealthExtensionOptions
+): string {
   const manifest = {
     manifest_version: 3,
     name: 'Stealth Layer',
@@ -799,5 +810,8 @@ export function writeStealthExtension(dir: string, opts: StealthOptions): string
   fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(path.join(dir, 'manifest.json'), JSON.stringify(manifest, null, 2), 'utf8');
   fs.writeFileSync(path.join(dir, 'stealth.js'), buildStealthScript(opts), 'utf8');
+  if (signingOpts?.signingKey) {
+    signStealthExtension(dir, signingOpts.signingKey, signingOpts.version ?? '1.0.0');
+  }
   return dir;
 }

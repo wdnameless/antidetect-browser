@@ -24,6 +24,7 @@ import {
   unregisterActiveProfile,
   TransportProbeTarget,
   TransportProbeResult,
+  StrictQuicRelayError,
 } from '../proxy/transportPolicy';
 import {
   startUdpRelay,
@@ -31,6 +32,11 @@ import {
   unregisterUdpRelayState,
   UdpRelayState,
 } from '../proxy/udpRelay';
+import {
+  verifyStealthExtensionDirectory,
+  getEphemeralStealthKeyPair,
+  StealthExtensionVerificationError,
+} from '../security/extensionVerifier';
 
 interface RunningProfile {
   pid: number;
@@ -46,6 +52,11 @@ interface RunningProfile {
   cleanupTransport?: () => void;
   cleanupRelay?: () => void;
   relayState?: UdpRelayState;
+}
+
+function isStrictQuicRelay(cfg: LaunchConfig): boolean {
+  const value = (cfg as unknown as Record<string, unknown>).strictQuicRelay;
+  return typeof value === 'boolean' ? value : false;
 }
 
 export interface StartResult {
@@ -229,13 +240,17 @@ export async function buildChromiumArgs(
   }
   if (cfg.stealth) {
     const stealthExtDir = path.join(cfg.userDataDir, 'stealth-ext');
-    writeStealthExtension(stealthExtDir, cfg.stealth);
+    const sigFile = path.join(stealthExtDir, 'stealth-manifest.sig.json');
+    if (!fs.existsSync(stealthExtDir) || !fs.existsSync(sigFile)) {
+      const signingKey = getEphemeralStealthKeyPair();
+      writeStealthExtension(stealthExtDir, cfg.stealth, { signingKey });
+    }
+    verifyStealthExtensionDirectory(stealthExtDir, { profileId: cfg.profileId });
     extensionsToLoad.push(stealthExtDir);
   }
   if (extensionsToLoad.length > 0) {
     args.push(`--load-extension=${extensionsToLoad.join(',')}`);
   }
-
   return args;
 }
 
@@ -251,6 +266,13 @@ export async function startProfile(cfg: LaunchConfig): Promise<StartResult> {
     fs.rmSync(path.join(cfg.userDataDir, 'DevToolsActivePort'), { force: true });
   } catch {
     // ignore
+  }
+  // Task 2.2: fail closed before launching if stealth extension artifact is tampered or unsigned
+  if (cfg.stealth) {
+    const stealthExtDir = path.join(cfg.userDataDir, 'stealth-ext');
+    if (fs.existsSync(stealthExtDir)) {
+      verifyStealthExtensionDirectory(stealthExtDir, { profileId: cfg.profileId });
+    }
   }
 
   // SSH proxies are tunneled to a local SOCKS5 endpoint first.
@@ -304,16 +326,32 @@ export async function startProfile(cfg: LaunchConfig): Promise<StartResult> {
         });
         profileRelayState = 'relay';
         relayCleanup = relaySession.stop;
-      } catch {
+      } catch (err) {
+        if (isStrictQuicRelay(cfg)) {
+          if (tunnel) void tunnel.close();
+          throw new StrictQuicRelayError(
+            `Strict QUIC relay enforcement failed: UDP relay setup failed for profile '${cfg.profileId}'`,
+            { profileId: cfg.profileId, cause: err }
+          );
+        }
         profileRelayState = 'quic-disabled';
       }
     } else {
+      if (isStrictQuicRelay(cfg)) {
+        if (tunnel) void tunnel.close();
+        throw new StrictQuicRelayError(
+          `Strict QUIC relay enforcement failed: SOCKS5 probe status '${probeResult.status}' does not permit UDP relay for profile '${cfg.profileId}'`,
+          { profileId: cfg.profileId }
+        );
+      }
       profileRelayState = 'quic-disabled';
     }
-
     registerUdpRelayState(cfg.profileId, profileRelayState);
 
     transportFlags = composeTransportFlags(probeResult, proxyServer);
+    if (profileRelayState === 'quic-disabled' && !transportFlags.includes('--disable-quic')) {
+      transportFlags.push('--disable-quic');
+    }
   } else {
     registerUdpRelayState(cfg.profileId, 'unavailable');
   }

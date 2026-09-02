@@ -532,6 +532,290 @@ input, textarea {
   font-family: var(--font-mono);
 }
 
+/* Preflight Badge & Modal Styles (Task 3.1 & 3.2) */
+.preflight-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  border: 1px solid transparent;
+  background: transparent;
+  font-family: var(--font-mono);
+  transition: all 0.15s ease;
+}
+
+.preflight-badge.pass {
+  background: rgba(34, 197, 94, 0.12);
+  color: #4ade80;
+  border-color: rgba(34, 197, 94, 0.3);
+}
+.preflight-badge.pass:hover:not(:disabled) {
+  background: rgba(34, 197, 94, 0.22);
+}
+
+.preflight-badge.warn {
+  background: rgba(234, 179, 8, 0.14);
+  color: #facc15;
+  border-color: rgba(234, 179, 8, 0.35);
+}
+.preflight-badge.warn:hover:not(:disabled) {
+  background: rgba(234, 179, 8, 0.24);
+}
+
+.preflight-badge.fail {
+  background: rgba(239, 68, 68, 0.15);
+  color: #f87171;
+  border-color: rgba(239, 68, 68, 0.35);
+}
+.preflight-badge.fail:hover:not(:disabled) {
+  background: rgba(239, 68, 68, 0.25);
+}
+
+.preflight-badge.loading {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-secondary);
+  border-color: var(--border);
+}
+
+.preflight-badge.error {
+  background: rgba(239, 68, 68, 0.2);
+  color: #fca5a5;
+  border-color: rgba(239, 68, 68, 0.4);
+}
+
+.preflight-icon {
+  font-weight: 700;
+}
+
+.preflight-cell-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.preflight-run-icon-btn {
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text-secondary);
+  padding: 3px 6px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+}
+.preflight-run-icon-btn:hover:not(:disabled) {
+  background: var(--panel-hover);
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.25);
+}
+
+.preflight-modal-content {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 8px 0;
+}
+
+.preflight-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--panel-2);
+  padding: 12px 16px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+}
+
+.preflight-summary-status {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.preflight-muted-label {
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.preflight-muted-text {
+  color: var(--text-muted);
+  font-size: 13px;
+  font-style: italic;
+}
+
+.preflight-loading-banner,
+.preflight-error-banner {
+  padding: 12px 16px;
+  border-radius: var(--radius-md);
+  font-size: 13px;
+}
+
+.preflight-loading-banner {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+}
+
+.preflight-error-banner {
+  background: rgba(239, 68, 68, 0.12);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  color: #fca5a5;
+}
+
+.preflight-checks-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 420px;
+  overflow-y: auto;
+}
+
+.preflight-checks-header {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  color: var(--text-muted);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 0 4px 4px 4px;
+  border-bottom: 1px solid var(--border);
+}
+
+.preflight-check-card {
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  cursor: pointer;
+  transition: background 0.12s ease, border-color 0.12s ease;
+}
+.preflight-check-card:hover {
+  border-color: rgba(255, 255, 255, 0.18);
+}
+.preflight-check-card.warn {
+  border-left: 3px solid #facc15;
+}
+.preflight-check-card.fail {
+  border-left: 3px solid #f87171;
+}
+.preflight-check-card.pass {
+  border-left: 3px solid #4ade80;
+}
+
+.preflight-check-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.preflight-check-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.preflight-check-status-indicator {
+  font-size: 12px;
+  font-weight: bold;
+}
+.preflight-check-card.pass .preflight-check-status-indicator {
+  color: #4ade80;
+}
+.preflight-check-card.warn .preflight-check-status-indicator {
+  color: #facc15;
+}
+.preflight-check-card.fail .preflight-check-status-indicator {
+  color: #f87171;
+}
+
+.preflight-check-name {
+  font-size: 13.5px;
+  color: var(--text);
+}
+
+.preflight-check-duration {
+  font-size: 11.5px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+}
+
+.preflight-check-badge-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.preflight-accordion-arrow {
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.preflight-check-msg {
+  font-size: 12.5px;
+  color: var(--text-secondary);
+  line-height: 1.4;
+}
+
+.preflight-check-details {
+  background: rgba(0, 0, 0, 0.25);
+  border-radius: var(--radius-sm);
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.preflight-reason-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+.preflight-reason-row code {
+  background: rgba(255, 255, 255, 0.08);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-family: var(--font-mono);
+  color: #f87171;
+}
+
+.preflight-remediation-box {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12.5px;
+  line-height: 1.4;
+  padding-top: 4px;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+}
+.preflight-remediation-box strong {
+  color: var(--text);
+}
+.remediation-summary {
+  color: var(--text-secondary);
+}
+.remediation-hint {
+  color: #cbd5e1;
+}
+
+.preflight-footer-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding-top: 8px;
+}
+
 .proxy-type-badge {
   background: rgba(255, 255, 255, 0.06);
   padding: 1px 5px;

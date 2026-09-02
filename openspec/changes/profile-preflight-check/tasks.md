@@ -7,10 +7,10 @@
 ## 2. API and launch guard
 
 - [x] 2.1 Add `POST /api/profiles/:id/preflight` + `GET /api/profiles/:id/preflight/last` to REST surface with panel auth parity.
-- [x] 2.2 Add optional `blockOnFail` flag to profile start: refuse launch when overall verdict=fail, returning the verdict payload.
-- [x] 2.3 API integration tests: verdict round-trip, blockOnFail enforcement, reason-code stability.
+- [x] 2.2 Add optional `blockOnFail` flag to profile start: refuse launch when overall verdict=fail, returning the verdict payload (enforced via dedicated `POST /api/profiles/:id/start-with-preflight` route with `autoStart` support; regular `/browser/start` unmodified this wave).
+- [x] 2.3 API integration tests: verdict round-trip, blockOnFail enforcement, autoStart pass/fail handling, reason-code stability.
 
 ## 3. Panel surface
 
-- [ ] 3.1 Add preflight action + verdict badge in the profiles UI; error copy maps reason codes to remediation hints.
-- [ ] 3.2 Smoke test: full flow on a local profile with a test proxy.
+- [x] 3.1 Add preflight action + verdict badge in the profiles UI; error copy maps reason codes to remediation hints.
+- [x] 3.2 Smoke test: full flow on a local profile with a test proxy.

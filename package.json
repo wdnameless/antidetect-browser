@@ -1,8 +1,11 @@
 {
   "name": "antidetect-browser",
-  "version": "0.2.32",
+  "version": "0.2.33",
   "private": true,
   "description": "Personal antidetect browser with an AdsPower-compatible Local API.",
+  "workspaces": [
+    "packages/*"
+  ],
   "main": "dist/electron/main.js",
   "scripts": {
     "typecheck": "npm run typecheck:main && npm run typecheck:renderer",
@@ -43,7 +46,8 @@
     "ensure-chromedriver": "node scripts/ensure-chromedriver.mjs",
     "predist": "npm run ensure-kernel && npm run ensure-chromedriver",
     "dist": "npm run build && electron-builder --win",
-    "publish": "npm run build && electron-builder --win --publish always"
+    "publish": "npm run build && electron-builder --win --publish always",
+    "test:sync-server": "vitest run packages/sync-server"
   },
   "dependencies": {
     "@types/adm-zip": "^0.5.8",
