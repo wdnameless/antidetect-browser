@@ -1,0 +1,45 @@
+{
+  "change": "udp-socks5-quic-relay",
+  "date": "2026-09-02",
+  "verified_features": [
+    "RFC 1928 SOCKS5 UDP ASSOCIATE relay with username/password authentication",
+    "UDP datagram encapsulation and decapsulation",
+    "Per-proxy STUN capability probe with cache TTL hit verification",
+    "Reason codes: udp-associate-refused, stun-timeout, auth-failed, network-unreachable",
+    "Fail-closed QUIC fallback: --disable-quic flag when proxy lacks UDP",
+    "WebRTC UDP proxy routing via disable_non_proxied_udp policy",
+    "Profile start & diagnostics relay state tracking (relay, quic-disabled, unavailable)",
+    "Zero host egress leak validation on UDP/QUIC/WebRTC paths"
+  ],
+  "matrix_results": {
+    "udp_capable_socks5": {
+      "status": "SOCKS5_FULL_PASS",
+      "quic_disabled": false,
+      "webrtc_policy": "disable_non_proxied_udp",
+      "relay_state": "relay"
+    },
+    "tcp_only_socks5": {
+      "status": "CONSTRAINED",
+      "quic_disabled": true,
+      "webrtc_disabled": true,
+      "relay_state": "quic-disabled"
+    },
+    "http_proxy": {
+      "status": "CONSTRAINED",
+      "quic_disabled": true,
+      "webrtc_disabled": true,
+      "relay_state": "quic-disabled"
+    },
+    "direct_no_proxy": {
+      "status": "DIRECT_OK",
+      "quic_disabled": false,
+      "relay_state": "unavailable"
+    }
+  },
+  "tests": {
+    "total": 21,
+    "passed": 21,
+    "failed": 0
+  },
+  "typecheck": "clean"
+}

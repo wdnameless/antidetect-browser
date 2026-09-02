@@ -14,6 +14,7 @@
 //     engine itself never logs key values — only what the script logs.
 //   - One worker per profile run; at most MAX_WORKERS concurrent, extra runs
 //     wait in a FIFO queue.
+import { EventEmitter } from 'events';
 import { randomUUID } from 'crypto';
 import { Worker } from 'worker_threads';
 import { getDb } from '../db';
@@ -143,7 +144,11 @@ const app = {
       return rawRequest(String(url), opts || {});
     },
   },
-  log: (msg) => { logs.push(String(msg)); },
+  log: (msg) => {
+    const line = String(msg);
+    logs.push(line);
+    try { parentPort.postMessage({ type: 'log', message: line }); } catch {}
+  },
 };
 
 async function main() {
@@ -398,4 +403,121 @@ export function activeWorkerCount(): number {
 
 export function queuedRunCount(): number {
   return queue.length;
+}
+
+export interface TaskInvocationHandle {
+  taskUuid: string;
+  logStream: EventEmitter; // emits 'log' (line: string), 'done' ({ logs: string[] }), 'error' ({ error: string, logs: string[] })
+  terminate: () => Promise<void>;
+}
+
+export interface InvokeScriptTaskOptions {
+  taskUuid?: string;
+  scriptId?: string;
+  code?: string;
+  profileId: string;
+  timeoutMs?: number;
+}
+
+export function invokeScriptTask(opts: InvokeScriptTaskOptions): TaskInvocationHandle {
+  const taskUuid = opts.taskUuid || randomUUID();
+  let scriptCode = opts.code;
+  if (!scriptCode && opts.scriptId) {
+    const script = getScript(opts.scriptId);
+    if (!script) throw new Error(`script not found: ${opts.scriptId}`);
+    scriptCode = script.code;
+  }
+  if (!scriptCode) {
+    throw new Error('either code or valid scriptId must be provided');
+  }
+
+  const logStream = new EventEmitter();
+  const capturedLogs: string[] = [];
+  const timeoutMs = opts.timeoutMs ?? SCRIPT_TIMEOUT_MS;
+
+  const worker = new Worker(WORKER_SOURCE, {
+    eval: true,
+    workerData: {
+      code: scriptCode,
+      profileId: opts.profileId,
+      apiBase: `http://${API_HOST}:${API_PORT}`,
+      apiKey: getApiKey(),
+      maxHttpCalls: MAX_HTTP_CALLS,
+      httpTimeoutMs: HTTP_CALL_TIMEOUT_MS,
+      keyValues: preloadKeyValues(),
+    },
+    resourceLimits: { maxOldGenerationSizeMb: 256, maxYoungGenerationSizeMb: 64 },
+  });
+
+  let finished = false;
+  const timer = setTimeout(() => {
+    if (finished) return;
+    finished = true;
+    void worker.terminate();
+    logStream.emit('error', {
+      error: `script exceeded ${timeoutMs}ms timeout`,
+      logs: capturedLogs,
+    });
+  }, timeoutMs);
+
+  worker.on('message', (msg: { type: string; message?: string; error?: string; logs?: string[]; keyValues?: Record<string, string> }) => {
+    if (msg.type === 'log') {
+      const line = String(msg.message ?? '');
+      capturedLogs.push(line);
+      logStream.emit('log', line);
+    } else if (msg.type === 'done') {
+      if (finished) return;
+      finished = true;
+      clearTimeout(timer);
+      flushKeyWrites(msg.keyValues);
+      const allLogs = Array.isArray(msg.logs) && msg.logs.length > 0 ? msg.logs : capturedLogs;
+      logStream.emit('done', { logs: allLogs });
+    } else if (msg.type === 'error') {
+      if (finished) return;
+      finished = true;
+      clearTimeout(timer);
+      flushKeyWrites(msg.keyValues);
+      const allLogs = Array.isArray(msg.logs) && msg.logs.length > 0 ? msg.logs : capturedLogs;
+      logStream.emit('error', {
+        error: String(msg.error || 'script error'),
+        logs: allLogs,
+      });
+    }
+  });
+
+  worker.on('error', (err: Error) => {
+    if (finished) return;
+    finished = true;
+    clearTimeout(timer);
+    logStream.emit('error', {
+      error: `worker error: ${err.message}`,
+      logs: capturedLogs,
+    });
+  });
+
+  worker.on('exit', (exitCode: number) => {
+    if (finished) return;
+    if (exitCode !== 0) {
+      finished = true;
+      clearTimeout(timer);
+      logStream.emit('error', {
+        error: `worker crashed with exit code ${exitCode}`,
+        logs: capturedLogs,
+      });
+    }
+  });
+
+  return {
+    taskUuid,
+    logStream,
+    terminate: async () => {
+      if (!finished) {
+        finished = true;
+        clearTimeout(timer);
+      }
+      try {
+        await worker.terminate();
+      } catch {}
+    },
+  };
 }

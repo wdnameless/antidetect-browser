@@ -29,6 +29,9 @@ export interface StealthOptions {
   webglNoise?: boolean;
   webglVendor?: string;
   webglRenderer?: string;
+  chip?: string;
+  architecture?: string;
+  fontList?: string[];
 }
 
 const BRANDS = [
@@ -73,7 +76,11 @@ function defaultPlatformVersion(lp: LogicalPlatform): string {
   }
 }
 
-function architecture(lp: LogicalPlatform): string {
+function getArchitecture(lp: LogicalPlatform, chip?: string, forcedArch?: string): string {
+  if (forcedArch) return forcedArch;
+  if (lp === 'macos') {
+    return chip === 'Intel' ? 'x86' : 'arm';
+  }
   switch (lp) {
     case 'android':
     case 'ios':
@@ -97,7 +104,7 @@ export function buildStealthScript(opts: StealthOptions): string {
     uaPlatform: uaPlatform(opts.logicalPlatform),
     navPlatform: navPlatform(opts.logicalPlatform),
     platformVersion: opts.platformVersion ?? (hwVector ? hwVector.platformVersion : defaultPlatformVersion(opts.logicalPlatform)),
-    architecture: architecture(opts.logicalPlatform),
+    architecture: getArchitecture(opts.logicalPlatform, opts.chip, opts.architecture),
     bitness: '64',
     model: opts.model ?? (opts.logicalPlatform === 'android' ? 'Pixel 8' : opts.logicalPlatform === 'ios' ? 'iPhone' : ''),
     brands: BRANDS,

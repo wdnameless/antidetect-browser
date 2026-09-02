@@ -1,12 +1,11 @@
 import * as crypto from 'crypto';
-import {
+import type {
   FingerprintCatalogFamily,
   HardwareVector,
   SubSeeds,
 } from './types';
-import { WINDOWS_FINGERPRINT_CATALOG } from './catalog';
-
-const HMAC_SECRET = 'antidetect-fingerprint-catalog-domain-v1';
+import { WINDOWS_FINGERPRINT_CATALOG, EXTENDED_FINGERPRINT_CATALOG } from './catalog';
+export const HMAC_SECRET = 'antidetect-fingerprint-catalog-domain-v1';
 
 /**
  * Valid primary seed range: [1, 2147483647] (positive 31-bit signed int32)
@@ -175,6 +174,9 @@ export function deriveHardwareVector(
   // Locale from family pool
   const locale = pickFromSubSeed(family.localePool, subSeeds.voices);
 
+  const isMac = family.coherenceConstraints.platform === 'macos';
+  const navigatorPlatform = isMac ? 'MacIntel' : 'Win32';
+
   const vector: HardwareVector = {
     familyId: family.id,
     displayName: family.displayName,
@@ -186,29 +188,34 @@ export function deriveHardwareVector(
     screenResolution,
     devicePixelRatio: family.screen.dpr,
     colorDepth: family.screen.colorDepth,
+    platform: family.coherenceConstraints.platform,
+    navigatorPlatform,
     platformVersion,
     architecture: family.coherenceConstraints.platformArch,
     bitness: family.coherenceConstraints.bitness,
     fontClass: family.fontsClass,
     locale,
+    chip: family.chip,
+    audioSignature: family.audioSignature,
+    fontInventory: family.fontInventory,
+    screenProfile: family.screenProfile,
+    scaleFactor: family.scaleFactor,
+    uaProfile: family.uaProfile,
   };
 
   validateCoherence(vector, family);
-
   return vector;
 }
 
-/**
- * Invariant coherence validation suite asserting GPU/CPU/RAM/Screen/Font cross-surface rules.
- */
 export function validateCoherence(
   vector: HardwareVector,
   family?: FingerprintCatalogFamily
 ): { valid: boolean; violations: string[] } {
   const violations: string[] = [];
-
   const matchedFamily =
-    family || WINDOWS_FINGERPRINT_CATALOG.find((f) => f.id === vector.familyId);
+    family ||
+    EXTENDED_FINGERPRINT_CATALOG.find((f: FingerprintCatalogFamily) => f.id === vector.familyId) ||
+    WINDOWS_FINGERPRINT_CATALOG.find((f: FingerprintCatalogFamily) => f.id === vector.familyId);
   if (!matchedFamily) {
     violations.push(`Unknown familyId: ${vector.familyId}`);
     return { valid: false, violations };
@@ -236,7 +243,7 @@ export function validateCoherence(
 
   // 4. Screen resolution
   const resValid = matchedFamily.screen.resolutions.some(
-    (r) => r.width === vector.screenResolution.width && r.height === vector.screenResolution.height
+    (r: { width: number; height: number }) => r.width === vector.screenResolution.width && r.height === vector.screenResolution.height
   );
   if (!resValid) {
     violations.push(
@@ -248,19 +255,26 @@ export function validateCoherence(
   if (vector.colorDepth !== 24 && vector.colorDepth !== 30) {
     violations.push(`Invalid screen color depth ${vector.colorDepth}`);
   }
-  if (vector.devicePixelRatio > 2.5) {
-    violations.push(`DPR ${vector.devicePixelRatio} exceeds desktop limit 2.5`);
+  const maxAllowedDpr = matchedFamily.screenProfile?.isRetina || matchedFamily.screen.dpr >= 2 ? 3.0 : 2.5;
+  if (vector.devicePixelRatio > maxAllowedDpr) {
+    violations.push(`DPR ${vector.devicePixelRatio} exceeds desktop limit ${maxAllowedDpr}`);
   }
-
   // 6. Architecture & Platform
+  const isMac = matchedFamily.coherenceConstraints.platform === 'macos';
   if (matchedFamily.cpu.arch === 'arm64' && vector.architecture !== 'arm') {
     violations.push(`ARM64 CPU must have arm architecture (found ${vector.architecture})`);
   }
   if (matchedFamily.cpu.arch === 'x64' && vector.architecture !== 'x86') {
     violations.push(`x64 CPU must have x86 architecture (found ${vector.architecture})`);
   }
-
-  // 7. Locale
+  if (vector.navigatorPlatform) {
+    if (isMac && vector.navigatorPlatform !== 'MacIntel') {
+      violations.push(`macOS must report platform MacIntel (found ${vector.navigatorPlatform})`);
+    }
+    if (!isMac && vector.navigatorPlatform !== 'Win32') {
+      violations.push(`Windows must report platform Win32 (found ${vector.navigatorPlatform})`);
+    }
+  }
   if (!matchedFamily.localePool.includes(vector.locale)) {
     violations.push(`Locale ${vector.locale} not in family pool [${matchedFamily.localePool.join(', ')}]`);
   }

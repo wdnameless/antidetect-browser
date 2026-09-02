@@ -1,0 +1,136 @@
+import { describe, it, expect } from 'vitest';
+import {
+  WINDOWS_FINGERPRINT_CATALOG,
+  EXTENDED_FINGERPRINT_CATALOG,
+  MACOS_FINGERPRINT_CATALOG,
+  WINDOWS_11_REFRESH_FAMILIES,
+} from '../../../src/main/fingerprints/catalog';
+import {
+  validateFamilyCoherence,
+  validateAllFamilies,
+  MACOS_WINDOWS_HOST_TELLS,
+} from '../../../src/main/fingerprints/validator';
+import {
+  migrateFamilyRecord,
+  serializeFamilyWithCrc32,
+  deserializeFamilyWithCrc32,
+} from '../../../src/main/fingerprints/migration';
+import {
+  deriveCatalogSubSeeds,
+  deriveHardwareVector,
+  selectFamilyBySeed,
+} from '../../../src/main/fingerprints/derivation';
+import { buildStealthScript } from '../../../src/main/proxy/stealthInjection';
+import { getSyntheticVoicePool } from '../../../src/main/proxy/stealthNoise';
+
+describe('macOS and Windows Extended Fingerprint Catalog Suite', () => {
+  it('has 6 curated macOS families (M1, M2, M3, M4, Intel) and 4 Windows 11 refresh families', () => {
+    expect(MACOS_FINGERPRINT_CATALOG.length).toBe(6);
+    expect(WINDOWS_11_REFRESH_FAMILIES.length).toBe(4);
+    expect(EXTENDED_FINGERPRINT_CATALOG.length).toBe(40);
+  });
+
+  it('keeps legacy 30 Windows families byte-stable with CRC32', () => {
+    expect(WINDOWS_FINGERPRINT_CATALOG.length).toBe(30);
+    for (const fam of WINDOWS_FINGERPRINT_CATALOG) {
+      expect(fam.id.startsWith('win-')).toBe(true);
+      const migrated = migrateFamilyRecord(fam);
+      expect(migrated.id).toBe(fam.id);
+      expect(migrated.gpuRenderer).toBe(fam.gpu.renderer);
+    }
+  });
+
+  it('supports CRC32-versioned serialization and deserialization round-trip', () => {
+    const family = MACOS_FINGERPRINT_CATALOG[0];
+    const serialized = serializeFamilyWithCrc32(family);
+    expect(serialized.crc32).toBeDefined();
+    expect(typeof serialized.crc32).toBe('number');
+    const restored = deserializeFamilyWithCrc32(serialized);
+    expect(restored.id).toBe(family.id);
+    expect(restored.gpuRenderer).toBe(family.gpuRenderer);
+  });
+
+  it('preserves HMAC sub-seed determinism across 8 domains', () => {
+    const seeds = [42, 123456, 999999];
+    for (const seed of seeds) {
+      const sub1 = deriveCatalogSubSeeds(seed);
+      const sub2 = deriveCatalogSubSeeds(seed);
+      expect(sub1).toEqual(sub2);
+      expect(sub1.canvas).toBeGreaterThan(0);
+      expect(sub1.webgl).toBeGreaterThan(0);
+      expect(sub1.audio).toBeGreaterThan(0);
+    }
+  });
+
+  it('all macOS families have non-empty documented public spec provenance/citation notes (no harvested data)', () => {
+    for (const macFam of MACOS_FINGERPRINT_CATALOG) {
+      const prov = macFam.provenance || macFam.citation;
+      expect(prov).toBeDefined();
+      expect(prov?.notes).toBeTruthy();
+      expect(prov!.notes.length).toBeGreaterThan(15);
+      if (macFam.provenance) {
+        expect(macFam.provenance.source).toBe('public-specs-curated');
+        expect(macFam.provenance.documentationUrls.length).toBeGreaterThan(0);
+      }
+    }
+  });
+
+  it('validates cross-property coherence across all 40 families without violations', () => {
+    const report = validateAllFamilies(EXTENDED_FINGERPRINT_CATALOG);
+    expect(report.totalFamilies).toBe(40);
+    expect(report.violationsCount).toBe(0);
+    expect(report.incoherentFamilyIds).toHaveLength(0);
+  });
+
+  it('validator rejects planted incoherence in UA, WebGL, screen, and fonts', () => {
+    const validFam = MACOS_FINGERPRINT_CATALOG[0];
+    const invalidFam = {
+      ...validFam,
+      id: 'mac-planted-incoherent',
+      coherenceConstraints: {
+        ...validFam.coherenceConstraints,
+        platformArch: 'x86' as const, // M1 but claiming x86
+      },
+      gpu: {
+        vendor: 'Google Inc. (NVIDIA)', // Incoherent with Apple
+        renderer: 'ANGLE (NVIDIA, GeForce RTX 3060, OpenGL 4.5)',
+        limitsClass: 'high-end' as const,
+      },
+    };
+
+    const result = validateFamilyCoherence(invalidFam);
+    expect(result.valid).toBe(false);
+    expect(result.violations.length).toBeGreaterThan(0);
+  });
+
+  it('enumerates and documents macOS-on-Windows host tells with mitigation rationale', () => {
+    expect(MACOS_WINDOWS_HOST_TELLS.length).toBeGreaterThanOrEqual(6);
+    for (const tell of MACOS_WINDOWS_HOST_TELLS) {
+      expect(tell.name).toBeTruthy();
+      expect(tell.mitigation).toMatch(/mask|exclude/);
+      expect(tell.rationale).toBeTruthy();
+    }
+  });
+
+  it('generates coherent JS-observable surface for macOS families', () => {
+    const macFam = MACOS_FINGERPRINT_CATALOG.find((f) => f.chip === 'M2')!;
+    const script = buildStealthScript({
+      logicalPlatform: 'macos',
+      chip: macFam.chip,
+      webglVendor: macFam.gpu.vendor,
+      webglRenderer: macFam.gpuRenderer,
+    });
+
+    expect(script).toContain('MacIntel');
+    expect(script).toContain('macOS');
+    expect(script).toContain('Apple M2');
+    expect(script).toContain('ANGLE (Apple, Apple M2');
+  });
+
+  it('returns macOS-specific voice pools for speech synthesis', () => {
+    const macVoices = getSyntheticVoicePool('macos');
+    expect(macVoices.some((v) => v.name === 'Samantha')).toBe(true);
+    expect(macVoices.some((v) => v.name === 'Alex')).toBe(true);
+    expect(macVoices.every((v) => !v.name.includes('Microsoft'))).toBe(true);
+  });
+});

@@ -1,0 +1,31 @@
+{
+  "change": "secure-runtime-supply-chain",
+  "task": "3.1-supply-chain-hardening",
+  "date": "2026-09-02T16:55:00.000Z",
+  "results": {
+    "ed25519_jcs_signing": "passed",
+    "byte_flip_tamper_detection": "passed",
+    "revoked_key_rejection": "passed",
+    "anti_rollback_monotonic": "passed",
+    "locked_file_recovery": "passed",
+    "sbom_generation_and_verification": "passed",
+    "authenticode_verification": "passed",
+    "allow_unsigned_dev_prod_guard": "passed"
+  },
+  "unit_tests": {
+    "suites": [
+      "tests/unit/security/signing.test.ts",
+      "tests/unit/security/releaseVerifier.test.ts",
+      "tests/unit/security/enforcement.test.ts",
+      "tests/unit/security/sbom.test.ts",
+      "tests/unit/security/authenticode.test.ts"
+    ],
+    "passed": 17,
+    "failed": 0
+  },
+  "cyclonedx_sbom": {
+    "specVersion": "1.5",
+    "format": "CycloneDX JSON",
+    "componentCount": 543
+  }
+}

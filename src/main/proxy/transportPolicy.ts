@@ -19,8 +19,16 @@ export interface TransportProbeTarget {
   dns_mode?: string;
 }
 
+export type ProbeFailureReason =
+  | 'udp-associate-refused'
+  | 'stun-timeout'
+  | 'auth-failed'
+  | 'network-unreachable'
+  | 'none';
+
 export interface TransportProbeResult {
   status: TransportPolicyStatus;
+  reason?: ProbeFailureReason;
   stages: {
     tcpConnect: boolean;
     auth: boolean;
@@ -451,6 +459,7 @@ async function probeSocks5(
       }
       return {
         status: 'CONSTRAINED',
+        reason: 'udp-associate-refused',
         stages,
         timestamp: Date.now(),
       };
@@ -518,7 +527,6 @@ async function probeSocks5(
       stages.stunIpv4 = false;
       stages.stunIpv6 = false;
     }
-
     // 6. QUIC probe
     try {
       await runProbeWithRetry('quicProbe', async () => {
@@ -581,26 +589,29 @@ async function probeSocks5(
       }, timeoutMs);
     } catch {
       stages.quic = false;
-    }
-
-    if (udpSocket) {
-      try {
-        (udpSocket as net.Socket).destroy();
-      } catch {
-        // ignore
+    } finally {
+      if (udpSocket) {
+        try {
+          (udpSocket as net.Socket).destroy();
+        } catch {
+          // ignore
+        }
       }
     }
 
     if (stages.udpAssociate && stages.stunIpv4 && stages.quic) {
       return {
         status: 'SOCKS5_FULL_PASS',
+        reason: 'none',
         stages,
         timestamp: Date.now(),
       };
     }
 
+    const reason: ProbeFailureReason = !stages.stunIpv4 ? 'stun-timeout' : 'none';
     return {
       status: 'CONSTRAINED',
+      reason,
       stages,
       timestamp: Date.now(),
     };
@@ -622,9 +633,16 @@ async function probeSocks5(
       : 'unknown';
 
     const errObj = err as { code?: string; message?: string };
+    let reason: ProbeFailureReason = 'network-unreachable';
+    if (failedStage === 'auth') {
+      reason = 'auth-failed';
+    } else if (errObj.code === 'ECONNREFUSED' || errObj.code === 'ENOTFOUND' || errObj.code === 'ETIMEDOUT') {
+      reason = 'network-unreachable';
+    }
 
     return {
       status: 'REFUSE',
+      reason,
       stages,
       error: {
         stage: failedStage,
@@ -715,6 +733,7 @@ async function probeHttp(
     // HTTP proxies do not support UDP_ASSOCIATE -> CONSTRAINED per Table 6.1
     return {
       status: 'CONSTRAINED',
+      reason: 'udp-associate-refused',
       stages,
       timestamp: Date.now(),
     };
@@ -728,13 +747,15 @@ async function probeHttp(
     }
     const failedStage = !stages.tcpConnect ? 'tcpConnect' : 'auth';
     const errObj = err as { code?: string; message?: string };
+    const reason: ProbeFailureReason = failedStage === 'auth' ? 'auth-failed' : 'network-unreachable';
     return {
       status: 'REFUSE',
+      reason,
       stages,
       error: {
         stage: failedStage,
         code: errObj.code || 'PROBE_FAILED',
-        message: errObj.message || 'HTTP proxy probe failed',
+        message: errObj.message || 'Probe failed',
       },
       timestamp: Date.now(),
     };

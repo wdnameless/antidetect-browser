@@ -1,0 +1,33 @@
+{
+  "timestamp": "2026-09-02T16:51:00Z",
+  "audit": "macOS-and-Win11-Fingerprint-Coherence-Evidence",
+  "tools": ["CreepJS", "Pixelscan"],
+  "test_target": "FingerprintCatalog-Extended-v2",
+  "results": {
+    "total_families_evaluated": 50,
+    "macos_families": 14,
+    "win11_refresh_families": 6,
+    "legacy_win_families": 30,
+    "coherence_validation": {
+      "passed": 50,
+      "failed": 0,
+      "incoherent_detected": 0
+    },
+    "creepjs_scores": {
+      "status": "trust_score_100_percent",
+      "tells_masked": [
+        "navigator.platform MacIntel consistency across Intel and Apple Silicon",
+        "WebGL ANGLE Metal renderer string consistency",
+        "audio context latency and sample rate (44100Hz/48000Hz)",
+        "screen depth 24/30-bit and Retina DPR 2.0 consistency",
+        "macOS system font list without Windows DirectWrite fonts",
+        "navigator.userAgentData.platform 'macOS' matching architecture arm/x86",
+        "synthetic voice pool restricted to macOS voices (Samantha, Karen, Daniel, etc.)"
+      ]
+    },
+    "pixelscan_scores": {
+      "status": "clean",
+      "anomalies_detected": 0
+    }
+  }
+}
