@@ -92,9 +92,26 @@ export const FlowNodeSchema = z.discriminatedUnion('type', [
   EvalNodeSchema,
   ModuleNodeSchema,
 ]);
-
 export type FlowNode = z.infer<typeof FlowNodeSchema>;
+export type FlowNodeType = FlowNode['type'];
 
+export interface CanvasNodeState {
+  id: string;
+  type: FlowNodeType;
+  name: string;
+  x: number;
+  y: number;
+  config: Record<string, unknown>;
+  timeoutMs?: number;
+  retryCount?: number;
+}
+
+export interface CanvasEdgeState {
+  id: string;
+  source: string;
+  target: string;
+  branch: 'true' | 'false' | 'body' | 'done' | 'default';
+}
 export const FlowEdgeSchema = z.object({
   id: z.string().min(1),
   source: z.string().min(1),
