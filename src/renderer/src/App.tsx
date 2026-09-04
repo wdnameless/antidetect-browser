@@ -13,6 +13,7 @@ import { Diagnostics } from './pages/Diagnostics';
 import { Trash } from './pages/Trash';
 import { Scripts } from './pages/Scripts';
 import { Catalog } from './pages/Catalog';
+import { FlowCanvas } from './pages/FlowCanvas';
 import { WorkspaceSwitcher } from './components/WorkspaceSwitcher';
 import {
   ProfilesIcon,
@@ -28,9 +29,10 @@ import {
   TrashIcon,
   DiceIcon,
   CookieIcon,
+  FlowIcon,
 } from './icons';
 
-type Page = 'profiles' | 'groups' | 'proxies' | 'devices' | 'extensions' | 'teams' | 'cloud' | 'diagnostics' | 'trash' | 'scripts' | 'catalog' | 'settings';
+type Page = 'profiles' | 'groups' | 'proxies' | 'devices' | 'extensions' | 'teams' | 'cloud' | 'diagnostics' | 'trash' | 'scripts' | 'catalog' | 'flows' | 'settings';
 
 interface NavItem {
   key: Page;
@@ -48,6 +50,7 @@ const NAV: NavItem[] = [
   { key: 'trash', label: 'Trash', icon: TrashIcon },
   { key: 'scripts', label: 'Scripts', icon: DiceIcon },
   { key: 'catalog', label: 'Catalog', icon: CookieIcon },
+  { key: 'flows', label: 'Flow Canvas', icon: FlowIcon },
   { key: 'teams', label: 'Teams', icon: UsersIcon },
   { key: 'cloud', label: 'Cloud Sync', icon: CloudIcon },
   { key: 'settings', label: 'Settings', icon: SettingsIcon },
@@ -163,6 +166,8 @@ export function App() {
             <Teams />
           ) : page === 'cloud' ? (
             <CloudSync />
+          ) : page === 'flows' ? (
+            <FlowCanvas />
           ) : (
             <Settings />
           )}

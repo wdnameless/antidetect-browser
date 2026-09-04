@@ -232,3 +232,13 @@ export function KeyIcon({ size = 18, ...props }: IconProps) {
     </svg>
   );
 }
+export function FlowIcon({ size = 18, ...props }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <rect x="3" y="3" width="6" height="6" rx="1" />
+      <rect x="15" y="15" width="6" height="6" rx="1" />
+      <path d="M6 9v3a3 3 0 0 0 3 3h6" />
+      <polyline points="12 12 15 15 12 18" />
+    </svg>
+  );
+}

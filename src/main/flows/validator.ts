@@ -1,4 +1,4 @@
-import { FlowDocument, FlowValidationError, FlowNode, FlowEdge } from './types';
+import { FlowDocument, FlowValidationError, FlowNode, FlowEdge, FlowNodeSchema } from './types';
 
 /**
  * Validates a FlowDocument against structural, topological, and semantic rules:
@@ -27,8 +27,23 @@ export function validateFlow(flow: FlowDocument): { valid: boolean; errors: Flow
       });
     }
     nodeMap.set(node.id, node);
-  }
 
+    // Validate individual node against FlowNodeSchema (support both flat and nested .config)
+    const rawNode: Record<string, unknown> = { ...(node as Record<string, unknown>) };
+    if (typeof rawNode.config === 'object' && rawNode.config !== null) {
+      Object.assign(rawNode, rawNode.config);
+    }
+    const nodeParsed = FlowNodeSchema.safeParse(rawNode);
+    if (!nodeParsed.success) {
+      for (const issue of nodeParsed.error.issues) {
+        errors.push({
+          code: 'INVALID_NODE_CONFIG',
+          message: `Node '${node.id}' validation failed: ${issue.message} at ${issue.path.join('.')}`,
+          nodeId: node.id,
+        });
+      }
+    }
+  }
   // Check duplicate edge IDs
   const edgeSet = new Set<string>();
   for (const edge of flow.edges) {
