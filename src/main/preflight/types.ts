@@ -7,7 +7,8 @@ export type CheckName =
   | 'language-match'
   | 'webrtc-hygiene'
   | 'dns-egress'
-  | 'quic-relay-state';
+  | 'quic-relay-state'
+  | 'coherence';
 
 export type PreflightReasonCode =
   // Timezone
@@ -48,7 +49,12 @@ export type PreflightReasonCode =
   | 'relay-unavailable'
   | 'relay-degraded'
   | 'relay-disabled'
-  | 'relay-error';
+  | 'relay-error'
+  // Fingerprint coherence
+  | 'coherence-pass'
+  | 'coherence-warn'
+  | 'coherence-fail'
+  | 'coherence-not-configured';
 
 export const PREFLIGHT_REASON = {
   DIRECT_NO_PROXY: 'proxy-not-configured',
@@ -62,6 +68,7 @@ export const PREFLIGHT_REASON = {
   RELAY_UNAVAILABLE: 'relay-unavailable',
   RELAY_READY: 'relay-ready',
   OK: 'proxy-ok',
+  COHERENCE_NOT_CONFIGURED: 'coherence-not-configured',
 } as const;
 
 export interface CheckVerdict {
