@@ -50,7 +50,16 @@ function normalize(params: unknown[]): SqlValue[] {
 function persistNow(instance: SqlJsDatabase): void {
   const data = instance.export();
   const tmp = DB_PATH + '.tmp';
-  fs.writeFileSync(tmp, Buffer.from(data));
+  const fd = fs.openSync(tmp, 'w');
+  try {
+    fs.writeFileSync(fd, Buffer.from(data));
+    // Flush to disk BEFORE the rename: without fsync a power cut / OS crash
+    // can persist the rename while the data is still in page cache, leaving
+    // a 0-byte DB that sql.js would then silently treat as empty.
+    fs.fsyncSync(fd);
+  } finally {
+    fs.closeSync(fd);
+  }
   // rename over an existing file is atomic (Node uses MOVEFILE_REPLACE_EXISTING on Windows)
   fs.renameSync(tmp, DB_PATH);
 }
