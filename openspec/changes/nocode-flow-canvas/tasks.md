@@ -12,5 +12,5 @@
 
 ## 3. Canvas UI (wave 3)
 
-- [ ] 3.1 Drag-and-drop canvas in panel: palette, edge editing, per-node config forms, validation errors inline.
-- [ ] 3.2 Live run view binding to task-group log stream; screenshot node previews.
+- [x] 3.1 Drag-and-drop canvas in panel: palette, edge editing, per-node config forms, validation errors inline.
+- [x] 3.2 Live run view binding to task-group log stream; screenshot node previews.

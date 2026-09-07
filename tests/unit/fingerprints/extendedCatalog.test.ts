@@ -27,7 +27,7 @@ describe('macOS and Windows Extended Fingerprint Catalog Suite', () => {
   it('has 6 curated macOS families (M1, M2, M3, M4, Intel) and 4 Windows 11 refresh families', () => {
     expect(MACOS_FINGERPRINT_CATALOG.length).toBe(6);
     expect(WINDOWS_11_REFRESH_FAMILIES.length).toBe(4);
-    expect(EXTENDED_FINGERPRINT_CATALOG.length).toBe(40);
+    expect(EXTENDED_FINGERPRINT_CATALOG.length).toBe(46);
   });
 
   it('keeps legacy 30 Windows families byte-stable with CRC32', () => {
@@ -74,10 +74,9 @@ describe('macOS and Windows Extended Fingerprint Catalog Suite', () => {
       }
     }
   });
-
-  it('validates cross-property coherence across all 40 families without violations', () => {
+  it('validates cross-property coherence across all 46 families without violations', () => {
     const report = validateAllFamilies(EXTENDED_FINGERPRINT_CATALOG);
-    expect(report.totalFamilies).toBe(40);
+    expect(report.totalFamilies).toBe(46);
     expect(report.violationsCount).toBe(0);
     expect(report.incoherentFamilyIds).toHaveLength(0);
   });

@@ -5,6 +5,7 @@ import { McpAuditLogger } from './audit';
 import { AntidetectClient } from '../../packages/sdk-node/dist/index.js';
 import { BrowserDriver } from './browser';
 
+import { redactSensitiveArgs } from './redaction';
 export interface ToolManifest {
   name: string;
   description: string;
@@ -286,12 +287,14 @@ export class ToolRouter {
     const caller = context.caller || 'mcp-agent';
     const nonce = context.nonce || `nonce_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
     const scope = context.scope || 'standard';
-
+    // Redaction happens BEFORE hashing/logging so audit logs never contain raw secrets
+    // and the hash chain remains verifiable against redacted parameters.
+    const auditedArgs = redactSensitiveArgs(args);
     if (isProhibitedTool(name)) {
       this.auditLogger.log({
         nonce,
         tool: name,
-        args,
+        args: auditedArgs,
         decision: 'deny',
         error: 'Prohibited operation',
         caller,
@@ -307,7 +310,7 @@ export class ToolRouter {
       this.auditLogger.log({
         nonce,
         tool: name,
-        args,
+        args: auditedArgs,
         decision: 'deny',
         error: 'Insufficient permissions',
         caller,
@@ -324,7 +327,7 @@ export class ToolRouter {
       this.auditLogger.log({
         nonce,
         tool: name,
-        args,
+        args: auditedArgs,
         decision: 'allow',
         caller,
       });
@@ -334,7 +337,7 @@ export class ToolRouter {
       this.auditLogger.log({
         nonce,
         tool: name,
-        args,
+        args: auditedArgs,
         decision: 'error',
         error: errMsg,
         caller,

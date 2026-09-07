@@ -32,6 +32,7 @@ import {
   unregisterUdpRelayState,
   UdpRelayState,
 } from '../proxy/udpRelay';
+import { TransportDropMonitor } from '../proxy/transportDropMonitor';
 import {
   verifyStealthExtensionDirectory,
   getEphemeralStealthKeyPair,
@@ -50,6 +51,7 @@ interface RunningProfile {
   cleanupGeo?: () => void;
   cleanupStealth?: () => void;
   cleanupTransport?: () => void;
+  cleanupDropMonitor?: () => void;
   cleanupRelay?: () => void;
   relayState?: UdpRelayState;
 }
@@ -132,6 +134,13 @@ function cleanup(rec: RunningProfile): void {
   if (rec.cleanupTransport) {
     try {
       rec.cleanupTransport();
+    } catch {
+      // ignore
+    }
+  }
+  if (rec.cleanupDropMonitor) {
+    try {
+      rec.cleanupDropMonitor();
     } catch {
       // ignore
     }
@@ -287,6 +296,8 @@ export async function startProfile(cfg: LaunchConfig): Promise<StartResult> {
   let transportFlags: string[] = [];
   let relayCleanup: (() => void) | undefined;
   let profileRelayState: UdpRelayState = proxyServer || cfg.sshTunnel ? 'quic-disabled' : 'unavailable';
+  let proxyTargetHost: string | undefined;
+  let proxyTargetPort: number | undefined;
 
   if (proxyServer || cfg.sshTunnel) {
     let target: TransportProbeTarget;
@@ -307,6 +318,8 @@ export async function startProfile(cfg: LaunchConfig): Promise<StartResult> {
         target = { protocol: 'socks5', host: '127.0.0.1', port: 1080 };
       }
     }
+    proxyTargetHost = target.host;
+    proxyTargetPort = target.port;
 
     const probeResult = await probeTransportTarget(target);
     if (probeResult.status === 'REFUSE') {
@@ -476,6 +489,15 @@ export async function startProfile(cfg: LaunchConfig): Promise<StartResult> {
     });
     rec.cleanupTransport = unregisterTransport;
 
+    if (proxyTargetHost && proxyTargetPort) {
+      const dropMonitor = new TransportDropMonitor({
+        profileId: cfg.profileId,
+        host: proxyTargetHost,
+        port: proxyTargetPort,
+      });
+      dropMonitor.start();
+      rec.cleanupDropMonitor = () => dropMonitor.stop();
+    }
     child.on('exit', () => {
       running.delete(cfg.profileId);
       unregisterTransport();

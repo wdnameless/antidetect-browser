@@ -1,4 +1,4 @@
-export type WindowsFamilyArch = 'x64' | 'arm64' | 'x86';
+export type WindowsFamilyArch = 'x64' | 'arm64' | 'x86' | 'x86_64';
 export type CatalogPlatform = 'windows' | 'macos' | 'linux';
 export type AppleChipFamily = 'M1' | 'M2' | 'M3' | 'M4' | 'Intel';
 
@@ -66,7 +66,8 @@ export type FontClass =
   | 'win10-legacy'
   | 'win11-arm'
   | 'macos-modern'
-  | 'macos-intel';
+  | 'macos-intel'
+  | 'linux-freetype';
 
 export interface FingerprintCatalogFamily {
   id: string;

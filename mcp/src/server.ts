@@ -158,7 +158,26 @@ export class McpServer {
     const app: Express = express();
     app.use(express.json());
 
-    // Loopback-only gate middleware
+    // Host header validation middleware (DNS rebinding defense)
+    // Allow only loopback host headers: 127.0.0.1:<port>, localhost:<port>, [::1]:<port>
+    app.use((req: Request, res: Response, next) => {
+      const rawHost = (req.headers.host || '').trim();
+      const isAllowedHost =
+        rawHost === '127.0.0.1' ||
+        rawHost.startsWith('127.0.0.1:') ||
+        rawHost === 'localhost' ||
+        rawHost.startsWith('localhost:') ||
+        rawHost === '[::1]' ||
+        rawHost.startsWith('[::1]:');
+
+      if (!isAllowedHost) {
+        res.status(403).json({ error: 'Forbidden: Invalid Host header (DNS rebinding defense)' });
+        return;
+      }
+      next();
+    });
+
+    // Loopback-only remoteAddress gate middleware
     app.use((req: Request, res: Response, next) => {
       const ip = req.socket.remoteAddress || '';
       if (!ip.includes('127.0.0.1') && !ip.includes('::1') && !ip.includes('localhost')) {
@@ -167,7 +186,6 @@ export class McpServer {
       }
       next();
     });
-
     // POST /mcp endpoint
     app.post('/mcp', async (req: Request, res: Response) => {
       const authHeader = req.headers.authorization || '';

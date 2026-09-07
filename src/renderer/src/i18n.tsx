@@ -494,6 +494,10 @@ const RU: Record<string, string> = {
   'Review before installing. sha256:': 'Проверьте код перед установкой. sha256:',
   'Checksum mismatch — install blocked.': 'Несовпадение контрольной суммы — установка заблокирована.',
   'Script installed: ': 'Скрипт установлен: ',
+  'Toggle sidebar (Ctrl+B)': 'Свернуть/развернуть боковую панель (Ctrl+B)',
+  'Collapse sidebar': 'Свернуть боковую панель',
+  'Expand sidebar': 'Развернуть боковую панель',
+  'running': 'работает',
 };
 
 interface I18nCtx {

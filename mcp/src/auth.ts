@@ -7,6 +7,7 @@ export interface TokenPayload {
   iat: number;
   exp: number;
   nonce?: string;
+  jti?: string;
   [key: string]: unknown;
 }
 
@@ -85,27 +86,113 @@ export class NonceReplayDefense {
     this.seenNonces.clear();
   }
 }
+export interface RevocationEntry {
+  jti: string;
+  exp: number; // expiry timestamp in seconds
+  revokedAt: number; // revocation timestamp in seconds
+  sub?: string;
+  aud?: string;
+}
+
+export class TokenRevocationList {
+  private readonly revoked = new Map<string, RevocationEntry>();
+  // Map active sessions: `${sub}:${aud}` -> latest jti
+  private readonly activeTokens = new Map<string, { jti: string; exp: number }>();
+
+  public revoke(jti: string, exp?: number, sub?: string, aud?: string): void {
+    const now = Math.floor(Date.now() / 1000);
+    const expiry = exp !== undefined ? exp : now + 3600; // default 1 hour if unknown
+    this.revoked.set(jti, {
+      jti,
+      exp: expiry,
+      revokedAt: now,
+      sub,
+      aud,
+    });
+  }
+
+  public isRevoked(jti: string): boolean {
+    return this.revoked.has(jti);
+  }
+
+  public registerActiveToken(sub: string, aud: string, jti: string, exp: number): void {
+    const key = `${sub}:${aud}`;
+    const existing = this.activeTokens.get(key);
+    if (existing && existing.jti !== jti) {
+      // Revoke-on-refresh semantics: previous jti auto-revoked
+      this.revoke(existing.jti, existing.exp, sub, aud);
+    }
+    this.activeTokens.set(key, { jti, exp });
+  }
+
+  public prune(nowSec: number = Math.floor(Date.now() / 1000)): number {
+    let removedCount = 0;
+    for (const [jti, entry] of this.revoked.entries()) {
+      if (entry.exp < nowSec) {
+        this.revoked.delete(jti);
+        removedCount++;
+      }
+    }
+    for (const [key, entry] of this.activeTokens.entries()) {
+      if (entry.exp < nowSec) {
+        this.activeTokens.delete(key);
+      }
+    }
+    return removedCount;
+  }
+
+  public size(): number {
+    return this.revoked.size;
+  }
+
+  public clear(): void {
+    this.revoked.clear();
+    this.activeTokens.clear();
+  }
+}
 
 export class SessionTokenManager {
   private readonly secret: string;
   private readonly maxTtlSeconds: number;
+  private readonly revocationList: TokenRevocationList;
 
-  constructor(secret: string = process.env.ANTIDETECT_MCP_SECRET || 'antidetect-mcp-default-secret', maxTtlSeconds: number = 900) {
+  constructor(
+    secret: string = process.env.ANTIDETECT_MCP_SECRET || 'antidetect-mcp-default-secret',
+    maxTtlSeconds: number = 900,
+    revocationList?: TokenRevocationList
+  ) {
     this.secret = secret;
     this.maxTtlSeconds = Math.min(maxTtlSeconds, 900); // 15 mins max
+    this.revocationList = revocationList ?? new TokenRevocationList();
   }
 
-  public generateToken(sub: string, scope: string = 'standard', ttlSeconds?: number, nonce?: string): string {
+  public getRevocationList(): TokenRevocationList {
+    return this.revocationList;
+  }
+
+  public generateToken(
+    sub: string,
+    scope: string = 'standard',
+    ttlSeconds?: number,
+    nonce?: string,
+    jti?: string
+  ): string {
     const now = Math.floor(Date.now() / 1000);
     const ttl = ttlSeconds !== undefined ? Math.min(ttlSeconds, this.maxTtlSeconds) : this.maxTtlSeconds;
+    const exp = now + ttl;
+    const tokenJti = jti || crypto.randomUUID();
     const payload: TokenPayload = {
       sub,
       aud: 'antidetect-mcp',
       scope,
       iat: now,
-      exp: now + ttl,
+      exp,
+      jti: tokenJti,
       ...(nonce ? { nonce } : {}),
     };
+
+    // Revoke-on-refresh semantics: when a new token is issued for the same sub+audience, previous jti auto-revoked
+    this.revocationList.registerActiveToken(sub, 'antidetect-mcp', tokenJti, exp);
 
     const header = Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT' })).toString('base64url');
     const body = Buffer.from(JSON.stringify(payload)).toString('base64url');
@@ -117,7 +204,10 @@ export class SessionTokenManager {
     return `${header}.${body}.${signature}`;
   }
 
-  public verifyToken(token: string, nowSec: number = Math.floor(Date.now() / 1000)): { valid: boolean; payload?: TokenPayload; error?: string } {
+  public verifyToken(
+    token: string,
+    nowSec: number = Math.floor(Date.now() / 1000)
+  ): { valid: boolean; payload?: TokenPayload; error?: string } {
     if (!token || typeof token !== 'string') {
       return { valid: false, error: 'Token missing or invalid format' };
     }
@@ -148,6 +238,11 @@ export class SessionTokenManager {
 
       if (payload.exp && payload.exp < nowSec) {
         return { valid: false, error: `Token expired at ${payload.exp}, current ${nowSec}` };
+      }
+
+      // Check token revocation list
+      if (payload.jti && this.revocationList.isRevoked(payload.jti)) {
+        return { valid: false, error: `Token revoked (jti: ${payload.jti})` };
       }
 
       return { valid: true, payload };

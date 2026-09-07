@@ -11,6 +11,15 @@ import {
   ProfileResolvedData,
 } from './types';
 import { storeVerdict } from './store';
+import {
+  deriveHardwareVector,
+  migrateLegacySeed,
+  validateCoherence,
+} from '../fingerprints/derivation';
+import {
+  EXTENDED_FINGERPRINT_CATALOG,
+  WINDOWS_FINGERPRINT_CATALOG,
+} from '../fingerprints/catalog';
 
 interface ResolvedProxyInfo {
   id?: string;
@@ -358,6 +367,82 @@ export async function checkQuicRelayState(
   };
 }
 
+/**
+ * Cross-subsystem fingerprint coherence check (fingerprint-catalog spec 3.2).
+ * Legacy profiles (no catalog-derived fingerprint config) pass through as
+ * non-blocking warnings per the catalog migration contract.
+ */
+export function checkCoherence(profileId: string): CheckVerdict {
+  const started = Date.now();
+  const db = getDb();
+  const profile = db
+    .prepare('SELECT fingerprint_id FROM profiles WHERE id = ?')
+    .get(profileId) as { fingerprint_id: string | null } | undefined;
+  if (!profile?.fingerprint_id) {
+    return {
+      status: 'pass',
+      reasonCode: PREFLIGHT_REASON.COHERENCE_NOT_CONFIGURED,
+      detail: 'No fingerprint configuration on profile; coherence not evaluated',
+      durationMs: Date.now() - started,
+    };
+  }
+
+  const fp = db
+    .prepare('SELECT seed, config_json FROM fingerprints WHERE id = ?')
+    .get(profile.fingerprint_id) as { seed: number; config_json: string } | undefined;
+  if (!fp) {
+    return {
+      status: 'pass',
+      reasonCode: PREFLIGHT_REASON.COHERENCE_NOT_CONFIGURED,
+      detail: 'Fingerprint record missing; coherence not evaluated',
+      durationMs: Date.now() - started,
+    };
+  }
+
+  // Derivation replays the exact seed → family → vector pipeline used at
+  // launch; vector-vs-family invariants are then re-checked here.
+  try {
+    const seed = migrateLegacySeed(profileId, fp.seed);
+    const vector = deriveHardwareVector(seed);
+    const family =
+      EXTENDED_FINGERPRINT_CATALOG.find((f) => f.id === vector.familyId) ??
+      WINDOWS_FINGERPRINT_CATALOG.find((f) => f.id === vector.familyId);
+    if (!family) {
+      return {
+        status: 'warn',
+        reasonCode: 'coherence-warn',
+        detail: `Legacy fingerprint (family ${vector.familyId} not in catalog); non-blocking legacy pass-through`,
+        durationMs: Date.now() - started,
+      };
+    }
+    const coherence = validateCoherence(vector, family);
+    const issues = coherence.violations;
+    if (issues.length === 0) {
+      return {
+        status: 'pass',
+        reasonCode: 'coherence-pass',
+        detail: `Fingerprint coherence OK (family ${family.id})`,
+        durationMs: Date.now() - started,
+      };
+    }
+    const critical = issues.filter((v) => /gpu|platform|architecture|bitness/i.test(v));
+    return {
+      status: critical.length > 0 ? 'fail' : 'warn',
+      reasonCode: critical.length > 0 ? 'coherence-fail' : 'coherence-warn',
+      detail: `Coherence issues (${issues.length}): ${issues.slice(0, 5).join('; ')}`,
+      durationMs: Date.now() - started,
+    };
+  } catch (err) {
+    // Legacy or unparseable config: non-blocking warn per migration contract.
+    return {
+      status: 'warn',
+      reasonCode: 'coherence-warn',
+      detail: `Legacy fingerprint config; non-blocking legacy pass-through (${(err as Error).message})`,
+      durationMs: Date.now() - started,
+    };
+  }
+}
+
 export function calculateOverallVerdict(checks: PreflightCheckResult): PreflightStatus {
   const checkValues = Object.values(checks) as CheckVerdict[];
   const statuses = checkValues.map((c) => c.status);
@@ -389,6 +474,7 @@ export async function runPreflight(profileId: string): Promise<PreflightVerdict>
   const languageMatch = checkLanguageMatch(data?.language, proxy?.country);
   const webrtcHygiene = checkWebrtcHygiene(proxy, data?.browser_type);
   const dnsEgress = await checkDnsEgress(proxy);
+  const coherence = checkCoherence(profileId);
 
   const checks: PreflightCheckResult = {
     'proxy-alive': proxyAlive,
@@ -398,6 +484,7 @@ export async function runPreflight(profileId: string): Promise<PreflightVerdict>
     'webrtc-hygiene': webrtcHygiene,
     'dns-egress': dnsEgress,
     'quic-relay-state': quicRelay,
+    coherence: coherence,
   };
 
   const overall = calculateOverallVerdict(checks);
