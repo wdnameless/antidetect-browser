@@ -1,0 +1,9 @@
+## 1. Registry and merge
+
+- [ ] 1.1 Implement folder bookmark registry CRUD (JSON column on groups, zod validation); unit tests for validation and persistence.
+- [ ] 1.2 Implement managed-node merge (pre-spawn hook): replace `Antidetect` node, preserve user data, corruption `.bak` policy; sandbox tests per design's six scenarios.
+- [ ] 1.3 Groups page "Shared bookmarks" list UI; launch log line with sync count; component check.
+
+## 2. Verification
+
+- [ ] 2.1 Full vitest suite + typecheck green; CHANGELOG; `openspec validate add-folder-bookmarks --strict`.

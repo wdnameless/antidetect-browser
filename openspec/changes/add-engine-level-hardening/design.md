@@ -42,8 +42,17 @@ Advanced anti-bot systems detect JavaScript prototypes, `toString()` tampering, 
    - Noise algorithm uses a seeded MurmurHash3 generator per canvas element to remain idempotent per render while resisting statistical reverse-engineering.
 4. **Layout Rects Perturbation**:
    - `Element::getBoundingClientRect` in `third_party/blink/renderer/core/dom/element.cc` applies sub-pixel drift ($10^{-5}$ px) based on profile seed.
+5. **WebGPU Adapter Spoofing (parity program 2026-09-07)**:
+   - JS-interim: `navigator.gpu.requestAdapter` resolves a synthesized `GPUAdapter` whose `requestAdapterInfo()` returns the profile family's GPU (vendor/architecture/device), with feature/limit sets curated per family in the fingerprint catalog; `toString` integrity per `interim-stealth-hardening`. Marked `TODO(engine-parity: webgpu-dawn)`.
+   - Engine patch: adapter selection intercepted in the Dawn device creation path; the physical device is substituted by the profile's claimed adapter with family-matching limits, gated by `--stealth-engine-profile`. Profiles whose family has no WebGPU (real Linux Chrome) resolve `undefined`.
+6. **WebAuthn Platform Authenticator (parity program 2026-09-07)**:
+   - JS-interim: `PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable` resolves per-family truth matrix (macOS M-series: true; legacy desktops without Hello/TouchID-era hardware: false). Marked `TODO(engine-parity: webauthn)`.
+   - Engine patch: availability answered in the Blink authenticator module from the profile config, so no JS surface exists at all.
+7. **Native Motion Input (parity program 2026-09-07)**:
+   - Engine patch: pointer trajectory and keystroke synthesis implemented in the content input pipeline reading per-profile motor seeds from the `--stealth-engine-profile` config; the launcher-side handler (`add-motion-cdp-domain`) defines the wire contract and is superseded in place — command names, parameters, error codes, and hidden-domain semantics stay byte-stable across the swap.
 
 ## Migration and Validation
 
 - Launcher adds `--stealth-engine-profile=<id>` switch when executing custom Chromium binary.
 - Existing extension-based JS shims are disabled when engine-level profile execution is active.
+- Parity-program extension (2026-09-07): until the private-engine build chain lands, surfaces 5–7 ship as JS-interim hooks under `interim-stealth-hardening` rules (native `toString`, explicit `TODO(engine-parity)` markers); the engine patch replaces each hook without API-visible change.

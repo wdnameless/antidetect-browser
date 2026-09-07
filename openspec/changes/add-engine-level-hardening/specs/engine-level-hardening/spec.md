@@ -44,3 +44,35 @@ The engine MUST inject profile-seeded deterministic noise directly inside Blink'
 - **WHEN** a page invokes `Object.getOwnPropertyDescriptor(Navigator.prototype, 'hardwareConcurrency').get.toString()`
 - **THEN** the returned function string MUST equal `'function get hardwareConcurrency() { [native code] }'`
 - **AND** the getter MUST return `8`
+
+### Requirement: WebGPU adapter substitution (parity program 2026-09-07)
+Until the engine patch lands, the JS-interim layer MUST hide the host GPU from `navigator.gpu.requestAdapter` by resolving the profile family's adapter; the engine patch MUST substitute the adapter in the Dawn device path gated by `--stealth-engine-profile` so no JS surface exists.
+
+#### Scenario: Host GPU never surfaces
+- **GIVEN** a profile claiming an RTX 4060 family running on any host
+- **WHEN** a page calls `navigator.gpu.requestAdapter()` then `adapter.requestAdapterInfo()`
+- **THEN** the returned vendor/architecture/device MUST match the profile family and MUST NOT contain any host GPU identifier
+
+#### Scenario: WebGPU-less families resolve like real devices
+- **GIVEN** a Linux desktop family whose real Chrome exposes no WebGPU
+- **WHEN** a page calls `navigator.gpu.requestAdapter()`
+- **THEN** the call MUST resolve `undefined` exactly like real Linux Chrome
+
+### Requirement: WebAuthn platform-authenticator coherence (parity program 2026-09-07)
+`PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable` MUST answer according to the claimed device family, not the host hardware.
+
+#### Scenario: Family matrix answered per profile
+- **GIVEN** a macOS M-series profile
+- **WHEN** the availability promise resolves
+- **THEN** it MUST resolve `true`
+- **GIVEN** a legacy desktop family without platform-authenticator hardware
+- **WHEN** the availability promise resolves
+- **THEN** it MUST resolve `false`
+
+### Requirement: Native Motion input domain (parity program 2026-09-07)
+The engine patch MUST implement pointer and keystroke synthesis in the content input pipeline behind the wire contract defined by `add-motion-cdp-domain`, keeping command names, parameters, error codes, and hidden-domain semantics byte-stable across the swap.
+
+#### Scenario: Contract stability across engine swap
+- **GIVEN** an automation client speaking the Motion commands against the launcher-side handler
+- **WHEN** the private engine with the native Motion domain replaces the launcher-side handler
+- **THEN** the client MUST continue to operate without any protocol change
