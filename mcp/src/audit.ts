@@ -23,6 +23,8 @@ export interface VerificationResult {
   totalRecords?: number;
 }
 
+export const RETENTION_MONTHS = 24;
+
 export class McpAuditLogger {
   private readonly filePath: string;
   private prevHash: string;
@@ -45,6 +47,7 @@ export class McpAuditLogger {
     this.prevHash = '0'.repeat(64);
     this.seq = 0;
 
+    this.purgeExpiredRecords();
     this.initFromExisting();
   }
 
@@ -126,11 +129,88 @@ export class McpAuditLogger {
         fs.mkdirSync(dir, { recursive: true });
       }
       fs.appendFileSync(this.filePath, JSON.stringify(record) + '\n', 'utf8');
+      this.purgeExpiredRecords();
     } catch (err) {
       console.error(`[McpAuditLogger] Failed to write audit record:`, err);
     }
 
     return record;
+  }
+
+  /**
+   * Purges records older than RETENTION_MONTHS (24 months) from the head of the log file.
+   * After purging, the remaining chain is re-anchored so that genesis prevHash is '0'.repeat(64)
+   * and hash chain integrity remains verifiable.
+   */
+  public purgeExpiredRecords(now: Date = new Date()): { purgedCount: number; remainingCount: number } {
+    if (!fs.existsSync(this.filePath)) {
+      return { purgedCount: 0, remainingCount: 0 };
+    }
+
+    const cutoff = new Date(now.getTime());
+    cutoff.setMonth(cutoff.getMonth() - RETENTION_MONTHS);
+    const cutoffMs = cutoff.getTime();
+
+    const content = fs.readFileSync(this.filePath, 'utf8');
+    const lines = content.split('\n').filter((l) => l.trim().length > 0);
+    if (lines.length === 0) {
+      return { purgedCount: 0, remainingCount: 0 };
+    }
+
+    let firstKeepIndex = -1;
+    for (let i = 0; i < lines.length; i++) {
+      try {
+        const rec = JSON.parse(lines[i]) as AuditRecord;
+        const recordTs = new Date(rec.ts).getTime();
+        if (recordTs >= cutoffMs) {
+          firstKeepIndex = i;
+          break;
+        }
+      } catch {
+        firstKeepIndex = i;
+        break;
+      }
+    }
+
+    if (firstKeepIndex === -1) {
+      // All records are expired!
+      fs.writeFileSync(this.filePath, '', 'utf8');
+      this.prevHash = '0'.repeat(64);
+      this.seq = 0;
+      return { purgedCount: lines.length, remainingCount: 0 };
+    }
+
+    if (firstKeepIndex === 0) {
+      // Nothing to purge
+      return { purgedCount: 0, remainingCount: lines.length };
+    }
+
+    const keptLines = lines.slice(firstKeepIndex);
+    const updatedRecords: AuditRecord[] = [];
+    let curPrevHash = '0'.repeat(64);
+
+    for (let i = 0; i < keptLines.length; i++) {
+      const rec = JSON.parse(keptLines[i]) as AuditRecord;
+      const prevHash = curPrevHash;
+      const hashPayload = prevHash + rec.ts + rec.nonce + rec.tool + rec.argsHash + rec.decision;
+      const hash = crypto.createHash('sha256').update(hashPayload).digest('hex');
+
+      const updated: AuditRecord = {
+        ...rec,
+        seq: i + 1,
+        prevHash,
+        hash,
+      };
+      updatedRecords.push(updated);
+      curPrevHash = hash;
+    }
+
+    const newContent = updatedRecords.map((r) => JSON.stringify(r)).join('\n') + '\n';
+    fs.writeFileSync(this.filePath, newContent, 'utf8');
+    this.prevHash = curPrevHash;
+    this.seq = updatedRecords.length;
+
+    return { purgedCount: firstKeepIndex, remainingCount: updatedRecords.length };
   }
 }
 

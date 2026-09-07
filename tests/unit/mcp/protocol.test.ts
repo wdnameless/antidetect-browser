@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
+import * as http from 'node:http';
 import {
   parseJsonRpcMessage,
   createErrorResponse,
@@ -106,5 +107,66 @@ describe('MCP Protocol & Transports', () => {
   it('enforces loopback-only binding for HTTP transport', async () => {
     await expect(server.startHttp(9999, '0.0.0.0')).rejects.toThrow(/loopback/i);
     await expect(server.startHttp(9999, '192.168.1.50')).rejects.toThrow(/loopback/i);
+  });
+
+  it('validates Host header against DNS rebinding attacks', async () => {
+    const testServer = new McpServer();
+    const testPort = 44123;
+    await testServer.startHttp(testPort, '127.0.0.1');
+
+    try {
+      // Forbidden Host header (DNS rebinding attempt).
+      // Use node:http directly: the vitest runtime's global fetch drops
+      // custom Host headers (undici guard), which would mask the defense.
+      const evilStatus = await new Promise<number>((resolve, reject) => {
+        const req = http.request(
+          {
+            host: '127.0.0.1',
+            port: testPort,
+            path: '/mcp',
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Host: 'evil.example.com:4000' },
+          },
+          (res) => {
+            res.resume();
+            resolve(res.statusCode ?? 0);
+          }
+        );
+        req.on('error', reject);
+        req.end(JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'ping' }));
+      });
+      expect(evilStatus).toBe(403);
+
+      // Legitimate Host headers: localhost:<port> and 127.0.0.1:<port>
+      const goodRes1 = await fetch(`http://127.0.0.1:${testPort}/mcp`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Host: `127.0.0.1:${testPort}`,
+        },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: 2,
+          method: 'ping',
+        }),
+      });
+      expect(goodRes1.status).toBe(200);
+
+      const goodRes2 = await fetch(`http://127.0.0.1:${testPort}/mcp`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Host: `localhost:${testPort}`,
+        },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: 3,
+          method: 'ping',
+        }),
+      });
+      expect(goodRes2.status).toBe(200);
+    } finally {
+      await testServer.stop();
+    }
   });
 });
