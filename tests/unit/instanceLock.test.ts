@@ -65,11 +65,11 @@ describe('instanceLock', () => {
       expect(isProcessOurApp(12345, { execFileSync: fakeExec })).toBe(false);
     });
 
-    it('returns false when probe throws or fails', () => {
+    it('returns undefined when probe throws or fails (unknown, fail-closed)', () => {
       const fakeExec = vi.fn().mockImplementation(() => {
         throw new Error('Process not found');
       });
-      expect(isProcessOurApp(12345, { execFileSync: fakeExec })).toBe(false);
+      expect(isProcessOurApp(12345, { execFileSync: fakeExec })).toBeUndefined();
     });
   });
 

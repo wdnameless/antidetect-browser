@@ -5,7 +5,7 @@ import { initDb, closeDb, flushDb } from './db';
 import { startApi } from './api/server';
 import { getApiKey, API_HOST, API_PORT, DATA_DIR } from './config';
 import { seedDevices } from './devices/deviceManager';
-import { recoverStaleRunning, purgeExpiredTrash } from './profiles/profileManager';
+import { recoverStaleRunning, purgeExpiredTrash, adoptOrphanedProfileDirs } from './profiles/profileManager';
 import { startupPurgeSweep, shutdownCleanup } from './profiles/temporaryRegistry';
 import { stopAll } from './launcher/chromium';
 import { stopAllSessions } from './syncer/actionSyncer';
@@ -31,9 +31,15 @@ export function setProcessInspectorExec(fn: typeof child_process.execFileSync | 
 /**
  * Inspects the process command line / image name.
  * Allows 'Antidetect Browser.exe', 'electron', or 'node' running our service/entry script.
- * If probe fails, throws, or process is something else, returns false.
+ * Returns true (our app), false (a different image), or undefined when the
+ * probe failed entirely (wmic + powershell unavailable, access denied, ...).
+ * A definite false lets the caller treat the lock as stale; an undefined must
+ * be handled conservatively by callers (never remove a lock they can't verify).
  */
-export function isProcessOurApp(pid: number, options?: ProcessInspectorOptions): boolean {
+export function isProcessOurApp(
+  pid: number,
+  options?: ProcessInspectorOptions
+): boolean | undefined {
   const runner = options?.execFileSync || defaultExecFileSync;
   try {
     if (process.platform === 'win32') {
@@ -60,7 +66,7 @@ export function isProcessOurApp(pid: number, options?: ProcessInspectorOptions):
           );
           cmdLine = typeof raw === 'string' ? raw : raw ? raw.toString('utf8') : '';
         } catch {
-          return false;
+          return undefined; // probe failed on both wmic and powershell
         }
       }
 
@@ -101,12 +107,12 @@ export function isProcessOurApp(pid: number, options?: ProcessInspectorOptions):
         if (args.includes('antidetect') || args.includes('electron')) return true;
         if (args.includes('node') && (args.includes('main') || args.includes('service'))) return true;
       } catch {
-        return false;
+        return undefined; // ps probe failed
       }
       return false;
     }
   } catch {
-    return false;
+    return undefined;
   }
 }
 
@@ -117,16 +123,28 @@ export function acquireInstanceLock(): void {
       const stalePid = Number(raw);
       let isRunningApp = false;
       if (Number.isFinite(stalePid) && stalePid > 0 && stalePid !== process.pid) {
-        let alive = false;
+        let alive: boolean;
         try {
           process.kill(stalePid, 0); // signal 0 = liveness probe
           alive = true;
-        } catch {
-          alive = false;
+        } catch (err) {
+          // EPERM: the process EXISTS but runs at higher privilege. Treating
+          // it as dead lets a second instance start over it and its debounced
+          // persist can then overwrite our database file.
+          alive = (err as NodeJS.ErrnoException).code === 'EPERM';
         }
 
         if (alive) {
-          isRunningApp = isProcessOurApp(stalePid);
+          const probed = isProcessOurApp(stalePid);
+          if (probed === undefined) {
+            // The pid is alive but we cannot verify its image (no wmic, no
+            // powershell, access denied). Removing the lock here risks two
+            // services writing one database — fail closed instead.
+            const msg = `Another process (pid ${stalePid}) holds the instance lock and its image could not be verified. Close it first or remove ${LOCK_FILE} manually.`;
+            logger.warn('instance lock held by unverifiable process', { stalePid });
+            throw new Error(msg);
+          }
+          isRunningApp = probed;
         }
       }
 
@@ -136,7 +154,8 @@ export function acquireInstanceLock(): void {
         );
       }
 
-      // Stale lock: either non-existent pid, own pid, process died, or recycled PID belonging to another process
+      // Stale lock: pid dead, own pid, recycled pid of another image, or an
+      // unreadable/corrupt lock file. (An alive-but-unverifiable pid throws above.)
       logger.warn('stale instance lock removed', { stalePid, ownPid: process.pid });
       fs.rmSync(LOCK_FILE, { force: true });
     }
@@ -217,6 +236,18 @@ export async function startService(): Promise<void> {
   if (recovered > 0) {
     logger.warn('crash recovery applied', { recovered });
     console.log(`[antidetect] crash recovery: ${recovered} stale running profile(s) marked closed`);
+  }
+
+  // Orphan adoption: re-register profile directories whose DB row was lost
+  // (e.g. metadata DB restored from an older backup after a crash).
+  try {
+    const adopted = adoptOrphanedProfileDirs();
+    if (adopted > 0) {
+      console.log(`[antidetect] orphan adoption: ${adopted} profile dir(s) re-registered`);
+    }
+  } catch (err) {
+    logger.warn('orphan adoption failed', { error: String(err) });
+    console.error('[antidetect] orphan adoption failed:', (err as Error).message);
   }
 
   // Trash sweep (Sprint 2.4): permanently delete soft-deleted profiles older

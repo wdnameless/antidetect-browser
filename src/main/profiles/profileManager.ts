@@ -1,7 +1,9 @@
 ﻿import { randomUUID, randomInt } from 'crypto';
+import * as fs from 'fs';
 import * as path from 'path';
 import { getDb } from '../db';
 import { PROFILES_DIR } from '../config';
+import { logger } from '../util/logger';
 import { getEnabledExtensionPaths } from '../extensions/extensionManager';
 import { checkProxy, type ProxyCheckResult } from '../proxy/proxyManager';
 import { pickMobilePreset, buildMobileUa, getMobilePreset, type MobilePreset } from '../devices/mobilePresets';
@@ -465,9 +467,7 @@ export function purgeProfile(id: string): boolean {
   if (res.changes > 0) {
     try {
       // User-data dir lives outside the DB; best-effort cleanup.
-      const fs = require('fs') as typeof import('fs');
-      const rm = (fs as unknown as { rmSync?: (p: string, o?: Record<string, unknown>) => void }).rmSync;
-      if (typeof rm === 'function') rm(path.join(PROFILES_DIR, id), { recursive: true, force: true });
+      fs.rmSync(path.join(PROFILES_DIR, id), { recursive: true, force: true });
     } catch {
       // ignore
     }
@@ -530,6 +530,64 @@ export function recoverStaleRunning(): number {
     .prepare("UPDATE profiles SET status = 'closed', updated_at = ? WHERE status = 'running'")
     .run(Date.now());
   return res.changes;
+}
+
+/**
+ * Re-registers profile user-data directories that lost their database row —
+ * e.g. after the metadata DB was quarantined/restored from an older backup.
+ * A row is only created when the on-disk dir looks like a real profile
+ * workspace (contains Chromium profile artifacts, not an empty stub).
+ * Adopted profiles get a fresh fingerprint and default settings; cookies and
+ * all browser-level state survive because they live in the directory itself.
+ * Returns the number of adopted directories.
+ */
+export function adoptOrphanedProfileDirs(): number {
+  const db = getDb();
+  let adopted = 0;
+  let entries: string[] = [];
+  try {
+    entries = fs.readdirSync(PROFILES_DIR);
+  } catch {
+    return 0;
+  }
+  for (const name of entries) {
+    if (!name.startsWith('p_')) continue;
+    const dir = path.join(PROFILES_DIR, name);
+    try {
+      if (!fs.statSync(dir).isDirectory()) continue;
+    } catch {
+      continue;
+    }
+    const exists = db.prepare('SELECT id FROM profiles WHERE id = ?').get(name);
+    if (exists) continue;
+    if (!hasBrowserWorkspaceArtifacts(dir)) continue;
+
+    const now = Date.now();
+    const fpId = 'fp_' + randomUUID();
+    db.prepare(
+      'INSERT INTO fingerprints (id, label, seed, config_json, created_at) VALUES (?, ?, ?, ?, ?)'
+    ).run(fpId, 'recovered', randomInt(1, 2147483647), '{}', now);
+    db.prepare(
+      `INSERT INTO profiles (id, name, group_id, proxy_id, fingerprint_id, device_id,
+         browser_type, user_agent, timezone, geolocation, start_urls, mobile_model_id, status,
+         created_at, updated_at)
+       VALUES (?, ?, NULL, NULL, ?, NULL, 'chromium', NULL, NULL, NULL, NULL, NULL, 'closed', ?, ?)`
+    ).run(name, 'Recovered profile', fpId, now, now);
+    adopted++;
+  }
+  if (adopted > 0) {
+    logger.info('adopted orphaned profile directories', { adopted });
+  }
+  return adopted;
+}
+
+/**
+ * A directory is a profile workspace when it holds real Chromium state —
+ * not an empty/stub dir left behind by a failed launch.
+ */
+function hasBrowserWorkspaceArtifacts(profileDir: string): boolean {
+  const markers = ['Default', 'Local State', 'Preferences', 'Cookies', 'History'];
+  return markers.some((m) => fs.existsSync(path.join(profileDir, m)));
 }
 
 // ---------------------------------------------------------------------------

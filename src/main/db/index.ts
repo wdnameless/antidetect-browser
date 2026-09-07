@@ -8,7 +8,7 @@
 //   the live file, so a crash mid-write can never corrupt the database.
 // - A daily rotating backup is stored in <DATA_DIR>/backups (last 5 kept).
 // - flushDb() forces an immediate persist (used on shutdown / before backups).
-import initSqlJs, { Database as SqlJsDatabase, SqlValue } from 'sql.js';
+import initSqlJs, { Database as SqlJsDatabase, SqlJsStatic, SqlValue } from 'sql.js';
 import * as fs from 'fs';
 import * as path from 'path';
 import { DB_PATH, DATA_DIR } from '../config';
@@ -116,14 +116,79 @@ function maybeBackup(instance: SqlJsDatabase): void {
   }
 }
 
+/**
+ * Opens the on-disk database, refusing to destroy data when the file is
+ * unreadable or was truncated to 0 bytes (e.g. by a crashed writer).
+ *
+ * sql.js quirk: `new SQL.Database(garbage)` silently yields an EMPTY database
+ * instead of throwing. Without a check here, the 100 ms debounce persist would
+ * atomically overwrite the real file with that empty image — this is exactly
+ * how profiles "disappear" after a hard crash. Recovery order:
+ *   1. healthy file            -> open it
+ *   2. missing file            -> fresh database
+ *   3. blank/corrupt file      -> quarantine it, restore newest intact backup
+ *   4. no usable backup        -> fresh database (quarantined copy is kept
+ *      for manual forensic recovery; never silently deleted)
+ */
+function openOrRecoverDb(SQL: SqlJsStatic): SqlJsDatabase {
+  if (!fs.existsSync(DB_PATH)) return new SQL.Database();
+
+  const raw = fs.readFileSync(DB_PATH);
+  if (isUsableSqliteImage(raw)) return new SQL.Database(raw);
+
+  const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
+  const quarantine = `${DB_PATH}.corrupt-${stamp}`;
+  try {
+    fs.renameSync(DB_PATH, quarantine);
+    console.error(`[db] database file unreadable (${raw.length} bytes) — quarantined as ${quarantine}`);
+  } catch (err) {
+    console.error('[db] database file unreadable and quarantine rename failed:', (err as Error).message);
+  }
+
+  const restored = restoreNewestBackup();
+  if (restored) {
+    console.warn(`[db] restored database from backup: ${restored}`);
+    const restoredBytes = fs.readFileSync(DB_PATH);
+    if (isUsableSqliteImage(restoredBytes)) return new SQL.Database(restoredBytes);
+    console.error('[db] restored backup is also unusable — starting with a fresh database');
+  } else {
+    console.error('[db] no usable backup found — starting with a fresh database');
+  }
+  return new SQL.Database();
+}
+
+/** A SQLite image must start with the 16-byte magic header and be non-trivially sized. */
+function isUsableSqliteImage(bytes: Buffer): boolean {
+  return bytes.length > 0 && bytes.subarray(0, 16).toString('latin1') === 'SQLite format 3\0';
+}
+
+/** Copies the newest intact backup over DB_PATH. Returns its path or null. */
+function restoreNewestBackup(): string | null {
+  if (!fs.existsSync(BACKUP_DIR)) return null;
+  const candidates = fs
+    .readdirSync(BACKUP_DIR)
+    .filter((f) => f.startsWith('antidetect-') && f.endsWith('.db'))
+    .sort()
+    .reverse();
+  for (const name of candidates) {
+    const candidatePath = path.join(BACKUP_DIR, name);
+    try {
+      const bytes = fs.readFileSync(candidatePath);
+      if (!isUsableSqliteImage(bytes)) continue;
+      fs.copyFileSync(candidatePath, DB_PATH);
+      return candidatePath;
+    } catch {
+      // unreadable backup — try the next older one
+    }
+  }
+  return null;
+}
+
+
 export async function initDb(): Promise<void> {
   const SQL = await getSqlModule();
   let instance: SqlJsDatabase;
-  if (fs.existsSync(DB_PATH)) {
-    instance = new SQL.Database(fs.readFileSync(DB_PATH));
-  } else {
-    instance = new SQL.Database();
-  }
+  instance = openOrRecoverDb(SQL);
   instanceRef = instance;
 
   // Sync flush on normal process exit ('exit' handlers must be synchronous).

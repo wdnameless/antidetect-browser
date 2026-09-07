@@ -62,4 +62,38 @@ describe('database layer', () => {
     expect(row?.name).toBe('Debounce Group');
     closeDb();
   });
+
+  it('truncated (0-byte) DB file is quarantined and last backup is restored, not wiped', async () => {
+    closeDb();
+    // Seed a healthy DB with a known row and take a backup of it.
+    await initDb();
+    getDb().prepare("INSERT INTO groups (id, name, created_at) VALUES ('g_rescue', 'Rescue Group', ?)").run(Date.now());
+    flushDb();
+    const backupDir = path.join(DATA_DIR, 'backups');
+    fs.mkdirSync(backupDir, { recursive: true });
+    fs.copyFileSync(DB_PATH, path.join(backupDir, 'antidetect-2099-01-01-00-00-00.db'));
+
+    // Simulate the crash artifact: truncated file on disk.
+    fs.writeFileSync(DB_PATH, Buffer.alloc(0));
+
+    await initDb();
+    const row = getDb().prepare("SELECT name FROM groups WHERE id = 'g_rescue'").get() as
+      | { name: string }
+      | undefined;
+    expect(row?.name).toBe('Rescue Group');
+    // The broken file is preserved for forensics, not deleted.
+    const quarantined = fs.readdirSync(DATA_DIR).filter((f) => f.startsWith('antidetect.db.corrupt-'));
+    expect(quarantined.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('garbage bytes in DB file are quarantined instead of silently opening an empty DB', async () => {
+    closeDb();
+    fs.writeFileSync(DB_PATH, Buffer.from('this is not a sqlite database at all', 'utf8'));
+    await initDb();
+    // Schema was created on top of a FRESH in-memory DB; the garbage file must
+    // be gone from DB_PATH (quarantined) and a backup restore attempted.
+    const quarantined = fs.readdirSync(DATA_DIR).filter((f) => f.startsWith('antidetect.db.corrupt-'));
+    expect(quarantined.length).toBeGreaterThanOrEqual(1);
+    closeDb();
+  });
 });
