@@ -10,6 +10,15 @@ import {
   CanvasEdgeState,
 } from '../../../main/flows/types';
 import { validateFlow } from '../../../main/flows/validator';
+import { getApiBase } from '../api';
+import {
+  parseSseEventData,
+  extractScreenshotRef,
+  extractTimingRef,
+  reduceLogLines,
+  shouldAutoScroll,
+  LiveRunLogEntry,
+} from '../flowLiveRun';
 
 export type { CanvasNodeState, CanvasEdgeState };
 export interface NodePaletteItem {
@@ -132,6 +141,202 @@ export function FlowCanvas() {
   const [flowName, setFlowName] = useState<string>('Parity Automation Flow');
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>('node-start');
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
+
+  // Live Run State
+  const [showLiveRun, setShowLiveRun] = useState<boolean>(false);
+  const [profiles, setProfiles] = useState<Array<{ user_id: string; name: string | null }>>([]);
+  const [selectedProfileId, setSelectedProfileId] = useState<string>('');
+  const [isRunning, setIsRunning] = useState<boolean>(false);
+  const [activeTaskGroupId, setActiveTaskGroupId] = useState<string | null>(null);
+  const [activeTaskUuid, setActiveTaskUuid] = useState<string | null>(null);
+  const [runStatus, setRunStatus] = useState<'idle' | 'running' | 'finished' | 'error' | 'stop'>('idle');
+  const [runLogs, setRunLogs] = useState<LiveRunLogEntry[]>([]);
+  const [runError, setRunError] = useState<string | null>(null);
+  const [nodeTimings, setNodeTimings] = useState<Record<string, number>>({});
+  const [isScrolledUp, setIsScrolledUp] = useState<boolean>(false);
+
+  const logsContainerRef = useRef<HTMLDivElement>(null);
+  const eventSourceRef = useRef<EventSource | null>(null);
+
+  // Load profiles for run picker
+  useEffect(() => {
+    let unmounted = false;
+    const loadProfiles = async () => {
+      try {
+        const res = await fetch(`${getApiBase()}/api/v1/browser/list?page=1&page_size=100`);
+        if (res.ok) {
+          const json = await res.json();
+          const list = json?.data?.list || json?.list || [];
+          if (!unmounted && Array.isArray(list)) {
+            setProfiles(list);
+            if (list.length > 0 && !selectedProfileId) {
+              setSelectedProfileId(list[0].user_id);
+            }
+          }
+        }
+      } catch {
+        // Ignored in offline/mock env
+      }
+    };
+    loadProfiles();
+    return () => {
+      unmounted = true;
+    };
+  }, []);
+
+  // Auto-scroll log box unless user scrolled up
+  useEffect(() => {
+    if (!isScrolledUp && logsContainerRef.current) {
+      logsContainerRef.current.scrollTop = logsContainerRef.current.scrollHeight;
+    }
+  }, [runLogs, isScrolledUp]);
+
+  // Clean up EventSource on unmount
+  useEffect(() => {
+    return () => {
+      if (eventSourceRef.current) {
+        eventSourceRef.current.close();
+        eventSourceRef.current = null;
+      }
+    };
+  }, []);
+
+  // Connect SSE for a task uuid
+  const connectLogsStream = useCallback((taskUuid: string) => {
+    if (eventSourceRef.current) {
+      eventSourceRef.current.close();
+      eventSourceRef.current = null;
+    }
+
+    const sseUrl = `${getApiBase()}/api/tasks/${encodeURIComponent(taskUuid)}/logs?stream=true`;
+    const es = new EventSource(sseUrl);
+    eventSourceRef.current = es;
+
+    es.onopen = () => {
+      setRunStatus('running');
+    };
+
+    es.onmessage = (e) => {
+      try {
+        const parsed = parseSseEventData(e.data);
+        if (parsed.type === 'end') {
+          setRunStatus(parsed.status as 'finished' | 'error' | 'stop');
+          setIsRunning(false);
+          es.close();
+          eventSourceRef.current = null;
+          return;
+        }
+
+        if (parsed.type === 'log') {
+          const rawLine = parsed.entry.line;
+          const timing = extractTimingRef(rawLine);
+          if (timing) {
+            setNodeTimings(prev => ({
+              ...prev,
+              [timing.nodeId]: timing.durationMs ?? (prev[timing.nodeId] || 0),
+            }));
+          }
+
+          setRunLogs(prev => reduceLogLines(prev, parsed.entry, 200));
+        }
+      } catch {
+        // ignore parse error
+      }
+    };
+
+    es.onerror = () => {
+      // If error occurs and still running, mark as error
+      setRunStatus(prev => (prev === 'running' ? 'error' : prev));
+      setIsRunning(false);
+      es.close();
+      eventSourceRef.current = null;
+    };
+  }, []);
+
+  // Run flow handler
+  const handleRunFlow = async () => {
+    if (isRunning) return;
+    setRunError(null);
+    setShowLiveRun(true);
+    setIsRunning(true);
+    setRunStatus('running');
+    setRunLogs([]);
+    setNodeTimings({});
+    setIsScrolledUp(false);
+
+    try {
+      const targetProfileId = selectedProfileId || profiles[0]?.user_id || 'default';
+      const flowPayload = {
+        name: flowName,
+        nodes: nodes.map(n => ({
+          ...n.config,
+          id: n.id,
+          type: n.type,
+          name: n.name,
+          timeoutMs: n.timeoutMs,
+          retryCount: n.retryCount,
+        })),
+        edges,
+        entryNodeId,
+      };
+
+      // 1. Create or save flow via POST /api/flows
+      const saveRes = await fetch(`${getApiBase()}/api/flows`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(flowPayload),
+      });
+
+      let flowId = 'canvas-flow';
+      if (saveRes.ok) {
+        const saveJson = await saveRes.json();
+        flowId = saveJson?.data?.id || saveJson?.id || flowId;
+      }
+
+      // 2. Trigger run via POST /api/flows/:id/run
+      const runRes = await fetch(`${getApiBase()}/api/flows/${encodeURIComponent(flowId)}/run`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          profile_ids: [targetProfileId],
+          concurrency: 1,
+        }),
+      });
+
+      if (!runRes.ok) {
+        const errJson = await runRes.json().catch(() => ({}));
+        throw new Error(errJson?.error || `Run failed with HTTP ${runRes.status}`);
+      }
+
+      const runJson = await runRes.json();
+      const taskGroupId = runJson?.data?.taskGroupId || runJson?.taskGroupId;
+      setActiveTaskGroupId(taskGroupId);
+
+      // 3. Look up task group to get task uuid
+      const groupRes = await fetch(`${getApiBase()}/api/task-groups/${encodeURIComponent(taskGroupId)}`);
+      let taskUuid: string | null = null;
+      if (groupRes.ok) {
+        const groupJson = await groupRes.json();
+        const tasks = groupJson?.data?.tasks || groupJson?.tasks || [];
+        if (tasks.length > 0 && tasks[0].uuid) {
+          taskUuid = tasks[0].uuid;
+        }
+      }
+
+      if (!taskUuid) {
+        // Fallback: use taskGroupId or synthetic
+        taskUuid = taskGroupId;
+      }
+
+      setActiveTaskUuid(taskUuid);
+      connectLogsStream(taskUuid);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setRunError(msg);
+      setRunStatus('error');
+      setIsRunning(false);
+    }
+  };
 
   // Dragging state for nodes
   const [draggingNodeId, setDraggingNodeId] = useState<string | null>(null);
@@ -624,6 +829,65 @@ export function FlowCanvas() {
             }}
           >
             Reset View
+          </button>
+          <div style={{ width: 1, height: 16, background: 'rgba(255,255,255,0.12)' }} />
+          {/* Profile picker & Run action */}
+          {profiles.length > 0 && (
+            <select
+              data-testid="live-run-profile-select"
+              value={selectedProfileId}
+              onChange={e => setSelectedProfileId(e.target.value)}
+              style={{
+                background: '#18181b',
+                color: '#e4e4e7',
+                border: '1px solid rgba(255,255,255,0.12)',
+                borderRadius: 4,
+                fontSize: 11,
+                padding: '3px 6px',
+                outline: 'none',
+              }}
+            >
+              {profiles.map(p => (
+                <option key={p.user_id} value={p.user_id}>
+                  {p.name || p.user_id}
+                </option>
+              ))}
+            </select>
+          )}
+          <button
+            data-testid="btn-run-flow"
+            onClick={handleRunFlow}
+            disabled={isRunning}
+            style={{
+              background: isRunning ? '#3f3f46' : '#22c55e',
+              color: '#09090b',
+              fontWeight: 700,
+              border: 'none',
+              fontSize: 11,
+              padding: '4px 10px',
+              borderRadius: 4,
+              cursor: isRunning ? 'not-allowed' : 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 4,
+            }}
+          >
+            {isRunning ? 'Running...' : '▶ Run Flow'}
+          </button>
+          <button
+            data-testid="btn-toggle-live-run"
+            onClick={() => setShowLiveRun(v => !v)}
+            style={{
+              background: showLiveRun ? 'rgba(59, 130, 246, 0.2)' : 'rgba(255,255,255,0.08)',
+              color: showLiveRun ? '#60a5fa' : '#d4d4d8',
+              border: showLiveRun ? '1px solid rgba(59, 130, 246, 0.4)' : 'none',
+              fontSize: 11,
+              padding: '4px 8px',
+              borderRadius: 4,
+              cursor: 'pointer',
+            }}
+          >
+            {showLiveRun ? 'Hide Live Run' : 'Live Run'}
           </button>
         </div>
 
@@ -1632,6 +1896,227 @@ export function FlowCanvas() {
           )}
         </div>
       </div>
+
+      {/* Bottom / Overlay Live Run Panel */}
+      {showLiveRun && (
+        <div
+          data-testid="live-run-panel"
+          style={{
+            height: 240,
+            borderTop: '1px solid rgba(255,255,255,0.12)',
+            background: '#0d0d10',
+            display: 'flex',
+            flexDirection: 'column',
+            zIndex: 40,
+          }}
+        >
+          {/* Live Run Header */}
+          <div
+            style={{
+              padding: '6px 16px',
+              borderBottom: '1px solid rgba(255,255,255,0.08)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              background: 'rgba(255,255,255,0.02)',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <span style={{ fontSize: 12, fontWeight: 700, color: '#fafafa' }}>Live Run Stream</span>
+              {/* Status Chip */}
+              <span
+                data-testid="live-run-status-chip"
+                style={{
+                  fontSize: 10,
+                  fontWeight: 700,
+                  textTransform: 'uppercase',
+                  padding: '2px 8px',
+                  borderRadius: 12,
+                  background:
+                    runStatus === 'running'
+                      ? 'rgba(59, 130, 246, 0.2)'
+                      : runStatus === 'finished'
+                      ? 'rgba(34, 197, 94, 0.2)'
+                      : runStatus === 'error'
+                      ? 'rgba(239, 68, 68, 0.2)'
+                      : 'rgba(255,255,255,0.08)',
+                  color:
+                    runStatus === 'running'
+                      ? '#60a5fa'
+                      : runStatus === 'finished'
+                      ? '#4ade80'
+                      : runStatus === 'error'
+                      ? '#f87171'
+                      : '#a1a1aa',
+                  border: `1px solid ${
+                    runStatus === 'running'
+                      ? 'rgba(59, 130, 246, 0.3)'
+                      : runStatus === 'finished'
+                      ? 'rgba(34, 197, 94, 0.3)'
+                      : runStatus === 'error'
+                      ? 'rgba(239, 68, 68, 0.3)'
+                      : 'rgba(255,255,255,0.1)'
+                  }`,
+                }}
+              >
+                {runStatus}
+              </span>
+              {activeTaskUuid && (
+                <span style={{ fontSize: 10, color: '#71717a', fontFamily: 'monospace' }}>
+                  task: {activeTaskUuid.slice(0, 8)}…
+                </span>
+              )}
+              {/* Timings summary */}
+              {Object.keys(nodeTimings).length > 0 && (
+                <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                  <span style={{ fontSize: 10, color: '#71717a' }}>Node timings:</span>
+                  {Object.entries(nodeTimings).map(([nid, ms]) => (
+                    <span
+                      key={nid}
+                      data-testid={`node-timing-${nid}`}
+                      style={{
+                        fontSize: 10,
+                        color: '#38bdf8',
+                        background: 'rgba(56, 189, 248, 0.1)',
+                        padding: '1px 5px',
+                        borderRadius: 4,
+                      }}
+                    >
+                      {nid}: {ms}ms
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              {isScrolledUp && (
+                <button
+                  data-testid="btn-resume-autoscroll"
+                  onClick={() => setIsScrolledUp(false)}
+                  style={{
+                    background: '#27272a',
+                    border: '1px solid rgba(255,255,255,0.1)',
+                    color: '#e4e4e7',
+                    fontSize: 10,
+                    padding: '2px 8px',
+                    borderRadius: 4,
+                    cursor: 'pointer',
+                  }}
+                >
+                  Resume Auto-Scroll
+                </button>
+              )}
+              <button
+                data-testid="btn-clear-logs"
+                onClick={() => setRunLogs([])}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  color: '#71717a',
+                  fontSize: 11,
+                  cursor: 'pointer',
+                }}
+              >
+                Clear
+              </button>
+              <button
+                data-testid="btn-close-live-run"
+                onClick={() => setShowLiveRun(false)}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  color: '#a1a1aa',
+                  fontSize: 12,
+                  cursor: 'pointer',
+                }}
+              >
+                ✕
+              </button>
+            </div>
+          </div>
+
+          {/* Log Lines Box */}
+          <div
+            ref={logsContainerRef}
+            data-testid="live-run-logs"
+            onScroll={(e) => {
+              const target = e.currentTarget;
+              const auto = shouldAutoScroll(target.scrollTop, target.scrollHeight, target.clientHeight, 30);
+              setIsScrolledUp(!auto);
+            }}
+            style={{
+              flex: 1,
+              overflowY: 'auto',
+              padding: '8px 16px',
+              fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
+              fontSize: 11,
+              lineHeight: 1.5,
+              color: '#d4d4d8',
+            }}
+          >
+            {runError && (
+              <div style={{ color: '#ef4444', marginBottom: 6 }}>
+                [ERROR] {runError}
+              </div>
+            )}
+            {runLogs.length === 0 && !runError && (
+              <div style={{ color: '#52525b', fontStyle: 'italic' }}>
+                {isRunning ? 'Waiting for log stream...' : 'No logs yet. Click "Run Flow" to start.'}
+              </div>
+            )}
+            {runLogs.map((log, idx) => {
+              const screenshot = extractScreenshotRef(log.line);
+              return (
+                <div
+                  key={idx}
+                  data-testid="log-line"
+                  style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 4,
+                    padding: '2px 0',
+                    borderBottom: '1px solid rgba(255,255,255,0.02)',
+                  }}
+                >
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    {log.created_at && (
+                      <span style={{ color: '#52525b', flexShrink: 0 }}>
+                        {new Date(log.created_at).toLocaleTimeString()}
+                      </span>
+                    )}
+                    <span style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>{log.line}</span>
+                  </div>
+                  {screenshot && (
+                    <div
+                      data-testid="screenshot-preview"
+                      style={{
+                        margin: '4px 0 4px 20px',
+                        padding: 6,
+                        borderRadius: 4,
+                        background: '#18181b',
+                        border: '1px solid rgba(255,255,255,0.1)',
+                        maxWidth: 400,
+                      }}
+                    >
+                      {screenshot.isDataUrl ? (
+                        <img
+                          src={screenshot.ref}
+                          alt="screenshot preview"
+                          style={{ width: '100%', maxHeight: 180, objectFit: 'contain', borderRadius: 2 }}
+                        />
+                      ) : (
+                        <div style={{ fontSize: 10, color: '#38bdf8' }}>
+                          🖼️ Screenshot: {screenshot.ref}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
