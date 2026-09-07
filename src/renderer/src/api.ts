@@ -536,6 +536,11 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ extension_id }),
     }),
+  extensionInstall: (target: { url?: string; id?: string; path?: string }) =>
+    request<{ extension_id: string; name: string; version: string; reused: boolean }>('/api/v1/extension/install', {
+      method: 'POST',
+      body: JSON.stringify(target),
+    }),
   profileBindExtensions: (user_id: string, extension_ids: string[]) =>
     request<{ count: number }>('/api/v1/browser-profile/extensions/bind', {
       method: 'POST',
