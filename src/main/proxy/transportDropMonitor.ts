@@ -11,7 +11,13 @@ export interface TransportDropMonitorOptions {
 }
 
 export function defaultTcpProbe(host: string, port: number, timeoutMs = 5000): Promise<void> {
-  const { promise, resolve, reject } = Promise.withResolvers<void>();
+  // ES2022 lib: no Promise.withResolvers — manual resolve/reject capture instead.
+  let resolveFn!: () => void;
+  let rejectFn!: (err: Error) => void;
+  const promise = new Promise<void>((resolve, reject) => {
+    resolveFn = resolve;
+    rejectFn = reject;
+  });
   const socket = new net.Socket();
   let settled = false;
 
@@ -26,30 +32,30 @@ export function defaultTcpProbe(host: string, port: number, timeoutMs = 5000): P
     if (settled) return;
     settled = true;
     cleanup();
-    resolve();
+    resolveFn();
   });
 
   socket.once('timeout', () => {
     if (settled) return;
     settled = true;
     cleanup();
-    reject(new Error(`TCP probe timed out after ${timeoutMs}ms`));
+    rejectFn(new Error(`TCP probe timed out after ${timeoutMs}ms`));
   });
 
   socket.once('error', (err) => {
     if (settled) return;
     settled = true;
     cleanup();
-    reject(err);
+    rejectFn(err);
   });
 
   try {
     socket.connect(port, host);
   } catch (err) {
-    if (settled) return;
+    if (settled) return promise;
     settled = true;
     cleanup();
-    reject(err);
+    rejectFn(err instanceof Error ? err : new Error(String(err)));
   }
 
   return promise;

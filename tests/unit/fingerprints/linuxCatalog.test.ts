@@ -14,7 +14,7 @@ describe('Linux Desktop Fingerprint Catalog Suite', () => {
 
   it('all 6 Linux desktop families have valid StatCounter citations and fontsClass linux-freetype', () => {
     for (const family of LINUX_DESKTOP_FAMILIES) {
-      expect(family.platform).toBe('linux');
+      expect(family.coherenceConstraints.platform).toBe('linux');
       expect(family.fontsClass).toBe('linux-freetype');
       expect(family.citation).toBeDefined();
       expect(family.citation.source).toContain('StatCounter');
@@ -34,7 +34,7 @@ describe('Linux Desktop Fingerprint Catalog Suite', () => {
   it('returns Linux families when filtering by platform linux in getCatalogFamilies', () => {
     const linuxFamilies = getCatalogFamilies({ platform: 'linux' });
     expect(linuxFamilies.length).toBe(6);
-    expect(linuxFamilies.every((f) => f.platform === 'linux')).toBe(true);
+    expect(linuxFamilies.every((f) => f.coherenceConstraints.platform === 'linux')).toBe(true);
   });
 
   it('preserves catalog weight sum invariant', () => {
