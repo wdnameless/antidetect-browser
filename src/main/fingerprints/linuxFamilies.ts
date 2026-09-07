@@ -1,0 +1,287 @@
+import { FingerprintCatalogFamily } from './types';
+
+export const LINUX_FREETYPE_FONTS: string[] = [
+  'DejaVu Sans',
+  'DejaVu Serif',
+  'DejaVu Sans Mono',
+  'Liberation Sans',
+  'Liberation Serif',
+  'Liberation Mono',
+  'Ubuntu',
+  'Ubuntu Medium',
+  'Ubuntu Mono',
+  'Noto Sans',
+  'Noto Serif',
+  'Noto Color Emoji',
+  'FreeSans',
+  'FreeSerif',
+  'FreeMono',
+];
+
+/**
+ * 6 Curated Linux Desktop Families with documented citations (StatCounter Linux Desktop share 2026).
+ * Total weight sums to 0.18 (Linux desktop pool of the normalized catalog).
+ */
+export const LINUX_FINGERPRINT_CATALOG: FingerprintCatalogFamily[] = [
+  {
+    id: 'linux-ubuntu-2404-intel-uhd-gnome',
+    platform: 'linux',
+    osVersion: 'Ubuntu 24.04 LTS (Noble Numbat)',
+    browserVersion: '131.0.0.0',
+    coherenceConstraints: {
+      platform: 'linux',
+      platformArch: 'x86',
+      bitness: '64',
+      mobile: false,
+    },
+    fontsClass: 'linux-freetype',
+    fontInventory: LINUX_FREETYPE_FONTS,
+    localePool: ['en-US', 'en-GB', 'de-DE', 'fr-FR', 'es-ES'],
+    audioSignature: {
+      sampleRate: 48000,
+      channelCount: 2,
+      dynamicsCompressorThreshold: -24,
+    },
+    gpu: {
+      vendor: 'Intel Open Source Technology Center',
+      renderer: 'Mesa Intel(R) UHD Graphics 770 (ADL-S GT1)',
+    },
+    gpuRenderer: 'Mesa Intel(R) UHD Graphics 770 (ADL-S GT1)',
+    cpu: {
+      arch: 'x86_64',
+      coresMin: 8,
+      coresMax: 16,
+    },
+    screen: {
+      minWidth: 1920,
+      maxWidth: 2560,
+      minHeight: 1080,
+      maxHeight: 1440,
+      devicePixelRatios: [1, 1.25],
+    },
+    weight: 0.05,
+    citation: {
+      source: 'StatCounter Global Stats - Linux Desktop Distro Market Share',
+      date: '2026-02',
+      notes: 'Ubuntu 24.04 LTS GNOME with Mesa Intel UHD graphics stack, primary enterprise Linux workstation.',
+    },
+  },
+  {
+    id: 'linux-ubuntu-2204-amd-radeon-gnome',
+    platform: 'linux',
+    osVersion: 'Ubuntu 22.04 LTS (Jammy Jellyfish)',
+    browserVersion: '130.0.0.0',
+    coherenceConstraints: {
+      platform: 'linux',
+      platformArch: 'x86',
+      bitness: '64',
+      mobile: false,
+    },
+    fontsClass: 'linux-freetype',
+    fontInventory: LINUX_FREETYPE_FONTS,
+    localePool: ['en-US', 'de-DE', 'ru-RU', 'zh-CN', 'ja-JP'],
+    audioSignature: {
+      sampleRate: 48000,
+      channelCount: 2,
+      dynamicsCompressorThreshold: -24,
+    },
+    gpu: {
+      vendor: 'AMD',
+      renderer: 'AMD Radeon RX 6700 XT (radeonsi, navi22, LLVM 15.0.7, DRM 3.42)',
+    },
+    gpuRenderer: 'AMD Radeon RX 6700 XT (radeonsi, navi22, LLVM 15.0.7, DRM 3.42)',
+    cpu: {
+      arch: 'x86_64',
+      coresMin: 6,
+      coresMax: 12,
+    },
+    screen: {
+      minWidth: 1920,
+      maxWidth: 2560,
+      minHeight: 1080,
+      maxHeight: 1440,
+      devicePixelRatios: [1, 1.5],
+    },
+    weight: 0.04,
+    citation: {
+      source: 'StatCounter Global Stats - Linux Desktop Distro Market Share',
+      date: '2026-01',
+      notes: 'Ubuntu 22.04 LTS GNOME on AMD Radeon 6000 series with open-source Mesa radeonsi driver.',
+    },
+  },
+  {
+    id: 'linux-fedora-40-intel-arc-gnome',
+    platform: 'linux',
+    osVersion: 'Fedora Linux 40 (Workstation Edition)',
+    browserVersion: '131.0.0.0',
+    coherenceConstraints: {
+      platform: 'linux',
+      platformArch: 'x86',
+      bitness: '64',
+      mobile: false,
+    },
+    fontsClass: 'linux-freetype',
+    fontInventory: LINUX_FREETYPE_FONTS,
+    localePool: ['en-US', 'en-CA', 'de-DE', 'pl-PL', 'nl-NL'],
+    audioSignature: {
+      sampleRate: 48000,
+      channelCount: 2,
+      dynamicsCompressorThreshold: -24,
+    },
+    gpu: {
+      vendor: 'Intel Open Source Technology Center',
+      renderer: 'Mesa Intel(R) Arc(tm) A770 Graphics (DG2)',
+    },
+    gpuRenderer: 'Mesa Intel(R) Arc(tm) A770 Graphics (DG2)',
+    cpu: {
+      arch: 'x86_64',
+      coresMin: 8,
+      coresMax: 20,
+    },
+    screen: {
+      minWidth: 1920,
+      maxWidth: 3840,
+      minHeight: 1080,
+      maxHeight: 2160,
+      devicePixelRatios: [1, 1.25, 2],
+    },
+    weight: 0.035,
+    citation: {
+      source: 'StatCounter Global Stats - Linux Desktop Distro Market Share',
+      date: '2026-02',
+      notes: 'Fedora 40 Workstation GNOME with modern Intel Arc graphics running latest Mesa driver stack.',
+    },
+  },
+  {
+    id: 'linux-debian-12-amd-kde',
+    platform: 'linux',
+    osVersion: 'Debian GNU/Linux 12 (bookworm)',
+    browserVersion: '128.0.0.0',
+    coherenceConstraints: {
+      platform: 'linux',
+      platformArch: 'x86',
+      bitness: '64',
+      mobile: false,
+    },
+    fontsClass: 'linux-freetype',
+    fontInventory: LINUX_FREETYPE_FONTS,
+    localePool: ['en-US', 'fr-FR', 'de-DE', 'it-IT', 'pt-BR'],
+    audioSignature: {
+      sampleRate: 44100,
+      channelCount: 2,
+      dynamicsCompressorThreshold: -24,
+    },
+    gpu: {
+      vendor: 'AMD',
+      renderer: 'AMD Radeon RX 580 Series (radeonsi, polaris10, LLVM 15.0.6, DRM 3.49)',
+    },
+    gpuRenderer: 'AMD Radeon RX 580 Series (radeonsi, polaris10, LLVM 15.0.6, DRM 3.49)',
+    cpu: {
+      arch: 'x86_64',
+      coresMin: 4,
+      coresMax: 8,
+    },
+    screen: {
+      minWidth: 1920,
+      maxWidth: 1920,
+      minHeight: 1080,
+      maxHeight: 1080,
+      devicePixelRatios: [1],
+    },
+    weight: 0.025,
+    citation: {
+      source: 'StatCounter Global Stats - Linux Desktop Distro Market Share',
+      date: '2026-01',
+      notes: 'Debian 12 Bookworm KDE Plasma with legacy AMD Polaris GPU and stable Mesa drivers.',
+    },
+  },
+  {
+    id: 'linux-ubuntu-nvidia-rtx-wayland',
+    platform: 'linux',
+    osVersion: 'Ubuntu 24.04 LTS (Noble Numbat)',
+    browserVersion: '131.0.0.0',
+    coherenceConstraints: {
+      platform: 'linux',
+      platformArch: 'x86',
+      bitness: '64',
+      mobile: false,
+    },
+    fontsClass: 'linux-freetype',
+    fontInventory: LINUX_FREETYPE_FONTS,
+    localePool: ['en-US', 'en-GB', 'ja-JP', 'ko-KR', 'zh-TW'],
+    audioSignature: {
+      sampleRate: 48000,
+      channelCount: 2,
+      dynamicsCompressorThreshold: -24,
+    },
+    gpu: {
+      vendor: 'NVIDIA Corporation',
+      renderer: 'NVIDIA GeForce RTX 4070/PCIe/SSE2',
+    },
+    gpuRenderer: 'NVIDIA GeForce RTX 4070/PCIe/SSE2',
+    cpu: {
+      arch: 'x86_64',
+      coresMin: 12,
+      coresMax: 24,
+    },
+    screen: {
+      minWidth: 2560,
+      maxWidth: 3840,
+      minHeight: 1440,
+      maxHeight: 2160,
+      devicePixelRatios: [1, 1.25, 1.5],
+    },
+    weight: 0.015,
+    citation: {
+      source: 'StatCounter Global Stats - Linux Desktop Distro Market Share',
+      date: '2026-03',
+      notes: 'Ubuntu 24.04 LTS with proprietary NVIDIA 555+ driver on Wayland compositor.',
+    },
+  },
+  {
+    id: 'linux-mint-cinnamon-intel-iris',
+    platform: 'linux',
+    osVersion: 'Linux Mint 22 (Wilma)',
+    browserVersion: '130.0.0.0',
+    coherenceConstraints: {
+      platform: 'linux',
+      platformArch: 'x86',
+      bitness: '64',
+      mobile: false,
+    },
+    fontsClass: 'linux-freetype',
+    fontInventory: LINUX_FREETYPE_FONTS,
+    localePool: ['en-US', 'en-CA', 'es-ES', 'pl-PL', 'cs-CZ'],
+    audioSignature: {
+      sampleRate: 48000,
+      channelCount: 2,
+      dynamicsCompressorThreshold: -24,
+    },
+    gpu: {
+      vendor: 'Intel Open Source Technology Center',
+      renderer: 'Mesa Intel(R) Iris(R) Xe Graphics (TGL GT2)',
+    },
+    gpuRenderer: 'Mesa Intel(R) Iris(R) Xe Graphics (TGL GT2)',
+    cpu: {
+      arch: 'x86_64',
+      coresMin: 4,
+      coresMax: 8,
+    },
+    screen: {
+      minWidth: 1920,
+      maxWidth: 1920,
+      minHeight: 1080,
+      maxHeight: 1080,
+      devicePixelRatios: [1, 1.25],
+    },
+    weight: 0.015,
+    citation: {
+      source: 'StatCounter Global Stats - Linux Desktop Distro Market Share',
+      date: '2026-02',
+      notes: 'Linux Mint 22 Cinnamon edition on Intel Iris Xe mobile platform, popular enthusiast consumer desktop.',
+    },
+  },
+];
+
+/** Alias used by UI and tests: the curated Linux desktop family set. */
+export const LINUX_DESKTOP_FAMILIES = LINUX_FINGERPRINT_CATALOG;

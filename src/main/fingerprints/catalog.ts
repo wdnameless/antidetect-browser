@@ -1,3 +1,5 @@
+import { LINUX_FINGERPRINT_CATALOG } from './linuxFamilies';
+export { LINUX_FINGERPRINT_CATALOG, LINUX_DESKTOP_FAMILIES } from './linuxFamilies';
 import { MACOS_FINGERPRINT_CATALOG } from './macosFamilies';
 import { WINDOWS_11_REFRESH_FAMILIES } from './win11Families';
 export { MACOS_FINGERPRINT_CATALOG } from './macosFamilies';
@@ -731,6 +733,7 @@ export const EXTENDED_FINGERPRINT_CATALOG: FingerprintCatalogFamily[] = [
   ...WINDOWS_FINGERPRINT_CATALOG.map(migrateFamilyRecord),
   ...MACOS_FINGERPRINT_CATALOG,
   ...WINDOWS_11_REFRESH_FAMILIES,
+  ...LINUX_FINGERPRINT_CATALOG,
 ];
 
 /**

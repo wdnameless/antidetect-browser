@@ -69,6 +69,35 @@ export function validateFamilyCoherence(family: FingerprintCatalogFamily): Valid
         `Apple chip '${family.chip}' cannot be paired with Windows platform.`
       );
     }
+  } else if (platform === 'linux') {
+    if (APPLE_GPU_REGEX.test(renderer)) {
+      addViolation(
+        ['gpuRenderer', 'platform'],
+        `Apple Silicon GPU '${renderer}' cannot run on Linux platform.`
+      );
+    }
+    if (family.chip && family.chip.startsWith('M')) {
+      addViolation(
+        ['chip', 'platform'],
+        `Apple chip '${family.chip}' cannot be paired with Linux platform.`
+      );
+    }
+    const hasValidLinuxGpu =
+      renderer.includes('Mesa') ||
+      renderer.includes('Intel') ||
+      renderer.includes('AMD') ||
+      renderer.includes('Radeon') ||
+      renderer.includes('NVIDIA') ||
+      renderer.includes('nouveau') ||
+      family.gpu.vendor.includes('Intel') ||
+      family.gpu.vendor.includes('AMD') ||
+      family.gpu.vendor.includes('NVIDIA');
+    if (!hasValidLinuxGpu) {
+      addViolation(
+        ['gpuRenderer', 'platform'],
+        `Linux desktop GPU renderer '${renderer}' must correspond to Mesa, Intel, AMD/Radeon, or NVIDIA graphics stack.`
+      );
+    }
   }
 
   // 2. UA & UA-CH coherence
@@ -99,6 +128,19 @@ export function validateFamilyCoherence(family: FingerprintCatalogFamily): Valid
         addViolation(
           ['uaProfile.userAgent', 'platform'],
           `Windows family userAgent must contain 'Windows NT', found '${userAgent}'`
+        );
+      }
+      if (chArch && chArch !== platformArch) {
+        addViolation(
+          ['uaProfile.architecture', 'platformArch'],
+          `UA-CH architecture '${chArch}' does not match platformArch '${platformArch}'`
+        );
+      }
+    } else if (platform === 'linux') {
+      if (!userAgent.includes('Linux') && !userAgent.includes('X11')) {
+        addViolation(
+          ['uaProfile.userAgent', 'platform'],
+          `Linux family userAgent must contain 'Linux' or 'X11', found '${userAgent}'`
         );
       }
       if (chArch && chArch !== platformArch) {
@@ -186,6 +228,31 @@ export function validateFamilyCoherence(family: FingerprintCatalogFamily): Valid
         addViolation(
           ['fontInventory', 'platform'],
           `Apple font '${mf}' must not be in Windows font inventory.`
+        );
+      }
+    }
+  } else if (platform === 'linux') {
+    if (family.fontsClass !== 'linux-freetype') {
+      addViolation(
+        ['fontsClass', 'platform'],
+        `Linux family must use 'linux-freetype' font class, found '${family.fontsClass}'`
+      );
+    }
+    const forbiddenMacFonts = ['SF Pro', 'SF Pro Text', 'Menlo', 'Monaco', 'PingFang SC', 'Apple Color Emoji'];
+    for (const mf of forbiddenMacFonts) {
+      if (fonts.includes(mf)) {
+        addViolation(
+          ['fontInventory', 'platform'],
+          `macOS font '${mf}' must not be in Linux font inventory.`
+        );
+      }
+    }
+    const forbiddenWinFonts = ['Segoe UI', 'Segoe UI Variable', 'Calibri', 'Cambria', 'Consolas', 'MS Gothic'];
+    for (const wf of forbiddenWinFonts) {
+      if (fonts.includes(wf)) {
+        addViolation(
+          ['fontInventory', 'platform'],
+          `Windows font '${wf}' must not be in Linux font inventory.`
         );
       }
     }
