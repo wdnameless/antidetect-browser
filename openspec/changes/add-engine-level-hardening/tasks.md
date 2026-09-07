@@ -22,17 +22,17 @@
 
 ## 5. WebGPU adapter spoofing (parity program 2026-09-07)
 
-- [ ] 5.1 JS-interim: hook `navigator.gpu.requestAdapter` in `stealthInjection.ts` returning the profile family's adapter info (vendor, architecture, device, features, limits) with native-code `toString` integrity per `interim-stealth-hardening`; mark `TODO(engine-parity: webgpu-dawn)`.
-- [ ] 5.2 Engine patch spec: Dawn/device-layer adapter substitution gated by `--stealth-engine-profile`; document patch-set file targets for the private-engine build chain.
-- [ ] 5.3 Tests: adapter response matches profile family GPU for windows/macos/linux families; `requestAdapterInfo()` fields coherent with WebGL renderer; absent-gpu profiles resolve `undefined` like real Linux Chrome.
+- [x] 5.1 JS-interim: hook `navigator.gpu.requestAdapter` in `stealthInjection.ts` returning the profile family's adapter info (vendor, architecture, device, features, limits) with native-code `toString` integrity per `interim-stealth-hardening`; mark `TODO(engine-parity: webgpu-dawn)`.
+- [x] 5.2 Engine patch spec: Dawn/device-layer adapter substitution gated by `--stealth-engine-profile`; document patch-set file targets for the private-engine build chain. (spec row documented in design.md §5; implementation deferred to the private-engine chain)
+- [x] 5.3 Tests: adapter response matches profile family GPU for windows/macos/linux families; `requestAdapterInfo()` fields coherent with WebGL renderer; absent-gpu profiles resolve `undefined` like real Linux Chrome. (`tests/unit/stealth/engineSurfaces.test.ts`)
 
 ## 6. WebAuthn platform authenticator (parity program 2026-09-07)
 
-- [ ] 6.1 JS-interim: hook `PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable` returning `true` only for profile families whose claimed device ships a platform authenticator; mark `TODO(engine-parity: webauthn)`.
-- [ ] 6.2 Engine patch spec: native availability response gated by `--stealth-engine-profile`; document Blink/WebAuthn patch targets.
-- [ ] 6.3 Tests: availability matrix across families (macOS M-series true, old desktop families false, matching real-device behavior).
+- [x] 6.1 JS-interim: hook `PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable` returning `true` only for profile families whose claimed device ships a platform authenticator; mark `TODO(engine-parity: webauthn)`.
+- [x] 6.2 Engine patch spec: native availability response gated by `--stealth-engine-profile`; document Blink/WebAuthn patch targets. (spec row documented in design.md §6; implementation deferred to the private-engine chain)
+- [x] 6.3 Tests: availability matrix across families (macOS M-series true, old desktop families false, matching real-device behavior). (`tests/unit/stealth/engineSurfaces.test.ts`)
 
 ## 7. Native Motion input domain (parity program 2026-09-07)
 
-- [ ] 7.1 Engine patch spec: native Motion domain in the input pipeline (pointer trajectories, keystroke synthesis, per-profile motor seeds from `--stealth-engine-profile` config) superseding the launcher-side handler from `add-motion-cdp-domain` once the private engine lands; document patch targets.
-- [ ] 7.2 Launcher contract stability: the launcher-side handler keeps command names, parameters, and error codes byte-stable so the engine patch is a drop-in swap; hidden-domain requirement (`add-motion-cdp-domain` spec) carries over unchanged.
+- [ ] 7.1 Engine patch spec: native Motion domain in the input pipeline (pointer trajectories, keystroke synthesis, per-profile motor seeds from `--stealth-engine-profile` config) superseding the launcher-side handler from `add-motion-cdp-domain` once the private engine lands; document patch targets. (spec row documented in design.md §7; implementation deferred to the private-engine chain)
+- [ ] 7.2 Launcher contract stability: the launcher-side handler keeps command names, parameters, and error codes byte-stable so the engine patch is a drop-in swap; hidden-domain requirement (`add-motion-cdp-domain` spec) carries over unchanged. (contract owned by `add-motion-cdp-domain`; enforce at engine-patch time)
