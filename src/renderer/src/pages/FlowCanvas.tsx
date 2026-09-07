@@ -12,12 +12,12 @@ import {
 import { validateFlow } from '../../../main/flows/validator';
 import { getApiBase } from '../api';
 import {
-  parseSseEventData,
+  parseSseLine,
   extractScreenshotRef,
-  extractTimingRef,
+  extractNodeTiming,
   reduceLogLines,
   shouldAutoScroll,
-  LiveRunLogEntry,
+  SseLogEntry,
 } from '../flowLiveRun';
 
 export type { CanvasNodeState, CanvasEdgeState };
@@ -150,7 +150,7 @@ export function FlowCanvas() {
   const [activeTaskGroupId, setActiveTaskGroupId] = useState<string | null>(null);
   const [activeTaskUuid, setActiveTaskUuid] = useState<string | null>(null);
   const [runStatus, setRunStatus] = useState<'idle' | 'running' | 'finished' | 'error' | 'stop'>('idle');
-  const [runLogs, setRunLogs] = useState<LiveRunLogEntry[]>([]);
+  const [runLogs, setRunLogs] = useState<SseLogEntry[]>([]);
   const [runError, setRunError] = useState<string | null>(null);
   const [nodeTimings, setNodeTimings] = useState<Record<string, number>>({});
   const [isScrolledUp, setIsScrolledUp] = useState<boolean>(false);
@@ -218,26 +218,25 @@ export function FlowCanvas() {
 
     es.onmessage = (e) => {
       try {
-        const parsed = parseSseEventData(e.data);
-        if (parsed.type === 'end') {
-          setRunStatus(parsed.status as 'finished' | 'error' | 'stop');
+        const parsed = parseSseLine(e.data);
+        if (parsed?.end) {
+          setRunStatus(parsed.end.status);
           setIsRunning(false);
           es.close();
           eventSourceRef.current = null;
           return;
         }
 
-        if (parsed.type === 'log') {
-          const rawLine = parsed.entry.line;
-          const timing = extractTimingRef(rawLine);
-          if (timing) {
+        if (parsed?.log) {
+          const entry = parsed.log;
+          if (entry.nodeId) {
             setNodeTimings(prev => ({
               ...prev,
-              [timing.nodeId]: timing.durationMs ?? (prev[timing.nodeId] || 0),
+              [entry.nodeId as string]: entry.durationMs ?? (prev[entry.nodeId as string] || 0),
             }));
           }
 
-          setRunLogs(prev => reduceLogLines(prev, parsed.entry, 200));
+          setRunLogs(prev => reduceLogLines(prev, entry, 200));
         }
       } catch {
         // ignore parse error
@@ -328,8 +327,9 @@ export function FlowCanvas() {
         taskUuid = taskGroupId;
       }
 
-      setActiveTaskUuid(taskUuid);
-      connectLogsStream(taskUuid);
+      const streamUuid = taskUuid || taskGroupId || 'unknown';
+      setActiveTaskUuid(streamUuid);
+      connectLogsStream(streamUuid);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       setRunError(msg);
@@ -2098,15 +2098,15 @@ export function FlowCanvas() {
                         maxWidth: 400,
                       }}
                     >
-                      {screenshot.isDataUrl ? (
+                      {screenshot.startsWith('data:image/') ? (
                         <img
-                          src={screenshot.ref}
+                          src={screenshot}
                           alt="screenshot preview"
                           style={{ width: '100%', maxHeight: 180, objectFit: 'contain', borderRadius: 2 }}
                         />
                       ) : (
                         <div style={{ fontSize: 10, color: '#38bdf8' }}>
-                          🖼️ Screenshot: {screenshot.ref}
+                          🖼️ Screenshot: {screenshot}
                         </div>
                       )}
                     </div>

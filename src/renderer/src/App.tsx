@@ -3,7 +3,7 @@ import { initApiKey, api } from './api';
 import { useI18n } from './i18n';
 import {
   SIDEBAR_COLLAPSED_KEY,
-  initSidebarCollapsed,
+  getStoredSidebarCollapsed,
   persistSidebarCollapsed,
   computeRunningCount,
   isToggleShortcut
@@ -69,7 +69,7 @@ export function App() {
   const [page, setPage] = useState<Page>('profiles');
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
   const [workspace, setWorkspace] = useState('personal');
-  const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(() => initSidebarCollapsed());
+  const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(() => getStoredSidebarCollapsed());
   const [runningCount, setRunningCount] = useState<number>(0);
   const [syncConnected, setSyncConnected] = useState<boolean>(false);
   useEffect(() => {
