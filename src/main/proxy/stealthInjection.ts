@@ -34,6 +34,15 @@ export interface StealthOptions {
   chip?: string;
   architecture?: string;
   fontList?: string[];
+  webgpu?: {
+    vendor?: string;
+    architecture?: string;
+    device?: string;
+    description?: string;
+    disabled?: boolean;
+    limitsClass?: 'high-end' | 'mid-range' | 'integrated' | 'budget';
+  } | null;
+  webauthnPlatformAuthenticator?: boolean;
 }
 
 const BRANDS = [
@@ -91,6 +100,248 @@ function getArchitecture(lp: LogicalPlatform, chip?: string, forcedArch?: string
       return 'x86';
   }
 }
+export interface WebGpuInterimConfig {
+  disabled?: boolean;
+  vendor?: string;
+  architecture?: string;
+  device?: string;
+  description?: string;
+  features?: string[];
+  limits?: Record<string, number>;
+}
+
+export function resolveWebGpuConfig(opts: StealthOptions): WebGpuInterimConfig | null {
+  if (opts.webgpu?.disabled) {
+    return { disabled: true };
+  }
+  if (opts.webgpu) {
+    const defaultLimits = {
+      maxTextureDimension1D: 8192,
+      maxTextureDimension2D: 8192,
+      maxTextureDimension3D: 2048,
+      maxTextureArrayLayers: 256,
+      maxBindGroups: 4,
+      maxDynamicUniformBuffersPerPipelineLayout: 8,
+      maxDynamicStorageBuffersPerPipelineLayout: 4,
+      maxSampledTexturesPerShaderStage: 16,
+      maxSamplersPerShaderStage: 16,
+      maxStorageBuffersPerShaderStage: 8,
+      maxStorageTexturesPerShaderStage: 4,
+      maxUniformBuffersPerShaderStage: 12,
+      maxUniformBufferBindingSize: 65536,
+      maxStorageBufferBindingSize: 134217728,
+      minUniformBufferOffsetAlignment: 256,
+      minStorageBufferOffsetAlignment: 256,
+      maxVertexBuffers: 8,
+      maxBufferSize: 268435456,
+      maxVertexAttributes: 16,
+      maxVertexBufferArrayStride: 2048,
+      maxInterStageShaderVariables: 16,
+      maxColorAttachments: 8,
+      maxColorAttachmentBytesPerSample: 32,
+      maxComputeWorkgroupStorageSize: 16384,
+      maxComputeInvocationsPerWorkgroup: 256,
+      maxComputeWorkgroupSizeX: 256,
+      maxComputeWorkgroupSizeY: 256,
+      maxComputeWorkgroupSizeZ: 64,
+      maxComputeWorkgroupsPerDimension: 65535,
+    };
+    return {
+      disabled: false,
+      vendor: opts.webgpu.vendor ?? 'intel',
+      architecture: opts.webgpu.architecture ?? 'gen-12',
+      device: opts.webgpu.device ?? 'Intel Iris Xe Graphics',
+      description: opts.webgpu.description ?? opts.webgpu.device ?? 'Intel Iris Xe Graphics',
+      features: [
+        'depth-clip-control',
+        'depth32float-stencil8',
+        'texture-compression-bc',
+        'indirect-first-instance',
+        'rg11b10ufloat-renderable',
+        'bgra8unorm-storage',
+        'float32-filterable',
+      ],
+      limits: defaultLimits,
+    };
+  }
+
+  const lp = opts.logicalPlatform;
+  const renderer = opts.webglRenderer ?? '';
+  const rLower = renderer.toLowerCase();
+
+  // Linux headless / no-gpu families -> resolve undefined (no adapter)
+  if (lp === 'linux' && (rLower.includes('llvmpipe') || rLower.includes('software') || rLower.includes('swiftshader') || rLower.includes('mesa offscreen') || !renderer)) {
+    return null;
+  }
+
+  let vendor = 'intel';
+  let architecture = 'gen-12';
+  let device = 'Intel UHD Graphics';
+  let description = renderer || 'Intel Graphics';
+
+  if (lp === 'macos') {
+    vendor = 'apple';
+    if (rLower.includes('m1 pro') || rLower.includes('m1 max') || rLower.includes('m1 ultra')) {
+      architecture = 'apple-m1-pro';
+      device = 'Apple M1 Pro';
+    } else if (rLower.includes('m1')) {
+      architecture = 'apple-m1';
+      device = 'Apple M1';
+    } else if (rLower.includes('m2 pro') || rLower.includes('m2 max') || rLower.includes('m2 ultra')) {
+      architecture = 'apple-m2-pro';
+      device = 'Apple M2 Pro';
+    } else if (rLower.includes('m2')) {
+      architecture = 'apple-m2';
+      device = 'Apple M2';
+    } else if (rLower.includes('m3')) {
+      architecture = 'apple-m3';
+      device = 'Apple M3';
+    } else if (rLower.includes('m4')) {
+      architecture = 'apple-m4';
+      device = 'Apple M4';
+    } else if (rLower.includes('intel') || rLower.includes('iris')) {
+      vendor = 'intel';
+      architecture = 'gen-9';
+      device = 'Intel Iris Plus Graphics 655';
+    } else {
+      architecture = 'apple-m2';
+      device = 'Apple M2';
+    }
+    description = device;
+  } else if (rLower.includes('nvidia') || rLower.includes('geforce') || rLower.includes('rtx') || rLower.includes('gtx')) {
+    vendor = 'nvidia';
+    if (rLower.includes('4090') || rLower.includes('4080') || rLower.includes('4070') || rLower.includes('4060')) {
+      architecture = 'ada-lovelace';
+      device = rLower.includes('4070') ? 'NVIDIA GeForce RTX 4070' : 'NVIDIA GeForce RTX 4060';
+    } else if (rLower.includes('3080') || rLower.includes('3070') || rLower.includes('3060')) {
+      architecture = 'ampere';
+      device = 'NVIDIA GeForce RTX 3060';
+    } else if (rLower.includes('1650') || rLower.includes('1660') || rLower.includes('2060')) {
+      architecture = 'turing';
+      device = 'NVIDIA GeForce GTX 1650';
+    } else {
+      architecture = 'ampere';
+      device = 'NVIDIA GeForce RTX 3060';
+    }
+    description = device;
+  } else if (rLower.includes('amd') || rLower.includes('radeon')) {
+    vendor = 'amd';
+    if (rLower.includes('7800') || rLower.includes('7900') || rLower.includes('780m')) {
+      architecture = 'rdna-3';
+      device = rLower.includes('7800') ? 'AMD Radeon RX 7800 XT' : 'AMD Radeon 780M';
+    } else if (rLower.includes('6700') || rLower.includes('6800') || rLower.includes('6600') || rLower.includes('680m')) {
+      architecture = 'rdna-2';
+      device = rLower.includes('6700') ? 'AMD Radeon RX 6700 XT' : 'AMD Radeon RX 6600';
+    } else {
+      architecture = 'rdna-2';
+      device = 'AMD Radeon RX 6600';
+    }
+    description = device;
+  } else if (rLower.includes('qualcomm') || rLower.includes('adreno')) {
+    vendor = 'qualcomm';
+    architecture = 'adreno-x1';
+    device = 'Qualcomm(R) Adreno(TM) X1-85 GPU';
+    description = device;
+  } else if (rLower.includes('arc') || rLower.includes('a770') || rLower.includes('a370')) {
+    vendor = 'intel';
+    architecture = 'alchemist';
+    device = rLower.includes('a770') ? 'Intel(R) Arc(TM) A770 Graphics' : 'Intel(R) Arc(TM) Graphics';
+    description = device;
+  } else if (rLower.includes('iris')) {
+    vendor = 'intel';
+    architecture = 'gen-12';
+    device = 'Intel(R) Iris(R) Xe Graphics';
+    description = device;
+  } else if (rLower.includes('uhd')) {
+    vendor = 'intel';
+    if (rLower.includes('770') || rLower.includes('730')) {
+      architecture = 'gen-12';
+      device = rLower.includes('770') ? 'Intel(R) UHD Graphics 770' : 'Intel(R) UHD Graphics 730';
+    } else {
+      architecture = 'gen-9';
+      device = 'Intel(R) UHD Graphics 620';
+    }
+    description = device;
+  }
+
+  const defaultLimits = {
+    maxTextureDimension1D: 8192,
+    maxTextureDimension2D: 8192,
+    maxTextureDimension3D: 2048,
+    maxTextureArrayLayers: 256,
+    maxBindGroups: 4,
+    maxDynamicUniformBuffersPerPipelineLayout: 8,
+    maxDynamicStorageBuffersPerPipelineLayout: 4,
+    maxSampledTexturesPerShaderStage: 16,
+    maxSamplersPerShaderStage: 16,
+    maxStorageBuffersPerShaderStage: 8,
+    maxStorageTexturesPerShaderStage: 4,
+    maxUniformBuffersPerShaderStage: 12,
+    maxUniformBufferBindingSize: 65536,
+    maxStorageBufferBindingSize: 134217728,
+    minUniformBufferOffsetAlignment: 256,
+    minStorageBufferOffsetAlignment: 256,
+    maxVertexBuffers: 8,
+    maxBufferSize: 268435456,
+    maxVertexAttributes: 16,
+    maxVertexBufferArrayStride: 2048,
+    maxInterStageShaderVariables: 16,
+    maxColorAttachments: 8,
+    maxColorAttachmentBytesPerSample: 32,
+    maxComputeWorkgroupStorageSize: 16384,
+    maxComputeInvocationsPerWorkgroup: 256,
+    maxComputeWorkgroupSizeX: 256,
+    maxComputeWorkgroupSizeY: 256,
+    maxComputeWorkgroupSizeZ: 64,
+    maxComputeWorkgroupsPerDimension: 65535,
+  };
+
+  return {
+    disabled: false,
+    vendor,
+    architecture,
+    device,
+    description,
+    features: [
+      'depth-clip-control',
+      'depth32float-stencil8',
+      'texture-compression-bc',
+      'indirect-first-instance',
+      'rg11b10ufloat-renderable',
+      'bgra8unorm-storage',
+      'float32-filterable',
+    ],
+    limits: defaultLimits,
+  };
+}
+
+export function resolveWebAuthnPlatformAuthenticator(opts: StealthOptions): boolean {
+  if (typeof opts.webauthnPlatformAuthenticator === 'boolean') {
+    return opts.webauthnPlatformAuthenticator;
+  }
+  const lp = opts.logicalPlatform;
+  if (lp === 'macos') {
+    // Apple Silicon macs have Touch ID platform authenticator; older Intel macs usually don't
+    const chip = (opts.chip ?? '').toLowerCase();
+    const rLower = (opts.webglRenderer ?? '').toLowerCase();
+    if (chip.startsWith('m') || rLower.includes('apple m')) {
+      return true;
+    }
+    return false;
+  }
+  if (lp === 'windows') {
+    // Windows Hello: modern Win11 / Win10 often true, older windows families false
+    const pv = opts.platformVersion ?? '';
+    const majorVer = parseInt(pv.split('.')[0] || '0', 10);
+    // platformVersion '15.0.0' or higher corresponds to Windows 11
+    if (majorVer >= 15) {
+      return true;
+    }
+    return false;
+  }
+  // Linux typically does not have built-in platform authenticators
+  return false;
+}
 
 export function buildStealthScript(opts: StealthOptions): string {
   const masterSeed = opts.seed ?? 12345;
@@ -98,6 +349,8 @@ export function buildStealthScript(opts: StealthOptions): string {
   const voices: SyntheticVoice[] = getSyntheticVoicePool(opts.logicalPlatform, opts.locale ?? 'en-US');
   const mediaDevices: SyntheticMediaDevice[] = getSyntheticMediaDevices(masterSeed, opts.mobile);
   const hwVector = opts.logicalPlatform === 'windows' ? deriveHardwareVector(masterSeed) : null;
+  const webgpuCfg = resolveWebGpuConfig(opts);
+  const webauthnPlatformAuth = resolveWebAuthnPlatformAuthenticator(opts);
 
   const cfg = {
     mobile: opts.mobile,
@@ -120,6 +373,8 @@ export function buildStealthScript(opts: StealthOptions): string {
     webglNoise: opts.webglNoise ?? true,
     webglVendor: opts.webglVendor ?? (hwVector ? hwVector.gpuVendor : 'Google Inc. (NVIDIA)'),
     webglRenderer: opts.webglRenderer ?? (hwVector ? hwVector.gpuRenderer : 'ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 Direct3D11 vs_5_0 ps_5_0, D3D11)'),
+    webgpu: webgpuCfg,
+    webauthnPlatformAuth,
     seeds: subSeeds,
     voices,
     mediaDevices,
@@ -766,6 +1021,54 @@ export function buildStealthScript(opts: StealthOptions): string {
         Object.setPrototypeOf(batteryManager, BatteryManager.prototype);
       }
       return Promise.resolve(batteryManager);
+    });
+  }
+
+  // --- WebGPU Interim Surface Hardening ---
+  // TODO(engine-parity: webgpu-dawn): navigator.gpu.requestAdapter
+  if (typeof navigator !== 'undefined' && 'gpu' in navigator && navigator.gpu) {
+    const webgpuCfg = CFG.webgpu;
+    if (webgpuCfg && !webgpuCfg.disabled) {
+      hookMethod(navigator.gpu, 'requestAdapter', function requestAdapter(options) {
+        void options;
+        const adapterInfo = {
+          vendor: webgpuCfg.vendor || '',
+          architecture: webgpuCfg.architecture || '',
+          device: webgpuCfg.device || '',
+          description: webgpuCfg.description || '',
+        };
+        if (typeof GPUAdapterInfo !== 'undefined') {
+          Object.setPrototypeOf(adapterInfo, GPUAdapterInfo.prototype);
+        }
+        const adapter = {
+          isFallbackAdapter: false,
+          features: new Set(webgpuCfg.features || []),
+          limits: Object.assign({}, webgpuCfg.limits || {}),
+          requestAdapterInfo: makeNative(function requestAdapterInfo() {
+            return Promise.resolve(adapterInfo);
+          }, 'requestAdapterInfo', 0),
+          requestDevice: makeNative(function requestDevice() {
+            return Promise.resolve(null);
+          }, 'requestDevice', 0),
+        };
+        if (typeof GPUAdapter !== 'undefined') {
+          Object.setPrototypeOf(adapter, GPUAdapter.prototype);
+        }
+        return Promise.resolve(adapter);
+      });
+    } else {
+      hookMethod(navigator.gpu, 'requestAdapter', function requestAdapter() {
+        return Promise.resolve(undefined);
+      });
+    }
+  }
+
+  // --- WebAuthn Interim Surface Hardening ---
+  // TODO(engine-parity: webauthn): PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable
+  if (typeof PublicKeyCredential !== 'undefined' && PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable) {
+    const isAuthAvailable = Boolean(CFG.webauthnPlatformAuth);
+    hookMethod(PublicKeyCredential, 'isUserVerifyingPlatformAuthenticatorAvailable', function isUserVerifyingPlatformAuthenticatorAvailable() {
+      return Promise.resolve(isAuthAvailable);
     });
   }
 })();`;
