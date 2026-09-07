@@ -13,7 +13,9 @@ export function Extensions() {
   const [showForm, setShowForm] = useState(false);
   const [name, setName] = useState('');
   const [extPath, setExtPath] = useState('');
-
+  const [webStoreInput, setWebStoreInput] = useState('');
+  const [webStoreBusy, setWebStoreBusy] = useState(false);
+  const [webStoreSuccess, setWebStoreSuccess] = useState('');
   const [bindTarget, setBindTarget] = useState<{ extId: string; profileId: string } | null>(null);
 
   const load = useCallback(async () => {
@@ -47,6 +49,23 @@ export function Extensions() {
       setError((err as Error).message);
     } finally {
       setBusy(false);
+    }
+  };
+
+  const installWebStore = async () => {
+    if (!webStoreInput.trim()) return;
+    setWebStoreBusy(true);
+    setError('');
+    setWebStoreSuccess('');
+    try {
+      const res = await api.extensionInstall({ url: webStoreInput.trim() });
+      setWebStoreSuccess(`Installed "${res.name}" (v${res.version})${res.reused ? ' [reused]' : ''}`);
+      setWebStoreInput('');
+      await load();
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setWebStoreBusy(false);
     }
   };
 
@@ -133,6 +152,33 @@ export function Extensions() {
         </div>
       ) : null}
 
+      <div className="panel" style={{ marginBottom: 20 }}>
+        <div className="panel-header">Install from Chrome Web Store</div>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <input
+            style={{ flex: 1 }}
+            placeholder="Enter Web Store URL or 32-char ID (e.g. https://chromewebstore.google.com/detail/...)"
+            value={webStoreInput}
+            onChange={(e) => setWebStoreInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') void installWebStore();
+            }}
+            disabled={webStoreBusy}
+          />
+          <button
+            className="btn primary"
+            onClick={() => void installWebStore()}
+            disabled={webStoreBusy || !webStoreInput.trim()}
+          >
+            {webStoreBusy ? 'Installing...' : 'Install from Web Store'}
+          </button>
+        </div>
+        {webStoreSuccess ? (
+          <div style={{ marginTop: 8, color: 'var(--success, #10b981)', fontSize: 13 }}>
+            {webStoreSuccess}
+          </div>
+        ) : null}
+      </div>
       <div className="table-container">
         <table className="table">
           <thead>

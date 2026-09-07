@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import * as em from '../../extensions/extensionManager';
+import { installFromWebStore, WebStoreError } from '../../extensions/webstore';
 import { getDb } from '../../db';
 
 const router = Router();
@@ -17,6 +18,45 @@ router.post('/api/v1/extension/import', (req, res) => {
     res.json({ code: 0, msg: 'success', data: { extension_id: id } });
   } catch (err) {
     res.json({ code: -1, msg: (err as Error).message, data: {} });
+  }
+});
+
+const installSchema = z.object({
+  url: z.string().optional(),
+  id: z.string().optional(),
+  path: z.string().optional(),
+}).refine((data) => !!(data.url || data.id || data.path), {
+  message: 'Must provide url, id, or path',
+});
+
+router.post('/api/v1/extension/install', async (req, res) => {
+  const parsed = installSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ code: -1, msg: 'INVALID_INPUT', error: 'INVALID_INPUT', details: parsed.error.flatten() });
+    return;
+  }
+  const target = parsed.data.url || parsed.data.id || parsed.data.path || '';
+  try {
+    const result = await installFromWebStore(target);
+    res.json({
+      code: 0,
+      msg: 'success',
+      data: {
+        extension_id: result.id,
+        name: result.name,
+        version: result.version,
+        reused: result.reused,
+      },
+    });
+  } catch (err) {
+    if (err instanceof WebStoreError) {
+      let statusCode = 400;
+      if (err.code === 'NOT_FOUND') statusCode = 404;
+      else if (err.code === 'FETCH_ERROR') statusCode = 502;
+      res.status(statusCode).json({ code: -1, msg: err.message, error: err.code });
+      return;
+    }
+    res.status(500).json({ code: -1, msg: (err as Error).message, error: 'INTERNAL_ERROR' });
   }
 });
 
