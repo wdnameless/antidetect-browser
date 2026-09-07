@@ -5,11 +5,25 @@ import { EXTENSIONS_DIR } from '../config';
 import { getInstalledKernelVersion } from '../util/kernelUpdate';
 import { importExtension, listExtensions, ExtensionRow } from './extensionManager';
 
-export type NormalizedInput = { id: string } | { path: string };
+export type NormalizedInput = { kind: 'id'; id: string } | { kind: 'path'; path: string };
+
+/**
+ * Injectable extension-manager seam (tests substitute this to avoid the DB).
+ */
+let manager: { importExtension(name: string, sourcePath: string): string; listExtensions(): ExtensionRow[] } = {
+  importExtension,
+  listExtensions,
+};
+
+export function setExtensionManager(
+  m: { importExtension(name: string, sourcePath: string): string; listExtensions(): ExtensionRow[] } | null
+): void {
+  manager = m ?? { importExtension, listExtensions };
+}
 
 export class WebStoreError extends Error {
   constructor(public code: 'INVALID_INPUT' | 'BAD_SIGNATURE' | 'NOT_FOUND' | 'FETCH_ERROR', message: string) {
-    super(message);
+    super(`[${code}] ${message}`);
     this.name = 'WebStoreError';
   }
 }
@@ -33,12 +47,12 @@ export function normalizeWebStoreInput(input: string): NormalizedInput {
   // Check if it is a local path first (exists on disk or starts with ./, ../, /, or Windows drive letter)
   const isExplicitPath = /^[a-zA-Z]:[\\/]|^[\\/]|\.\.[\\/]|\.[\\/]/.test(trimmed);
   if (isExplicitPath || fs.existsSync(trimmed)) {
-    return { path: path.resolve(trimmed) };
+    return { kind: 'path', path: path.resolve(trimmed) };
   }
 
   // Check for bare 32-char [a-p] ID
   if (/^[a-p]{32}$/i.test(trimmed)) {
-    return { id: trimmed.toLowerCase() };
+    return { kind: 'id', id: trimmed.toLowerCase() };
   }
 
   // Check for URL forms
@@ -51,7 +65,7 @@ export function normalizeWebStoreInput(input: string): NormalizedInput {
       for (let i = parts.length - 1; i >= 0; i--) {
         const p = parts[i];
         if (/^[a-p]{32}$/i.test(p)) {
-          return { id: p.toLowerCase() };
+          return { kind: 'id', id: p.toLowerCase() };
         }
       }
     }
@@ -98,8 +112,8 @@ export const resetFetchCrxTransport = () => {
 export function getEngineMajorVersion(): string {
   try {
     const installed = getInstalledKernelVersion();
-    if (installed?.version) {
-      const match = installed.version.match(/^(\d+)/);
+    if (installed) {
+      const match = installed.match(/^(\d+)/);
       if (match) return match[1];
     }
   } catch {
@@ -260,12 +274,14 @@ export interface InstalledExtensionResult {
   reused: boolean;
 }
 
-/**
- * Unpacks verified CRX zip payload into data/extensions/<id>/<version>/
- * Resolves __MSG_*__ localization in manifest, and registers via importExtension or returns existing.
- */
 export function unpackCrx(zipBytes: Buffer, id: string): InstalledExtensionResult {
-  const zip = new AdmZip(zipBytes);
+  let zip: AdmZip;
+  try {
+    zip = new AdmZip(zipBytes);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    throw new WebStoreError('BAD_SIGNATURE', `Not a valid zip payload: ${message}`);
+  }
   const manifestEntry = zip.getEntry('manifest.json');
   if (!manifestEntry) {
     throw new WebStoreError('BAD_SIGNATURE', 'CRX does not contain manifest.json');
@@ -281,24 +297,6 @@ export function unpackCrx(zipBytes: Buffer, id: string): InstalledExtensionResul
   const version = typeof manifest.version === 'string' ? manifest.version : '0.0.0';
   const targetDir = path.join(EXTENSIONS_DIR, id, version);
 
-  // Check idempotency: check if extension already exists in db with matching id & version
-  const existing = listExtensions().find((ext: ExtensionRow) => {
-    return (
-      (ext.path === targetDir || ext.path.includes(path.join(id, version))) &&
-      ext.version === version
-    );
-  });
-
-  if (existing && fs.existsSync(existing.path)) {
-    return {
-      id: existing.id,
-      name: existing.name,
-      version: existing.version || version,
-      path: existing.path,
-      reused: true,
-    };
-  }
-
   fs.mkdirSync(targetDir, { recursive: true });
   try {
     zip.extractAllTo(targetDir, true);
@@ -311,15 +309,39 @@ export function unpackCrx(zipBytes: Buffer, id: string): InstalledExtensionResul
   const rawName = typeof manifest.name === 'string' ? manifest.name : id;
   const resolvedName = resolveLocalizedName(targetDir, rawName);
 
-  const extensionId = importExtension(resolvedName, targetDir);
-
   return {
-    id: extensionId,
+    id,
     name: resolvedName,
     version,
     path: targetDir,
     reused: false,
   };
+}
+
+/**
+ * Registers an unpacked extension in the manager, or returns the existing
+ * registration when the same id+version is already installed (idempotency).
+ */
+export function registerUnpacked(unpacked: InstalledExtensionResult): InstalledExtensionResult {
+  const existing = manager.listExtensions().find((ext: ExtensionRow) => {
+    return (
+      (ext.path === unpacked.path || ext.path.includes(path.join(unpacked.id, unpacked.version))) &&
+      ext.version === unpacked.version
+    );
+  });
+
+  if (existing && fs.existsSync(existing.path)) {
+    return {
+      id: existing.id,
+      name: existing.name,
+      version: existing.version || unpacked.version,
+      path: existing.path,
+      reused: true,
+    };
+  }
+
+  const extensionId = manager.importExtension(unpacked.name, unpacked.path);
+  return { ...unpacked, id: extensionId };
 }
 
 /**
@@ -345,7 +367,7 @@ export async function installFromWebStore(input: string): Promise<InstalledExten
       // ignore
     }
 
-    const id = importExtension(name, norm.path);
+    const id = manager.importExtension(name, norm.path);
     return {
       id,
       name,
@@ -355,7 +377,24 @@ export async function installFromWebStore(input: string): Promise<InstalledExten
     };
   }
 
+  // Idempotency: if this store id is already installed at the same version,
+  // return the existing registration without a network fetch.
+  const alreadyInstalled = manager.listExtensions().find(
+    (ext: ExtensionRow) =>
+      ext.path.includes(path.join(norm.id, ext.version ?? '')) && fs.existsSync(ext.path)
+  );
+  if (alreadyInstalled) {
+    return {
+      id: alreadyInstalled.id,
+      name: alreadyInstalled.name,
+      version: alreadyInstalled.version || '0.0.0',
+      path: alreadyInstalled.path,
+      reused: true,
+    };
+  }
+
   const crxBytes = await fetchCrx(norm.id);
   const verified = verifyCrx(crxBytes);
-  return unpackCrx(verified.zipPayload, norm.id);
+  const unpacked = unpackCrx(verified.zipPayload, norm.id);
+  return registerUnpacked(unpacked);
 }

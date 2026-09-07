@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import path from 'path';
 import fs from 'fs';
 import {
@@ -9,6 +9,7 @@ import {
   installFromWebStore,
   setFetchCrxTransport,
   resetFetchCrxTransport,
+  setExtensionManager,
   WebStoreError,
 } from '../../../src/main/extensions/webstore';
 import * as em from '../../../src/main/extensions/extensionManager';
@@ -135,27 +136,27 @@ describe('webstore extension installer', () => {
 
     it('normalizes chromewebstore.google.com URLs', () => {
       const url = `https://chromewebstore.google.com/detail/ublock-origin/${validId}?hl=en`;
-      expect(normalizeWebStoreInput(url)).toEqual({ id: validId });
+      expect(normalizeWebStoreInput(url)).toEqual({ kind: 'id', id: validId });
     });
 
     it('normalizes chromewebstore.google.com short detail URLs', () => {
       const url = `https://chromewebstore.google.com/detail/${validId}`;
-      expect(normalizeWebStoreInput(url)).toEqual({ id: validId });
+      expect(normalizeWebStoreInput(url)).toEqual({ kind: 'id', id: validId });
     });
 
     it('normalizes chrome.google.com/webstore URLs', () => {
       const url = `https://chrome.google.com/webstore/detail/ublock-origin/${validId}`;
-      expect(normalizeWebStoreInput(url)).toEqual({ id: validId });
+      expect(normalizeWebStoreInput(url)).toEqual({ kind: 'id', id: validId });
     });
 
     it('normalizes bare 32-character ID', () => {
-      expect(normalizeWebStoreInput(validId)).toEqual({ id: validId });
+      expect(normalizeWebStoreInput(validId)).toEqual({ kind: 'id', id: validId });
     });
 
     it('normalizes local file path or directory', () => {
       // Create a temporary dir/file to test local path
       const tmpPath = path.resolve(__dirname, 'webstore.test.ts');
-      expect(normalizeWebStoreInput(tmpPath)).toEqual({ path: tmpPath });
+      expect(normalizeWebStoreInput(tmpPath)).toEqual({ kind: 'path', path: tmpPath });
     });
 
     it('rejects invalid inputs as INVALID_INPUT', () => {
@@ -230,7 +231,7 @@ describe('webstore extension installer', () => {
   });
 
   describe('unpackCrx and localization', () => {
-    it('unpacks zip payload and resolves __MSG_*__ localization', async () => {
+    it('unpacks zip payload and resolves __MSG_*__ localization', () => {
       const extId = 'testlocalizationextensionid12345';
       const manifest = {
         name: '__MSG_appName__',
@@ -248,28 +249,18 @@ describe('webstore extension installer', () => {
         '_locales/en/messages.json': JSON.stringify(messages),
       });
 
-      const importSpy = vi.spyOn(em, 'importExtension').mockImplementation((p, n) => {
-        return {
-          id: extId,
-          name: n,
-          path: p,
-          version: '1.2.3',
-        };
-      });
-
-      const result = await unpackCrx(zip, extId);
+      const result = unpackCrx(zip, extId);
       expect(result.name).toBe('My Localized Extension');
       expect(result.version).toBe('1.2.3');
-      expect(importSpy).toHaveBeenCalledWith(expect.stringContaining(path.join('data', 'extensions', extId, '1.2.3')), 'My Localized Extension');
-
-      importSpy.mockRestore();
+      expect(result.path).toContain(path.join(extId, '1.2.3'));
+      expect(fs.existsSync(path.join(result.path, 'manifest.json'))).toBe(true);
     });
 
-    it('cleans up directory if unpack fails', async () => {
+    it('cleans up directory if unpack fails', () => {
       const extId = 'testfailureextensionid1234567890';
       const badZip = Buffer.from('not a zip file at all');
 
-      await expect(unpackCrx(badZip, extId)).rejects.toThrow();
+      expect(() => unpackCrx(badZip, extId)).toThrowError(/BAD_SIGNATURE/);
 
       const targetDir = path.resolve(process.cwd(), 'data', 'extensions', extId);
       expect(fs.existsSync(targetDir)).toBe(false);
@@ -277,16 +268,29 @@ describe('webstore extension installer', () => {
   });
 
   describe('installFromWebStore idempotency and orchestration', () => {
+    const restoreManager = () => setExtensionManager(null);
+
+    afterEach(restoreManager);
+
     it('returns existing extension without re-fetching if already installed with same version', async () => {
       const extId = 'cjpalhdlnbpafiamejdnhcphjbkeiagm';
-      vi.spyOn(em, 'listExtensions').mockReturnValue([
-        {
-          id: extId,
-          name: 'Existing Extension',
-          path: '/mock/path',
-          version: '2.0.0',
+      const existingPath = path.resolve(process.cwd(), 'data', 'extensions', extId, '2.0.0');
+      fs.mkdirSync(existingPath, { recursive: true });
+      setExtensionManager({
+        listExtensions: () => [
+          {
+            id: extId,
+            name: 'Existing Extension',
+            path: existingPath,
+            version: '2.0.0',
+            enabled: 1,
+            created_at: 1,
+          },
+        ],
+        importExtension: () => {
+          throw new Error('must not re-import');
         },
-      ]);
+      });
 
       const fetchSpy = vi.fn();
       setFetchCrxTransport(fetchSpy);
@@ -297,12 +301,14 @@ describe('webstore extension installer', () => {
       expect(res.version).toBe('2.0.0');
       expect(fetchSpy).not.toHaveBeenCalled();
 
-      vi.restoreAllMocks();
+      fs.rmSync(existingPath, { recursive: true, force: true });
     });
-
     it('installs fresh extension if not already present', async () => {
-      const extId = 'freshinstallid1234567890abcdef';
-      vi.spyOn(em, 'listExtensions').mockReturnValue([]);
+      const extId = 'abbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb';
+      setExtensionManager({
+        listExtensions: () => [],
+        importExtension: () => 'ext_registered',
+      });
 
       const zip = createMinimalZip({
         'manifest.json': JSON.stringify({ name: 'Fresh Extension', version: '1.0.0' }),
@@ -311,19 +317,11 @@ describe('webstore extension installer', () => {
 
       setFetchCrxTransport(async () => crxBytes);
 
-      vi.spyOn(em, 'importExtension').mockReturnValue({
-        id: extId,
-        name: 'Fresh Extension',
-        path: '/some/path',
-        version: '1.0.0',
-      });
-
       const res = await installFromWebStore(extId);
       expect(res.reused).toBe(false);
       expect(res.name).toBe('Fresh Extension');
       expect(res.version).toBe('1.0.0');
-
-      vi.restoreAllMocks();
+      expect(res.id).toBe('ext_registered');
     });
 
     it('handles local directory path directly', async () => {
@@ -334,20 +332,17 @@ describe('webstore extension installer', () => {
         JSON.stringify({ name: 'Local Mock Ext', version: '0.9.1' })
       );
 
-      vi.spyOn(em, 'listExtensions').mockReturnValue([]);
-      vi.spyOn(em, 'importExtension').mockImplementation((p, n) => ({
-        id: 'localmockext',
-        name: n,
-        path: p,
-        version: '0.9.1',
-      }));
+      setExtensionManager({
+        listExtensions: () => [],
+        importExtension: () => 'localmockext',
+      });
 
       const res = await installFromWebStore(localDir);
       expect(res.name).toBe('Local Mock Ext');
       expect(res.version).toBe('0.9.1');
+      expect(res.id).toBe('localmockext');
 
       fs.rmSync(localDir, { recursive: true, force: true });
-      vi.restoreAllMocks();
     });
   });
 });
