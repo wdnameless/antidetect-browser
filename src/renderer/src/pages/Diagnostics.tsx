@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api, type ProfileListItem, type DiagnosticsReport } from '../api';
+import type { PreflightVerdict } from '../preflight';
 import { useI18n } from '../i18n';
 import { ProxiesIcon, RefreshIcon } from '../icons';
 
@@ -58,11 +59,37 @@ function buildCards(r: DiagnosticsReport): CardSpec[] {
   ];
 }
 
+/**
+ * Coherence score 0-100 from the last preflight verdict: share of checks that
+ * did not fail, with warns penalized at 40%.
+ */
+function coherenceScore(verdict: PreflightVerdict): number {
+  const checks = verdict.checks;
+  if (checks.length === 0) return 100;
+  const failed = checks.filter((c) => c.status === 'fail').length;
+  const warned = checks.filter((c) => c.status === 'warn').length;
+  const score = 100 - (failed / checks.length) * 100 - (warned / checks.length) * 40;
+  return Math.max(0, Math.round(score));
+}
+
+/** Extracts human-readable coherence issues from the coherence check message. */
+function coherenceIssues(verdict: PreflightVerdict): string[] {
+  const check = verdict.checks.find((c) => c.name === 'coherence');
+  const message = check?.message;
+  if (!message) return [];
+  const match = message.match(/Coherence issues \(\d+\): (.*)$/s);
+  if (match && match[1]) {
+    return match[1].split('; ').filter(Boolean);
+  }
+  return [];
+}
+
 export function Diagnostics() {
   const { t } = useI18n();
   const [profiles, setProfiles] = useState<ProfileListItem[]>([]);
   const [selectedId, setSelectedId] = useState('');
   const [report, setReport] = useState<DiagnosticsReport | null>(null);
+  const [preflight, setPreflight] = useState<PreflightVerdict | null>(null);
   const [notRunning, setNotRunning] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -94,6 +121,8 @@ export function Diagnostics() {
     try {
       const res = await api.diagnosticsRun(selectedId);
       const code = res.code as unknown;
+      const pf = await api.preflightLast(selectedId).catch(() => null);
+      setPreflight(pf && pf.code === 0 ? pf.data : null);
       if (code === 0) {
         setReport(res.data);
       } else if (String(code) === 'NOT_RUNNING') {
@@ -190,6 +219,35 @@ export function Diagnostics() {
               ))}
             </div>
           ))}
+        </div>
+      ) : null}
+
+      {preflight ? (
+        <div className="card" style={{ marginBottom: 14, padding: '14px 16px', background: 'var(--panel)', borderRadius: 10 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+            <span
+              style={{
+                width: 9, height: 9, borderRadius: '50%',
+                background: preflight.overall === 'pass' ? statusColor('ok') : preflight.overall === 'warn' ? statusColor('warn') : '#ef4444',
+                display: 'inline-block',
+              }}
+            />
+            <strong style={{ fontSize: 13.5 }}>{t('Fingerprint Coherence')}</strong>
+            <span style={{ fontSize: 11, marginLeft: 'auto', color: 'var(--text-secondary)' }}>
+              {t('Score')}: {coherenceScore(preflight)}
+            </span>
+          </div>
+          {coherenceIssues(preflight).length > 0 ? (
+            coherenceIssues(preflight).map((issue, i) => (
+              <div key={i} style={{ fontSize: 12.5, color: 'var(--text-secondary)' }}>
+                {issue}
+              </div>
+            ))
+          ) : (
+            <div style={{ fontSize: 12.5, color: 'var(--text-secondary)' }}>
+              {t('All fingerprint subsystems are coherent with the claimed hardware identity.')}
+            </div>
+          )}
         </div>
       ) : null}
     </div>
