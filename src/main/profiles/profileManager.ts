@@ -322,6 +322,146 @@ export function updateProfileFingerprint(userId: string, config: Record<string, 
   return true;
 }
 
+export interface FingerprintRotationItemResult {
+  user_id: string;
+  ok: boolean;
+  error?: 'running' | 'coherence' | 'not_found';
+  issues?: string[];
+  seed?: number;
+  family?: string;
+}
+
+export interface FingerprintPatch {
+  timezone?: string;
+  languages?: string[];
+  hardwareConcurrency?: number;
+  deviceMemory?: number;
+}
+
+/** Injectable launcher liveness check (avoids a launcher import cycle; tests stub it). */
+let isProfileRunning: (profileId: string) => boolean = () => false;
+
+export function setRunningChecker(fn: (profileId: string) => boolean): void {
+  isProfileRunning = fn ?? (() => false);
+}
+
+/**
+ * Bulk fingerprint maintenance (parity program: bulk-fingerprint-rotation).
+ * - mode 'rotate': draw a new weighted-coherent family from the catalog and
+ *   rebuild the fingerprint config from family + fresh seed (replayable with
+ *   seedHint: same (profileId, seedHint) pair yields the same result).
+ * - mode 'patch': apply targeted field changes over the existing config; the
+ *   result must stay coherent with the profile's declared family (when set),
+ *   otherwise the item is rejected and nothing is persisted.
+ * Running profiles fail closed: skipped with error 'running', never mutated.
+ * Each item persists independently; one failure never aborts the batch.
+ */
+export function rotateFingerprints(
+  userIds: string[],
+  mode: 'rotate' | 'patch',
+  patch?: FingerprintPatch,
+  seedHint?: number
+): FingerprintRotationItemResult[] {
+  const results: FingerprintRotationItemResult[] = [];
+  for (const userId of userIds) {
+    const profile = getProfile(userId);
+    if (!profile || !profile.fingerprint_id) {
+      results.push({ user_id: userId, ok: false, error: 'not_found' });
+      continue;
+    }
+    if (isProfileRunning(userId)) {
+      results.push({ user_id: userId, ok: false, error: 'running' });
+      continue;
+    }
+
+    const db = getDb();
+    const fp = db
+      .prepare('SELECT seed, config_json FROM fingerprints WHERE id = ?')
+      .get(profile.fingerprint_id) as { seed: number; config_json: string } | undefined;
+    if (!fp) {
+      results.push({ user_id: userId, ok: false, error: 'not_found' });
+      continue;
+    }
+    let cfg: Record<string, unknown> = {};
+    try {
+      cfg = JSON.parse(fp.config_json || '{}') as Record<string, unknown>;
+    } catch {
+      cfg = {};
+    }
+
+    if (mode === 'rotate') {
+      // Deterministic replay: seedHint + profile id hash drives the new draw.
+      const base = seedHint !== undefined ? Math.abs(seedHint) : randomInt(1, 2147483647);
+      const seed = ((base ^ fnv1a(userId)) % 2147483646) + 1;
+      const family = selectFamilyBySeed(seed, EXTENDED_FINGERPRINT_CATALOG);
+      const hwVector = deriveHardwareVector(seed, EXTENDED_FINGERPRINT_CATALOG);
+      const locale = family.localePool[(seed >>> 0) % family.localePool.length] ?? 'en-US';
+      const newCfg = {
+        platform: family.coherenceConstraints.platform,
+        brand: 'Chrome',
+        family: family.id,
+        hardwareConcurrency: hwVector.cpuCores,
+        deviceMemory: hwVector.ramGB,
+        lang: locale,
+        gpu: family.gpu,
+        screen: family.screen,
+      };
+      db.prepare('UPDATE fingerprints SET seed = ?, config_json = ? WHERE id = ?').run(
+        seed,
+        JSON.stringify(newCfg),
+        profile.fingerprint_id
+      );
+      results.push({ user_id: userId, ok: true, seed, family: family.id });
+    } else {
+      const merged = { ...cfg, ...(patch ?? {}) };
+      // Coherence gate: when the config declares a family, the patched fields
+      // must stay valid for that family (RAM/CPU within its allowed sets).
+      const familyId = typeof cfg.family === 'string' ? cfg.family : undefined;
+      const family = familyId
+        ? EXTENDED_FINGERPRINT_CATALOG.find((f) => f.id === familyId)
+        : undefined;
+      const issues: string[] = [];
+      if (family) {
+        const memory = typeof merged.deviceMemory === 'number' ? merged.deviceMemory : undefined;
+        const cores =
+          typeof merged.hardwareConcurrency === 'number' ? merged.hardwareConcurrency : undefined;
+        if (memory !== undefined && !family.ramGB.includes(memory)) {
+          issues.push(`deviceMemory ${memory}GB not in family ${family.id} allowed set [${family.ramGB.join(', ')}]`);
+        }
+        if (
+          cores !== undefined &&
+          (cores < family.cpu.coresMin || cores > family.cpu.coresMax)
+        ) {
+          issues.push(
+            `hardwareConcurrency ${cores} outside family ${family.id} range [${family.cpu.coresMin}-${family.cpu.coresMax}]`
+          );
+        }
+      }
+      if (issues.length > 0) {
+        results.push({ user_id: userId, ok: false, error: 'coherence', issues });
+        continue;
+      }
+      db.prepare('UPDATE fingerprints SET config_json = ? WHERE id = ?').run(
+        JSON.stringify(merged),
+        profile.fingerprint_id
+      );
+      results.push({ user_id: userId, ok: true });
+    }
+  }
+  return results;
+}
+
+/** FNV-1a string hash into a positive int32 (deterministic per profile id). */
+function fnv1a(value: string): number {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < value.length; i++) {
+    hash ^= value.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193) >>> 0;
+  }
+  return hash >>> 0;
+}
+
+
 export function duplicateProfile(userId: string, newName?: string): string | null {
   const source = getLiveProfile(userId);
   if (!source) return null;

@@ -159,4 +159,36 @@ router.post('/api/v1/browser-profile/import', (req, res) => {
   }
 });
 
+const bulkFingerprintSchema = z.object({
+  user_ids: z.array(z.string()).min(1),
+  mode: z.enum(['rotate', 'patch']),
+  patch: z
+    .object({
+      timezone: z.string().optional(),
+      languages: z.array(z.string()).optional(),
+      hardwareConcurrency: z.number().int().positive().optional(),
+      deviceMemory: z.number().int().positive().optional(),
+    })
+    .optional(),
+  seed_hint: z.number().int().optional(),
+});
+router.post('/api/v1/browser-profile/bulk-fingerprint', (req, res) => {
+  const parsed = bulkFingerprintSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.json({ code: -1, msg: 'invalid body', data: { errors: parsed.error.flatten() } });
+    return;
+  }
+  try {
+    const results = pm.rotateFingerprints(
+      parsed.data.user_ids,
+      parsed.data.mode,
+      parsed.data.patch,
+      parsed.data.seed_hint
+    );
+    res.json({ code: 0, msg: 'success', data: { results } });
+  } catch (err) {
+    res.json({ code: -1, msg: (err as Error).message, data: {} });
+  }
+});
+
 export default router;
