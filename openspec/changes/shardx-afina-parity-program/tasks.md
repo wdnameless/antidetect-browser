@@ -6,15 +6,15 @@
 
 ## 2. Wave A — catalog + rotation + engine surfaces (parallel)
 
-- [ ] 2.1 `finish-fingerprint-catalog`: close tasks 1.5 (v2 data bundle), 2.4 (AudioContext/OS audio coherence), 3.1 (coherent archetype sampling in generation service) of `add-coherent-fingerprint-catalog`; suite covers bundle integrity, audio coherence rules, and sampling coherence for 100 seeds.
-- [ ] 2.2 `add-engine-level-hardening` task-set extension: add spec rows + tasks for WebGPU adapter/limits spoofing, WebAuthn platform-authenticator spoofing, and the Motion CDP domain; keep existing 10 tasks; each new row carries a JS-interim fallback marker (`TODO(engine-parity)`).
-- [ ] 2.3 `add-bulk-fingerprint-rotation`: `POST /api/v1/browser-profile/bulk-fingerprint` (modes rotate/patch), per-item report, running-profile skip, coherence validation; unit + sandbox tests.
+- [x] 2.1 `finish-fingerprint-catalog`: close tasks 1.5 (v2 data bundle), 2.4 (AudioContext/OS audio coherence), 3.1 (coherent archetype sampling in generation service) of `add-coherent-fingerprint-catalog`; suite covers bundle integrity, audio coherence rules, and sampling coherence for 100 seeds.
+- [x] 2.2 `add-engine-level-hardening` task-set extension: add spec rows + tasks for WebGPU adapter/limits spoofing, WebAuthn platform-authenticator spoofing, and the Motion CDP domain; keep existing 10 tasks; each new row carries a JS-interim fallback marker (`TODO(engine-parity)`).
+- [x] 2.3 `add-bulk-fingerprint-rotation`: `POST /api/v1/browser-profile/bulk-fingerprint` (modes rotate/patch), per-item report, running-profile skip, coherence validation; unit + sandbox tests.
 
 ## 3. Wave B — automation surfaces (parallel)
 
-- [ ] 3.1 `add-motion-cdp-domain`: motor-seed derivation, trajectory engine (Fitts + seeded jitter), typing pace + typo model, CDP command handler (hidden domain, fail-closed without pointer), fake-WS integration tests; MCP tools `browser.human_type`/`browser.human_click`; SDK methods.
-- [ ] 3.2 `add-webstore-extension-installer`: update-protocol CRX fetch, signature header verification, unpack + versioned registration in extensionManager, URL/ID/local input normalization; mocked-transport tests.
-- [ ] 3.3 `add-motion-flow-nodes`: `human_click`/`human_type` flow node types (schema, compiler, validator, canvas palette + config forms); compiled-program snapshot tests; live-run binding.
+- [x] 3.1 `add-motion-cdp-domain`: motor-seed derivation, trajectory engine (Fitts + seeded jitter), typing pace + typo model, CDP command handler (hidden domain, fail-closed without pointer), fake-WS integration tests; MCP tools `browser.human_type`/`browser.human_click`; SDK methods.
+- [x] 3.2 `add-webstore-extension-installer`: update-protocol CRX fetch, signature header verification, unpack + versioned registration in extensionManager, URL/ID/local input normalization; mocked-transport tests.
+- [x] 3.3 `add-motion-flow-nodes`: `human_click`/`human_type` flow node types (schema, compiler, validator, canvas palette + config forms); compiled-program snapshot tests; live-run binding.
 
 ## 4. Wave C — UX suite (after A/B merge; parallel among themselves)
 
