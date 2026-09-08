@@ -139,6 +139,35 @@ export const TOOL_DEFINITIONS: ToolManifest[] = [
     },
   },
   {
+    name: 'browser.human_type',
+    description: 'Type text into an input field with per-key human pacing (Motion domain): per-key delays, optional typo model.',
+    tier: 'default',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        profile_id: { type: 'string', description: 'Unique profile identifier' },
+        selector: { type: 'string', description: 'CSS selector of input field' },
+        text: { type: 'string', description: 'Text to type' },
+        allow_typos: { type: 'boolean', description: 'Enable the human typo model (default false)' },
+      },
+      required: ['profile_id', 'selector', 'text'],
+    },
+  },
+  {
+    name: 'browser.human_click',
+    description: 'Click an element via a Fitts-law human cursor glide (Motion domain).',
+    tier: 'default',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        profile_id: { type: 'string', description: 'Unique profile identifier' },
+        selector: { type: 'string', description: 'CSS/XPath selector of element to click' },
+        target_width: { type: 'number', description: 'Target width in px feeding Fitts law (default 32)' },
+      },
+      required: ['profile_id', 'selector'],
+    },
+  },
+  {
     name: 'browser.screenshot',
     description: 'Capture screenshot of the active page as base64 PNG (capped at 5MB).',
     tier: 'default',
@@ -392,6 +421,19 @@ export class ToolRouter {
         const profileId = String(args.profile_id || '');
         const fullPage = Boolean(args.full_page);
         return await this.browserDriver.screenshot(profileId, fullPage);
+      }
+      case 'browser.human_type': {
+        const profileId = String(args.profile_id || '');
+        const selector = String(args.selector || '');
+        const text = String(args.text || '');
+        const allowTypos = Boolean(args.allow_typos);
+        return await this.browserDriver.humanType(profileId, selector, text, allowTypos);
+      }
+      case 'browser.human_click': {
+        const profileId = String(args.profile_id || '');
+        const selector = String(args.selector || '');
+        const targetWidth = Number(args.target_width) > 0 ? Number(args.target_width) : 32;
+        return await this.browserDriver.humanClick(profileId, selector, targetWidth);
       }
       case 'diagnostics.run': {
         const profileId = String(args.profile_id || '');
