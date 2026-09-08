@@ -59,7 +59,8 @@ export function Extensions() {
     setWebStoreSuccess('');
     try {
       const res = await api.extensionInstall({ url: webStoreInput.trim() });
-      setWebStoreSuccess(`Installed "${res.name}" (v${res.version})${res.reused ? ' [reused]' : ''}`);
+      const info = res.data ?? { extension_id: '', name: '', version: '', reused: false };
+      setWebStoreSuccess(`Installed "${info.name}" (v${info.version})${info.reused ? ' [reused]' : ''}`);
       setWebStoreInput('');
       await load();
     } catch (err) {
