@@ -16,11 +16,22 @@ import { FlowDocument, FlowNode, FlowEdge } from './types';
  *   - condition
  *   - loop
  *   - extract
- *   - screenshot
  *   - eval
  *   - module
  * - Supports variables initialized from flow.variables, updated throughout execution.
+ * - FlowAppContext surfaces app.motion (human input) alongside app.browser.
  */
+export interface FlowAppContext {
+  browser?: Record<string, unknown>;
+  motion?: {
+    click?: (selector: string, opts?: { targetWidth?: number; x?: number; y?: number }) => Promise<void>;
+    type?: (selector: string, text: string, opts?: { allowTypos?: boolean }) => Promise<void>;
+    [key: string]: unknown;
+  };
+  vars?: Record<string, unknown>;
+  log: (msg: string) => void;
+  [key: string]: unknown;
+}
 export function compileFlowToScript(flow: FlowDocument): string {
   // Sort variables by name for determinism
   const sortedVariables = [...flow.variables].sort((a, b) => a.name.localeCompare(b.name));
@@ -173,6 +184,42 @@ function generateNodeCode(node: FlowNode, outgoingEdges: FlowEdge[]): string[] {
       code.push(`return ${nextEdge ? JSON.stringify(nextEdge.target) : 'null'};`);
       break;
     }
+    case 'human_click': {
+      code.push(`// Action: human_click`);
+      code.push(`const __selector = ${JSON.stringify(node.selector)};`);
+      const targetWidth = node.targetWidth ?? 40;
+      const extraCoords = (typeof node.x === 'number' && typeof node.y === 'number') ? `, x: ${node.x}, y: ${node.y}` : '';
+      code.push(`app.log('Human click on ' + __selector);`);
+      code.push(`if (typeof app.motion?.click === 'function') {`);
+      code.push(`  await app.motion.click(__selector, { targetWidth: ${targetWidth}${extraCoords} });`);
+      code.push(`} else if (typeof app.browser?.click === 'function') {`);
+      code.push(`  await app.browser.click(__selector);`);
+      code.push(`} else {`);
+      code.push(`  app.log('Simulated human click on ' + __selector);`);
+      code.push(`}`);
+      const nextEdge = outgoingEdges.find((e) => e.branch === 'default');
+      code.push(`return ${nextEdge ? JSON.stringify(nextEdge.target) : 'null'};`);
+      break;
+    }
+
+    case 'human_type': {
+      code.push(`// Action: human_type`);
+      code.push(`const __selector = ${JSON.stringify(node.selector)};`);
+      const textVal = JSON.stringify(node.text ?? '');
+      const allowTypos = Boolean(node.allowTypos);
+      code.push(`app.log('Human typing into ' + __selector);`);
+      code.push(`if (typeof app.motion?.type === 'function') {`);
+      code.push(`  await app.motion.type(__selector, ${textVal}, { allowTypos: ${allowTypos} });`);
+      code.push(`} else if (typeof app.browser?.type === 'function') {`);
+      code.push(`  await app.browser.type(__selector, ${textVal});`);
+      code.push(`} else {`);
+      code.push(`  app.log('Simulated human type on ' + __selector);`);
+      code.push(`}`);
+      const nextEdge = outgoingEdges.find((e) => e.branch === 'default');
+      code.push(`return ${nextEdge ? JSON.stringify(nextEdge.target) : 'null'};`);
+      break;
+    }
+
 
     case 'wait': {
       code.push(`// Action: wait`);

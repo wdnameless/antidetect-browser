@@ -26,6 +26,21 @@ export const TypeNodeSchema = FlowNodeBaseSchema.extend({
   clearFirst: z.boolean().optional(),
   delayMs: z.number().int().nonnegative().optional(),
 });
+export const HumanClickNodeSchema = FlowNodeBaseSchema.extend({
+  type: z.literal('human_click'),
+  selector: z.string().min(1),
+  x: z.number().optional(),
+  y: z.number().optional(),
+  targetWidth: z.number().positive().optional(),
+});
+
+export const HumanTypeNodeSchema = FlowNodeBaseSchema.extend({
+  type: z.literal('human_type'),
+  selector: z.string().min(1),
+  text: z.string(),
+  allowTypos: z.boolean().optional(),
+});
+
 
 export const WaitNodeSchema = FlowNodeBaseSchema.extend({
   type: z.literal('wait'),
@@ -84,6 +99,8 @@ export const FlowNodeSchema = z.discriminatedUnion('type', [
   NavigateNodeSchema,
   ClickNodeSchema,
   TypeNodeSchema,
+  HumanClickNodeSchema,
+  HumanTypeNodeSchema,
   WaitNodeSchema,
   ConditionNodeSchema,
   LoopNodeSchema,

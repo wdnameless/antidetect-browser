@@ -46,6 +46,8 @@ export const DEFAULT_TOOL_NAMES = new Set<string>([
   'browser.navigate',
   'browser.click',
   'browser.type',
+  'browser.human_type',
+  'browser.human_click',
   'browser.screenshot',
   'diagnostics.run',
 ]);

@@ -52,6 +52,20 @@ export const NODE_PALETTE: NodePaletteItem[] = [
     defaultConfig: { selector: 'input[name="search"]', text: 'Hello world', delayMs: 25 },
   },
   {
+    type: 'human_click',
+    label: 'Human Click',
+    category: 'Actions',
+    description: 'Fitts-law human cursor glide and click (Motion domain)',
+    defaultConfig: { selector: 'button.submit', targetWidth: 40 },
+  },
+  {
+    type: 'human_type',
+    label: 'Human Type',
+    category: 'Actions',
+    description: 'Per-key human typing with optional typos (Motion domain)',
+    defaultConfig: { selector: 'input[name="search"]', text: 'Hello world', allowTypos: false },
+  },
+  {
     type: 'wait',
     label: 'Wait',
     category: 'Actions',
@@ -1188,6 +1202,8 @@ export function FlowCanvas() {
                 >
                   {node.type === 'navigate' && `URL: ${String(node.config.url || '')}`}
                   {node.type === 'click' && `Selector: ${String(node.config.selector || '')}`}
+                  {node.type === 'human_click' && `Selector: ${String(node.config.selector || '')}`}
+                  {node.type === 'human_type' && `Text: "${String(node.config.text || '')}"`}
                   {node.type === 'type' && `Text: "${String(node.config.text || '')}"`}
                   {node.type === 'wait' && `${node.config.mode}: ${String(node.config.durationMs || node.config.selector || '')}`}
                   {node.type === 'condition' && `Expr: ${String(node.config.expression || '')}`}
@@ -1611,6 +1627,111 @@ export function FlowCanvas() {
                         fontFamily: 'var(--font-mono, monospace)',
                       }}
                     />
+                  </div>
+                </>
+              )}
+
+              {/* HUMAN_CLICK CONFIG */}
+              {selectedNode.type === 'human_click' && (
+                <>
+                  <div>
+                    <label style={{ fontSize: 11, color: '#a1a1aa', display: 'block', marginBottom: 4 }}>Target Selector</label>
+                    <input
+                      type="text"
+                      data-testid="config-selector"
+                      value={String(selectedNode.config.selector || '')}
+                      onChange={e => handleUpdateConfig('selector', e.target.value)}
+                      style={{
+                        width: '100%',
+                        padding: '6px 10px',
+                        fontSize: 12,
+                        background: '#141416',
+                        border: '1px solid rgba(255,255,255,0.1)',
+                        borderRadius: 6,
+                        color: '#fafafa',
+                      }}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ fontSize: 11, color: '#a1a1aa', display: 'block', marginBottom: 4 }}>Target Width (px, feeds Fitts's law)</label>
+                    <input
+                      type="number"
+                      data-testid="config-targetWidth"
+                      value={Number(selectedNode.config.targetWidth || 40)}
+                      onChange={e => handleUpdateConfig('targetWidth', parseInt(e.target.value, 10) || 40)}
+                      style={{
+                        width: '100%',
+                        padding: '6px 10px',
+                        fontSize: 12,
+                        background: '#141416',
+                        border: '1px solid rgba(255,255,255,0.1)',
+                        borderRadius: 6,
+                        color: '#fafafa',
+                      }}
+                    />
+                  </div>
+                </>
+              )}
+
+              {/* HUMAN_TYPE CONFIG */}
+              {selectedNode.type === 'human_type' && (
+                <>
+                  <div>
+                    <label style={{ fontSize: 11, color: '#a1a1aa', display: 'block', marginBottom: 4 }}>Input Selector</label>
+                    <input
+                      type="text"
+                      data-testid="config-selector"
+                      value={String(selectedNode.config.selector || '')}
+                      onChange={e => handleUpdateConfig('selector', e.target.value)}
+                      style={{
+                        width: '100%',
+                        padding: '6px 10px',
+                        fontSize: 12,
+                        background: '#141416',
+                        border: '1px solid rgba(255,255,255,0.1)',
+                        borderRadius: 6,
+                        color: '#fafafa',
+                      }}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ fontSize: 11, color: '#a1a1aa', display: 'block', marginBottom: 4 }}>Text Content</label>
+                    <textarea
+                      rows={3}
+                      data-testid="config-text"
+                      value={String(selectedNode.config.text || '')}
+                      onChange={e => handleUpdateConfig('text', e.target.value)}
+                      style={{
+                        width: '100%',
+                        padding: '6px 10px',
+                        fontSize: 12,
+                        background: '#141416',
+                        border: '1px solid rgba(255,255,255,0.1)',
+                        borderRadius: 6,
+                        color: '#fafafa',
+                        fontFamily: 'var(--font-mono, monospace)',
+                      }}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ fontSize: 11, color: '#a1a1aa', display: 'block', marginBottom: 4 }}>Allow Typos (human typo model)</label>
+                    <select
+                      data-testid="config-allowTypos"
+                      value={selectedNode.config.allowTypos ? 'true' : 'false'}
+                      onChange={e => handleUpdateConfig('allowTypos', e.target.value === 'true')}
+                      style={{
+                        width: '100%',
+                        padding: '6px 10px',
+                        fontSize: 12,
+                        background: '#141416',
+                        border: '1px solid rgba(255,255,255,0.1)',
+                        borderRadius: 6,
+                        color: '#fafafa',
+                      }}
+                    >
+                      <option value="false">No — type exactly</option>
+                      <option value="true">Yes — occasional typos with correction</option>
+                    </select>
                   </div>
                 </>
               )}
