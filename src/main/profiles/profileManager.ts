@@ -10,7 +10,8 @@ import { pickMobilePreset, buildMobileUa, getMobilePreset, type MobilePreset } f
 import { protectSecret, revealSecret } from '../util/secretStore';
 import { deleteEntriesForProfile } from '../vault/accountVault';
 import { removeBindingsForProfile } from '../tags/tagManager';
-import { deriveHardwareVector, migrateLegacySeed } from '../fingerprints/derivation';
+import { deriveHardwareVector, migrateLegacySeed, selectFamilyBySeed } from '../fingerprints/derivation';
+import { EXTENDED_FINGERPRINT_CATALOG } from '../fingerprints/catalog';
 
 export type ProxyType = 'http' | 'https' | 'socks5' | 'ssh';
 
@@ -229,11 +230,22 @@ export function createProfile(input: CreateProfileInput): string {
     ? input.fingerprint_seed
     : randomInt(1, 2147483647);
   const fpId = 'fp_' + randomUUID();
+
+  // Coherent archetype sampling (catalog task 3.1): family is chosen
+  // weighted-by-market-share from the full catalog by the profile seed, and
+  // every hardware field derives from the same family + seed vector.
+  const family = selectFamilyBySeed(seed, EXTENDED_FINGERPRINT_CATALOG);
+  const hwVector = deriveHardwareVector(seed, EXTENDED_FINGERPRINT_CATALOG);
+  const locale = family.localePool[(seed >>> 0) % family.localePool.length] ?? 'en-US';
   const defaultFpConfig = JSON.stringify({
-    platform: 'windows',
+    platform: family.coherenceConstraints.platform,
     brand: 'Chrome',
-    hardwareConcurrency: 8,
-    lang: 'en-US',
+    family: family.id,
+    hardwareConcurrency: hwVector.cpuCores,
+    deviceMemory: hwVector.ramGB,
+    lang: locale,
+    gpu: family.gpu,
+    screen: family.screen,
   });
   db.prepare(
     'INSERT INTO fingerprints (id, label, seed, config_json, created_at) VALUES (?, ?, ?, ?, ?)'

@@ -257,7 +257,6 @@ export function validateFamilyCoherence(family: FingerprintCatalogFamily): Valid
       }
     }
   }
-
   // 5. Audio signature coherence
   if (family.audioSignature) {
     const audio = family.audioSignature;
@@ -267,11 +266,30 @@ export function validateFamilyCoherence(family: FingerprintCatalogFamily): Valid
         `Invalid audio channelCount ${audio.channelCount}, expected 2 or 6`
       );
     }
-    if (platform === 'macos' && audio.sampleRate !== 44100 && audio.sampleRate !== 48000) {
-      addViolation(
-        ['audioSignature.sampleRate', 'platform'],
-        `macOS standard sampleRate is 44100 or 48000 Hz, found ${audio.sampleRate}`
-      );
+    if (platform === 'macos') {
+      // macOS standard sampleRate is 48000 (also accepts 44100 legacy, but catalog macOS families standard is 48000 or 44100)
+      if (audio.sampleRate !== 48000 && audio.sampleRate !== 44100) {
+        addViolation(
+          ['audioSignature.sampleRate', 'platform'],
+          `macOS standard sampleRate is 48000 or 44100 Hz, found ${audio.sampleRate}`
+        );
+      }
+    } else if (platform === 'windows') {
+      if (audio.sampleRate !== 44100 && audio.sampleRate !== 48000) {
+        addViolation(
+          ['audioSignature.sampleRate', 'platform'],
+          `Windows standard sampleRate is 44100 or 48000 Hz, found ${audio.sampleRate}`
+        );
+      }
+    } else if (platform === 'linux') {
+      // Linux desktop stacks (ALSA/PulseAudio/PipeWire) report either legacy
+      // 44100 or the modern default 48000; both are coherent with the catalog.
+      if (audio.sampleRate !== 44100 && audio.sampleRate !== 48000) {
+        addViolation(
+          ['audioSignature.sampleRate', 'platform'],
+          `Linux sampleRate is 44100 or 48000 Hz (PulseAudio/PipeWire), found ${audio.sampleRate}`
+        );
+      }
     }
   }
 
@@ -342,6 +360,22 @@ export function validateCatalogCoherence(catalog: FingerprintCatalogFamily[]): {
     familyCount: catalog.length,
     results,
   };
+}
+
+export class FingerprintCoherenceValidator {
+  static validate(family: FingerprintCatalogFamily): ValidationResult {
+    return validateFamilyCoherence(family);
+  }
+  static validateFamily(family: FingerprintCatalogFamily): ValidationResult {
+    return validateFamilyCoherence(family);
+  }
+  static validateCatalog(catalog: FingerprintCatalogFamily[]): {
+    valid: boolean;
+    familyCount: number;
+    results: Record<string, ValidationResult>;
+  } {
+    return validateCatalogCoherence(catalog);
+  }
 }
 
 export interface CatalogValidationReport {

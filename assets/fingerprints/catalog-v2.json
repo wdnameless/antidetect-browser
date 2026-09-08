@@ -1,0 +1,5525 @@
+{
+  "version": "2",
+  "generatedFrom": [
+    "src/main/fingerprints/catalog.ts",
+    "src/main/fingerprints/win11Families.ts",
+    "src/main/fingerprints/macosFamilies.ts",
+    "src/main/fingerprints/linuxFamilies.ts",
+    "src/main/fingerprints/migration.ts"
+  ],
+  "generatedAt": "2026-09-07T00:00:00.000Z",
+  "familiesCount": 46,
+  "sha256": "2b8b422a093f6814f489d5c0c7e76a8a327f7eda8dac394b476abad47bc96655",
+  "families": [
+    {
+      "id": "win-intel-iris-xe-g7-laptop",
+      "displayName": "Dell Inspiron / Intel Iris Xe Graphics (i7-1165G7 / 12th/13th Gen Mobile)",
+      "weight": 0.07,
+      "gpu": {
+        "vendor": "Google Inc. (Intel)",
+        "renderer": "ANGLE (Intel, Intel(R) Iris(R) Xe Graphics (0x00009A49) Direct3D11 vs_5_0 ps_5_0, D3D11)",
+        "webgpuAdapter": "Intel(R) Iris(R) Xe Graphics",
+        "limitsClass": "integrated"
+      },
+      "cpu": {
+        "coresMin": 8,
+        "coresMax": 12,
+        "arch": "x64"
+      },
+      "ramGB": [
+        8,
+        16
+      ],
+      "screen": {
+        "resolutions": [
+          {
+            "width": 1920,
+            "height": 1080
+          },
+          {
+            "width": 2560,
+            "height": 1440
+          }
+        ],
+        "dpr": 1.25,
+        "colorDepth": 24
+      },
+      "platformVersionRange": [
+        "10.0.22631",
+        "10.0.26100"
+      ],
+      "fontsClass": "win11-modern",
+      "localePool": [
+        "en-US",
+        "en-GB",
+        "de-DE",
+        "fr-FR"
+      ],
+      "coherenceConstraints": {
+        "mobile": false,
+        "platform": "windows",
+        "platformArch": "x86",
+        "bitness": "64",
+        "direct3dFeatureLevel": "12_1"
+      },
+      "citation": {
+        "source": "Steam Hardware Survey / StatCounter",
+        "date": "2026-08",
+        "notes": "Mainstream Intel Iris Xe mobile graphics laptop distribution"
+      },
+      "gpuRenderer": "ANGLE (Intel, Intel(R) Iris(R) Xe Graphics (0x00009A49) Direct3D11 vs_5_0 ps_5_0, D3D11)",
+      "audioSignature": {
+        "sampleRate": 48000,
+        "channelCount": 2,
+        "oscillatorLatencyMs": 10,
+        "noiseOffset": 0.00012,
+        "dynamicsCompressorParams": {
+          "threshold": -24,
+          "knee": 30,
+          "ratio": 12,
+          "attack": 0.003,
+          "release": 0.25
+        }
+      },
+      "fontInventory": [
+        "Arial",
+        "Calibri",
+        "Cambria",
+        "Comic Sans MS",
+        "Consolas",
+        "Courier New",
+        "Georgia",
+        "Impact",
+        "Lucida Console",
+        "Microsoft Sans Serif",
+        "Segoe UI",
+        "Segoe UI Emoji",
+        "Segoe UI Historic",
+        "Segoe UI Symbol",
+        "Segoe UI Variable",
+        "Tahoma",
+        "Times New Roman",
+        "Trebuchet MS",
+        "Verdana",
+        "MS Gothic",
+        "Yu Gothic"
+      ],
+      "screenProfile": {
+        "width": 1920,
+        "height": 1080,
+        "availWidth": 1920,
+        "availHeight": 1040,
+        "colorDepth": 24,
+        "pixelDepth": 24,
+        "scaleFactor": 1.25,
+        "isRetina": false
+      },
+      "scaleFactor": 1.25
+    },
+    {
+      "id": "win-intel-uhd-620-laptop",
+      "displayName": "HP Pavilion / Intel UHD Graphics 620 (i5-8250U/i5-10210U)",
+      "weight": 0.055,
+      "gpu": {
+        "vendor": "Google Inc. (Intel)",
+        "renderer": "ANGLE (Intel, Intel(R) UHD Graphics 620 (0x00005917) Direct3D11 vs_5_0 ps_5_0, D3D11)",
+        "webgpuAdapter": "Intel(R) UHD Graphics 620",
+        "limitsClass": "integrated"
+      },
+      "cpu": {
+        "coresMin": 4,
+        "coresMax": 8,
+        "arch": "x64"
+      },
+      "ramGB": [
+        8,
+        16
+      ],
+      "screen": {
+        "resolutions": [
+          {
+            "width": 1920,
+            "height": 1080
+          },
+          {
+            "width": 1366,
+            "height": 768
+          }
+        ],
+        "dpr": 1,
+        "colorDepth": 24
+      },
+      "platformVersionRange": [
+        "10.0.19045",
+        "10.0.22631"
+      ],
+      "fontsClass": "win10-legacy",
+      "localePool": [
+        "en-US",
+        "en-CA",
+        "es-ES",
+        "pt-BR"
+      ],
+      "coherenceConstraints": {
+        "mobile": false,
+        "platform": "windows",
+        "platformArch": "x86",
+        "bitness": "64",
+        "direct3dFeatureLevel": "12_0"
+      },
+      "citation": {
+        "source": "StatCounter / Steam Survey",
+        "date": "2026-08",
+        "notes": "High volume legacy 8th-10th gen Intel enterprise/consumer laptops"
+      },
+      "gpuRenderer": "ANGLE (Intel, Intel(R) UHD Graphics 620 (0x00005917) Direct3D11 vs_5_0 ps_5_0, D3D11)",
+      "audioSignature": {
+        "sampleRate": 48000,
+        "channelCount": 2,
+        "oscillatorLatencyMs": 10,
+        "noiseOffset": 0.00012,
+        "dynamicsCompressorParams": {
+          "threshold": -24,
+          "knee": 30,
+          "ratio": 12,
+          "attack": 0.003,
+          "release": 0.25
+        }
+      },
+      "fontInventory": [
+        "Arial",
+        "Calibri",
+        "Cambria",
+        "Comic Sans MS",
+        "Consolas",
+        "Courier New",
+        "Georgia",
+        "Impact",
+        "Lucida Console",
+        "Microsoft Sans Serif",
+        "Segoe UI",
+        "Segoe UI Emoji",
+        "Segoe UI Historic",
+        "Segoe UI Symbol",
+        "Segoe UI Variable",
+        "Tahoma",
+        "Times New Roman",
+        "Trebuchet MS",
+        "Verdana",
+        "MS Gothic",
+        "Yu Gothic"
+      ],
+      "screenProfile": {
+        "width": 1920,
+        "height": 1080,
+        "availWidth": 1920,
+        "availHeight": 1040,
+        "colorDepth": 24,
+        "pixelDepth": 24,
+        "scaleFactor": 1,
+        "isRetina": false
+      },
+      "scaleFactor": 1
+    },
+    {
+      "id": "win-intel-uhd-630-desktop",
+      "displayName": "Lenovo ThinkCentre / Intel UHD Graphics 630 (i5-10400/i7-10700 Desktop)",
+      "weight": 0.05,
+      "gpu": {
+        "vendor": "Google Inc. (Intel)",
+        "renderer": "ANGLE (Intel, Intel(R) UHD Graphics 630 (0x00009BC8) Direct3D11 vs_5_0 ps_5_0, D3D11)",
+        "webgpuAdapter": "Intel(R) UHD Graphics 630",
+        "limitsClass": "integrated"
+      },
+      "cpu": {
+        "coresMin": 6,
+        "coresMax": 8,
+        "arch": "x64"
+      },
+      "ramGB": [
+        8,
+        16,
+        32
+      ],
+      "screen": {
+        "resolutions": [
+          {
+            "width": 1920,
+            "height": 1080
+          },
+          {
+            "width": 2560,
+            "height": 1440
+          }
+        ],
+        "dpr": 1,
+        "colorDepth": 24
+      },
+      "platformVersionRange": [
+        "10.0.19045",
+        "10.0.22631"
+      ],
+      "fontsClass": "win10-legacy",
+      "localePool": [
+        "en-US",
+        "en-GB",
+        "de-DE",
+        "it-IT"
+      ],
+      "coherenceConstraints": {
+        "mobile": false,
+        "platform": "windows",
+        "platformArch": "x86",
+        "bitness": "64",
+        "direct3dFeatureLevel": "12_0"
+      },
+      "citation": {
+        "source": "Steam / StatCounter",
+        "date": "2026-08",
+        "notes": "Corporate office desktop workstations with integrated UHD 630"
+      },
+      "gpuRenderer": "ANGLE (Intel, Intel(R) UHD Graphics 630 (0x00009BC8) Direct3D11 vs_5_0 ps_5_0, D3D11)",
+      "audioSignature": {
+        "sampleRate": 48000,
+        "channelCount": 2,
+        "oscillatorLatencyMs": 10,
+        "noiseOffset": 0.00012,
+        "dynamicsCompressorParams": {
+          "threshold": -24,
+          "knee": 30,
+          "ratio": 12,
+          "attack": 0.003,
+          "release": 0.25
+        }
+      },
+      "fontInventory": [
+        "Arial",
+        "Calibri",
+        "Cambria",
+        "Comic Sans MS",
+        "Consolas",
+        "Courier New",
+        "Georgia",
+        "Impact",
+        "Lucida Console",
+        "Microsoft Sans Serif",
+        "Segoe UI",
+        "Segoe UI Emoji",
+        "Segoe UI Historic",
+        "Segoe UI Symbol",
+        "Segoe UI Variable",
+        "Tahoma",
+        "Times New Roman",
+        "Trebuchet MS",
+        "Verdana",
+        "MS Gothic",
+        "Yu Gothic"
+      ],
+      "screenProfile": {
+        "width": 1920,
+        "height": 1080,
+        "availWidth": 1920,
+        "availHeight": 1040,
+        "colorDepth": 24,
+        "pixelDepth": 24,
+        "scaleFactor": 1,
+        "isRetina": false
+      },
+      "scaleFactor": 1
+    },
+    {
+      "id": "win-intel-uhd-770-desktop",
+      "displayName": "Custom Intel Raptor Lake / Intel UHD Graphics 770 (i5-13600K/14600)",
+      "weight": 0.035,
+      "gpu": {
+        "vendor": "Google Inc. (Intel)",
+        "renderer": "ANGLE (Intel, Intel(R) UHD Graphics 770 (0x0000A780) Direct3D11 vs_5_0 ps_5_0, D3D11)",
+        "webgpuAdapter": "Intel(R) UHD Graphics 770",
+        "limitsClass": "integrated"
+      },
+      "cpu": {
+        "coresMin": 12,
+        "coresMax": 14,
+        "arch": "x64"
+      },
+      "ramGB": [
+        16,
+        32
+      ],
+      "screen": {
+        "resolutions": [
+          {
+            "width": 1920,
+            "height": 1080
+          },
+          {
+            "width": 2560,
+            "height": 1440
+          }
+        ],
+        "dpr": 1,
+        "colorDepth": 24
+      },
+      "platformVersionRange": [
+        "10.0.22631",
+        "10.0.26100"
+      ],
+      "fontsClass": "win11-modern",
+      "localePool": [
+        "en-US",
+        "en-CA",
+        "nl-NL",
+        "sv-SE"
+      ],
+      "coherenceConstraints": {
+        "mobile": false,
+        "platform": "windows",
+        "platformArch": "x86",
+        "bitness": "64",
+        "direct3dFeatureLevel": "12_1"
+      },
+      "citation": {
+        "source": "Steam Hardware Survey",
+        "date": "2026-08",
+        "notes": "13th/14th Gen Intel desktop productivity builds without dGPU"
+      },
+      "gpuRenderer": "ANGLE (Intel, Intel(R) UHD Graphics 770 (0x0000A780) Direct3D11 vs_5_0 ps_5_0, D3D11)",
+      "audioSignature": {
+        "sampleRate": 48000,
+        "channelCount": 2,
+        "oscillatorLatencyMs": 10,
+        "noiseOffset": 0.00012,
+        "dynamicsCompressorParams": {
+          "threshold": -24,
+          "knee": 30,
+          "ratio": 12,
+          "attack": 0.003,
+          "release": 0.25
+        }
+      },
+      "fontInventory": [
+        "Arial",
+        "Calibri",
+        "Cambria",
+        "Comic Sans MS",
+        "Consolas",
+        "Courier New",
+        "Georgia",
+        "Impact",
+        "Lucida Console",
+        "Microsoft Sans Serif",
+        "Segoe UI",
+        "Segoe UI Emoji",
+        "Segoe UI Historic",
+        "Segoe UI Symbol",
+        "Segoe UI Variable",
+        "Tahoma",
+        "Times New Roman",
+        "Trebuchet MS",
+        "Verdana",
+        "MS Gothic",
+        "Yu Gothic"
+      ],
+      "screenProfile": {
+        "width": 1920,
+        "height": 1080,
+        "availWidth": 1920,
+        "availHeight": 1040,
+        "colorDepth": 24,
+        "pixelDepth": 24,
+        "scaleFactor": 1,
+        "isRetina": false
+      },
+      "scaleFactor": 1
+    },
+    {
+      "id": "win-intel-arc-a370m-laptop",
+      "displayName": "ASUS Zenbook / Intel Arc A370M Graphics (Core i7-12700H)",
+      "weight": 0.025,
+      "gpu": {
+        "vendor": "Google Inc. (Intel)",
+        "renderer": "ANGLE (Intel, Intel(R) Arc(TM) A370M Graphics (0x00005693) Direct3D11 vs_5_0 ps_5_0, D3D11)",
+        "webgpuAdapter": "Intel(R) Arc(TM) A370M Graphics",
+        "limitsClass": "mid-range"
+      },
+      "cpu": {
+        "coresMin": 12,
+        "coresMax": 14,
+        "arch": "x64"
+      },
+      "ramGB": [
+        16,
+        32
+      ],
+      "screen": {
+        "resolutions": [
+          {
+            "width": 2560,
+            "height": 1600
+          },
+          {
+            "width": 2880,
+            "height": 1800
+          }
+        ],
+        "dpr": 1.5,
+        "colorDepth": 24
+      },
+      "platformVersionRange": [
+        "10.0.22631",
+        "10.0.26100"
+      ],
+      "fontsClass": "win11-modern",
+      "localePool": [
+        "en-US",
+        "en-GB",
+        "fr-FR",
+        "de-DE"
+      ],
+      "coherenceConstraints": {
+        "mobile": false,
+        "platform": "windows",
+        "platformArch": "x86",
+        "bitness": "64",
+        "direct3dFeatureLevel": "12_2"
+      },
+      "citation": {
+        "source": "Steam Hardware Survey",
+        "date": "2026-08",
+        "notes": "Intel Arc mobile creator laptops"
+      },
+      "gpuRenderer": "ANGLE (Intel, Intel(R) Arc(TM) A370M Graphics (0x00005693) Direct3D11 vs_5_0 ps_5_0, D3D11)",
+      "audioSignature": {
+        "sampleRate": 48000,
+        "channelCount": 2,
+        "oscillatorLatencyMs": 10,
+        "noiseOffset": 0.00012,
+        "dynamicsCompressorParams": {
+          "threshold": -24,
+          "knee": 30,
+          "ratio": 12,
+          "attack": 0.003,
+          "release": 0.25
+        }
+      },
+      "fontInventory": [
+        "Arial",
+        "Calibri",
+        "Cambria",
+        "Comic Sans MS",
+        "Consolas",
+        "Courier New",
+        "Georgia",
+        "Impact",
+        "Lucida Console",
+        "Microsoft Sans Serif",
+        "Segoe UI",
+        "Segoe UI Emoji",
+        "Segoe UI Historic",
+        "Segoe UI Symbol",
+        "Segoe UI Variable",
+        "Tahoma",
+        "Times New Roman",
+        "Trebuchet MS",
+        "Verdana",
+        "MS Gothic",
+        "Yu Gothic"
+      ],
+      "screenProfile": {
+        "width": 2560,
+        "height": 1600,
+        "availWidth": 2560,
+        "availHeight": 1560,
+        "colorDepth": 24,
+        "pixelDepth": 24,
+        "scaleFactor": 1.5,
+        "isRetina": false
+      },
+      "scaleFactor": 1.5
+    },
+    {
+      "id": "win-intel-iris-plus-g4-laptop",
+      "displayName": "Microsoft Surface Pro 7 / Intel Iris Plus Graphics (i5-1035G4)",
+      "weight": 0.03,
+      "gpu": {
+        "vendor": "Google Inc. (Intel)",
+        "renderer": "ANGLE (Intel, Intel(R) Iris(R) Plus Graphics (0x00008A56) Direct3D11 vs_5_0 ps_5_0, D3D11)",
+        "webgpuAdapter": "Intel(R) Iris(R) Plus Graphics",
+        "limitsClass": "integrated"
+      },
+      "cpu": {
+        "coresMin": 4,
+        "coresMax": 8,
+        "arch": "x64"
+      },
+      "ramGB": [
+        8,
+        16
+      ],
+      "screen": {
+        "resolutions": [
+          {
+            "width": 2736,
+            "height": 1824
+          }
+        ],
+        "dpr": 2,
+        "colorDepth": 24
+      },
+      "platformVersionRange": [
+        "10.0.19045",
+        "10.0.22631"
+      ],
+      "fontsClass": "win10-legacy",
+      "localePool": [
+        "en-US",
+        "en-CA",
+        "en-AU"
+      ],
+      "coherenceConstraints": {
+        "mobile": false,
+        "platform": "windows",
+        "platformArch": "x86",
+        "bitness": "64",
+        "direct3dFeatureLevel": "12_1"
+      },
+      "citation": {
+        "source": "StatCounter / Surface Telemetry",
+        "date": "2026-08",
+        "notes": "Surface Pro 2-in-1 tablets running Windows 10/11"
+      },
+      "gpuRenderer": "ANGLE (Intel, Intel(R) Iris(R) Plus Graphics (0x00008A56) Direct3D11 vs_5_0 ps_5_0, D3D11)",
+      "audioSignature": {
+        "sampleRate": 48000,
+        "channelCount": 2,
+        "oscillatorLatencyMs": 10,
+        "noiseOffset": 0.00012,
+        "dynamicsCompressorParams": {
+          "threshold": -24,
+          "knee": 30,
+          "ratio": 12,
+          "attack": 0.003,
+          "release": 0.25
+        }
+      },
+      "fontInventory": [
+        "Arial",
+        "Calibri",
+        "Cambria",
+        "Comic Sans MS",
+        "Consolas",
+        "Courier New",
+        "Georgia",
+        "Impact",
+        "Lucida Console",
+        "Microsoft Sans Serif",
+        "Segoe UI",
+        "Segoe UI Emoji",
+        "Segoe UI Historic",
+        "Segoe UI Symbol",
+        "Segoe UI Variable",
+        "Tahoma",
+        "Times New Roman",
+        "Trebuchet MS",
+        "Verdana",
+        "MS Gothic",
+        "Yu Gothic"
+      ],
+      "screenProfile": {
+        "width": 2736,
+        "height": 1824,
+        "availWidth": 2736,
+        "availHeight": 1784,
+        "colorDepth": 24,
+        "pixelDepth": 24,
+        "scaleFactor": 2,
+        "isRetina": false
+      },
+      "scaleFactor": 2
+    },
+    {
+      "id": "win-intel-core-ultra-arc-laptop",
+      "displayName": "Dell XPS 13 / Intel Arc Graphics (Core Ultra 7 155H Meteor Lake)",
+      "weight": 0.035,
+      "gpu": {
+        "vendor": "Google Inc. (Intel)",
+        "renderer": "ANGLE (Intel, Intel(R) Arc(TM) Graphics (0x00007D55) Direct3D11 vs_5_0 ps_5_0, D3D11)",
+        "webgpuAdapter": "Intel(R) Arc(TM) Graphics",
+        "limitsClass": "integrated"
+      },
+      "cpu": {
+        "coresMin": 14,
+        "coresMax": 16,
+        "arch": "x64"
+      },
+      "ramGB": [
+        16,
+        32
+      ],
+      "screen": {
+        "resolutions": [
+          {
+            "width": 2880,
+            "height": 1800
+          },
+          {
+            "width": 1920,
+            "height": 1200
+          }
+        ],
+        "dpr": 1.5,
+        "colorDepth": 24
+      },
+      "platformVersionRange": [
+        "10.0.22631",
+        "10.0.26100"
+      ],
+      "fontsClass": "win11-modern",
+      "localePool": [
+        "en-US",
+        "en-GB",
+        "de-DE",
+        "ja-JP"
+      ],
+      "coherenceConstraints": {
+        "mobile": false,
+        "platform": "windows",
+        "platformArch": "x86",
+        "bitness": "64",
+        "direct3dFeatureLevel": "12_2"
+      },
+      "citation": {
+        "source": "Steam Hardware Survey",
+        "date": "2026-08",
+        "notes": "Modern Intel Core Ultra (Meteor Lake) ultrabooks"
+      },
+      "gpuRenderer": "ANGLE (Intel, Intel(R) Arc(TM) Graphics (0x00007D55) Direct3D11 vs_5_0 ps_5_0, D3D11)",
+      "audioSignature": {
+        "sampleRate": 48000,
+        "channelCount": 2,
+        "oscillatorLatencyMs": 10,
+        "noiseOffset": 0.00012,
+        "dynamicsCompressorParams": {
+          "threshold": -24,
+          "knee": 30,
+          "ratio": 12,
+          "attack": 0.003,
+          "release": 0.25
+        }
+      },
+      "fontInventory": [
+        "Arial",
+        "Calibri",
+        "Cambria",
+        "Comic Sans MS",
+        "Consolas",
+        "Courier New",
+        "Georgia",
+        "Impact",
+        "Lucida Console",
+        "Microsoft Sans Serif",
+        "Segoe UI",
+        "Segoe UI Emoji",
+        "Segoe UI Historic",
+        "Segoe UI Symbol",
+        "Segoe UI Variable",
+        "Tahoma",
+        "Times New Roman",
+        "Trebuchet MS",
+        "Verdana",
+        "MS Gothic",
+        "Yu Gothic"
+      ],
+      "screenProfile": {
+        "width": 2880,
+        "height": 1800,
+        "availWidth": 2880,
+        "availHeight": 1760,
+        "colorDepth": 24,
+        "pixelDepth": 24,
+        "scaleFactor": 1.5,
+        "isRetina": false
+      },
+      "scaleFactor": 1.5
+    },
+    {
+      "id": "win-intel-uhd-730-desktop",
+      "displayName": "Acer Aspire / Intel UHD Graphics 730 (i5-12400/13400 Desktop)",
+      "weight": 0.03,
+      "gpu": {
+        "vendor": "Google Inc. (Intel)",
+        "renderer": "ANGLE (Intel, Intel(R) UHD Graphics 730 (0x00004692) Direct3D11 vs_5_0 ps_5_0, D3D11)",
+        "webgpuAdapter": "Intel(R) UHD Graphics 730",
+        "limitsClass": "integrated"
+      },
+      "cpu": {
+        "coresMin": 6,
+        "coresMax": 10,
+        "arch": "x64"
+      },
+      "ramGB": [
+        8,
+        16
+      ],
+      "screen": {
+        "resolutions": [
+          {
+            "width": 1920,
+            "height": 1080
+          }
+        ],
+        "dpr": 1,
+        "colorDepth": 24
+      },
+      "platformVersionRange": [
+        "10.0.22631",
+        "10.0.26100"
+      ],
+      "fontsClass": "win11-modern",
+      "localePool": [
+        "en-US",
+        "es-ES",
+        "pl-PL",
+        "it-IT"
+      ],
+      "coherenceConstraints": {
+        "mobile": false,
+        "platform": "windows",
+        "platformArch": "x86",
+        "bitness": "64",
+        "direct3dFeatureLevel": "12_1"
+      },
+      "citation": {
+        "source": "Steam / StatCounter",
+        "date": "2026-08",
+        "notes": "Mid-range consumer desktops with Intel UHD 730"
+      },
+      "gpuRenderer": "ANGLE (Intel, Intel(R) UHD Graphics 730 (0x00004692) Direct3D11 vs_5_0 ps_5_0, D3D11)",
+      "audioSignature": {
+        "sampleRate": 48000,
+        "channelCount": 2,
+        "oscillatorLatencyMs": 10,
+        "noiseOffset": 0.00012,
+        "dynamicsCompressorParams": {
+          "threshold": -24,
+          "knee": 30,
+          "ratio": 12,
+          "attack": 0.003,
+          "release": 0.25
+        }
+      },
+      "fontInventory": [
+        "Arial",
+        "Calibri",
+        "Cambria",
+        "Comic Sans MS",
+        "Consolas",
+        "Courier New",
+        "Georgia",
+        "Impact",
+        "Lucida Console",
+        "Microsoft Sans Serif",
+        "Segoe UI",
+        "Segoe UI Emoji",
+        "Segoe UI Historic",
+        "Segoe UI Symbol",
+        "Segoe UI Variable",
+        "Tahoma",
+        "Times New Roman",
+        "Trebuchet MS",
+        "Verdana",
+        "MS Gothic",
+        "Yu Gothic"
+      ],
+      "screenProfile": {
+        "width": 1920,
+        "height": 1080,
+        "availWidth": 1920,
+        "availHeight": 1040,
+        "colorDepth": 24,
+        "pixelDepth": 24,
+        "scaleFactor": 1,
+        "isRetina": false
+      },
+      "scaleFactor": 1
+    },
+    {
+      "id": "win-intel-uhd-600-budget-laptop",
+      "displayName": "Lenovo IdeaPad 1 / Intel UHD Graphics 600 (Celeron N4020 / Pentium Silver)",
+      "weight": 0.02,
+      "gpu": {
+        "vendor": "Google Inc. (Intel)",
+        "renderer": "ANGLE (Intel, Intel(R) UHD Graphics 600 (0x00003185) Direct3D11 vs_5_0 ps_5_0, D3D11)",
+        "webgpuAdapter": "Intel(R) UHD Graphics 600",
+        "limitsClass": "budget"
+      },
+      "cpu": {
+        "coresMin": 2,
+        "coresMax": 4,
+        "arch": "x64"
+      },
+      "ramGB": [
+        4,
+        8
+      ],
+      "screen": {
+        "resolutions": [
+          {
+            "width": 1366,
+            "height": 768
+          },
+          {
+            "width": 1920,
+            "height": 1080
+          }
+        ],
+        "dpr": 1,
+        "colorDepth": 24
+      },
+      "platformVersionRange": [
+        "10.0.19045",
+        "10.0.22631"
+      ],
+      "fontsClass": "win10-legacy",
+      "localePool": [
+        "en-US",
+        "es-MX",
+        "pt-BR",
+        "id-ID"
+      ],
+      "coherenceConstraints": {
+        "mobile": false,
+        "platform": "windows",
+        "platformArch": "x86",
+        "bitness": "64",
+        "direct3dFeatureLevel": "12_0"
+      },
+      "citation": {
+        "source": "StatCounter Windows Share",
+        "date": "2026-08",
+        "notes": "Budget entry-level Gemini Lake / Jasper Lake laptops"
+      },
+      "gpuRenderer": "ANGLE (Intel, Intel(R) UHD Graphics 600 (0x00003185) Direct3D11 vs_5_0 ps_5_0, D3D11)",
+      "audioSignature": {
+        "sampleRate": 48000,
+        "channelCount": 2,
+        "oscillatorLatencyMs": 10,
+        "noiseOffset": 0.00012,
+        "dynamicsCompressorParams": {
+          "threshold": -24,
+          "knee": 30,
+          "ratio": 12,
+          "attack": 0.003,
+          "release": 0.25
+        }
+      },
+      "fontInventory": [
+        "Arial",
+        "Calibri",
+        "Cambria",
+        "Comic Sans MS",
+        "Consolas",
+        "Courier New",
+        "Georgia",
+        "Impact",
+        "Lucida Console",
+        "Microsoft Sans Serif",
+        "Segoe UI",
+        "Segoe UI Emoji",
+        "Segoe UI Historic",
+        "Segoe UI Symbol",
+        "Segoe UI Variable",
+        "Tahoma",
+        "Times New Roman",
+        "Trebuchet MS",
+        "Verdana",
+        "MS Gothic",
+        "Yu Gothic"
+      ],
+      "screenProfile": {
+        "width": 1366,
+        "height": 768,
+        "availWidth": 1366,
+        "availHeight": 728,
+        "colorDepth": 24,
+        "pixelDepth": 24,
+        "scaleFactor": 1,
+        "isRetina": false
+      },
+      "scaleFactor": 1
+    },
+    {
+      "id": "win-intel-surface-pro-9-iris",
+      "displayName": "Surface Pro 9 / Intel Iris Xe Graphics (i7-1255U)",
+      "weight": 0.02,
+      "gpu": {
+        "vendor": "Google Inc. (Intel)",
+        "renderer": "ANGLE (Intel, Intel(R) Iris(R) Xe Graphics (0x000046A8) Direct3D11 vs_5_0 ps_5_0, D3D11)",
+        "webgpuAdapter": "Intel(R) Iris(R) Xe Graphics",
+        "limitsClass": "integrated"
+      },
+      "cpu": {
+        "coresMin": 10,
+        "coresMax": 10,
+        "arch": "x64"
+      },
+      "ramGB": [
+        8,
+        16,
+        32
+      ],
+      "screen": {
+        "resolutions": [
+          {
+            "width": 2880,
+            "height": 1920
+          }
+        ],
+        "dpr": 2,
+        "colorDepth": 24
+      },
+      "platformVersionRange": [
+        "10.0.22631",
+        "10.0.26100"
+      ],
+      "fontsClass": "win11-modern",
+      "localePool": [
+        "en-US",
+        "en-GB",
+        "de-DE"
+      ],
+      "coherenceConstraints": {
+        "mobile": false,
+        "platform": "windows",
+        "platformArch": "x86",
+        "bitness": "64",
+        "direct3dFeatureLevel": "12_1"
+      },
+      "citation": {
+        "source": "Surface Telemetry / StatCounter",
+        "date": "2026-08",
+        "notes": "Surface Pro 9 premium tablet/laptop hybrid"
+      },
+      "gpuRenderer": "ANGLE (Intel, Intel(R) Iris(R) Xe Graphics (0x000046A8) Direct3D11 vs_5_0 ps_5_0, D3D11)",
+      "audioSignature": {
+        "sampleRate": 48000,
+        "channelCount": 2,
+        "oscillatorLatencyMs": 10,
+        "noiseOffset": 0.00012,
+        "dynamicsCompressorParams": {
+          "threshold": -24,
+          "knee": 30,
+          "ratio": 12,
+          "attack": 0.003,
+          "release": 0.25
+        }
+      },
+      "fontInventory": [
+        "Arial",
+        "Calibri",
+        "Cambria",
+        "Comic Sans MS",
+        "Consolas",
+        "Courier New",
+        "Georgia",
+        "Impact",
+        "Lucida Console",
+        "Microsoft Sans Serif",
+        "Segoe UI",
+        "Segoe UI Emoji",
+        "Segoe UI Historic",
+        "Segoe UI Symbol",
+        "Segoe UI Variable",
+        "Tahoma",
+        "Times New Roman",
+        "Trebuchet MS",
+        "Verdana",
+        "MS Gothic",
+        "Yu Gothic"
+      ],
+      "screenProfile": {
+        "width": 2880,
+        "height": 1920,
+        "availWidth": 2880,
+        "availHeight": 1880,
+        "colorDepth": 24,
+        "pixelDepth": 24,
+        "scaleFactor": 2,
+        "isRetina": false
+      },
+      "scaleFactor": 2
+    },
+    {
+      "id": "win-intel-nuc-mini-pc",
+      "displayName": "Intel NUC 11 Mini PC / Intel Iris Xe (i5-1135G7)",
+      "weight": 0.015,
+      "gpu": {
+        "vendor": "Google Inc. (Intel)",
+        "renderer": "ANGLE (Intel, Intel(R) Iris(R) Xe Graphics (0x00009A49) Direct3D11 vs_5_0 ps_5_0, D3D11)",
+        "webgpuAdapter": "Intel(R) Iris(R) Xe Graphics",
+        "limitsClass": "integrated"
+      },
+      "cpu": {
+        "coresMin": 4,
+        "coresMax": 8,
+        "arch": "x64"
+      },
+      "ramGB": [
+        8,
+        16,
+        32
+      ],
+      "screen": {
+        "resolutions": [
+          {
+            "width": 1920,
+            "height": 1080
+          },
+          {
+            "width": 2560,
+            "height": 1440
+          }
+        ],
+        "dpr": 1,
+        "colorDepth": 24
+      },
+      "platformVersionRange": [
+        "10.0.19045",
+        "10.0.22631"
+      ],
+      "fontsClass": "win10-legacy",
+      "localePool": [
+        "en-US",
+        "de-DE",
+        "ja-JP"
+      ],
+      "coherenceConstraints": {
+        "mobile": false,
+        "platform": "windows",
+        "platformArch": "x86",
+        "bitness": "64",
+        "direct3dFeatureLevel": "12_1"
+      },
+      "citation": {
+        "source": "StatCounter / Mini PC Telemetry",
+        "date": "2026-08",
+        "notes": "Home theater and office compact mini-PCs"
+      },
+      "gpuRenderer": "ANGLE (Intel, Intel(R) Iris(R) Xe Graphics (0x00009A49) Direct3D11 vs_5_0 ps_5_0, D3D11)",
+      "audioSignature": {
+        "sampleRate": 48000,
+        "channelCount": 2,
+        "oscillatorLatencyMs": 10,
+        "noiseOffset": 0.00012,
+        "dynamicsCompressorParams": {
+          "threshold": -24,
+          "knee": 30,
+          "ratio": 12,
+          "attack": 0.003,
+          "release": 0.25
+        }
+      },
+      "fontInventory": [
+        "Arial",
+        "Calibri",
+        "Cambria",
+        "Comic Sans MS",
+        "Consolas",
+        "Courier New",
+        "Georgia",
+        "Impact",
+        "Lucida Console",
+        "Microsoft Sans Serif",
+        "Segoe UI",
+        "Segoe UI Emoji",
+        "Segoe UI Historic",
+        "Segoe UI Symbol",
+        "Segoe UI Variable",
+        "Tahoma",
+        "Times New Roman",
+        "Trebuchet MS",
+        "Verdana",
+        "MS Gothic",
+        "Yu Gothic"
+      ],
+      "screenProfile": {
+        "width": 1920,
+        "height": 1080,
+        "availWidth": 1920,
+        "availHeight": 1040,
+        "colorDepth": 24,
+        "pixelDepth": 24,
+        "scaleFactor": 1,
+        "isRetina": false
+      },
+      "scaleFactor": 1
+    },
+    {
+      "id": "win-intel-snapdragon-arm64-laptop",
+      "displayName": "Snapdragon X Elite / Adreno X1-85 GPU (ARM64 Windows 11 Copilot+ PC)",
+      "weight": 0.015,
+      "gpu": {
+        "vendor": "Google Inc. (Qualcomm)",
+        "renderer": "ANGLE (Qualcomm, Qualcomm(R) Adreno(TM) X1-85 GPU Direct3D11 vs_5_0 ps_5_0, D3D11)",
+        "webgpuAdapter": "Qualcomm(R) Adreno(TM) X1-85 GPU",
+        "limitsClass": "integrated"
+      },
+      "cpu": {
+        "coresMin": 12,
+        "coresMax": 12,
+        "arch": "arm64"
+      },
+      "ramGB": [
+        16,
+        32
+      ],
+      "screen": {
+        "resolutions": [
+          {
+            "width": 2880,
+            "height": 1800
+          },
+          {
+            "width": 1920,
+            "height": 1200
+          }
+        ],
+        "dpr": 1.5,
+        "colorDepth": 24
+      },
+      "platformVersionRange": [
+        "10.0.26100"
+      ],
+      "fontsClass": "win11-arm",
+      "localePool": [
+        "en-US",
+        "en-GB",
+        "de-DE"
+      ],
+      "coherenceConstraints": {
+        "mobile": false,
+        "platform": "windows",
+        "platformArch": "arm",
+        "bitness": "64",
+        "direct3dFeatureLevel": "12_2"
+      },
+      "citation": {
+        "source": "Qualcomm / Windows Arm Telemetry",
+        "date": "2026-08",
+        "notes": "Windows 11 on Snapdragon X Elite Copilot+ PCs"
+      },
+      "gpuRenderer": "ANGLE (Qualcomm, Qualcomm(R) Adreno(TM) X1-85 GPU Direct3D11 vs_5_0 ps_5_0, D3D11)",
+      "audioSignature": {
+        "sampleRate": 48000,
+        "channelCount": 2,
+        "oscillatorLatencyMs": 10,
+        "noiseOffset": 0.00012,
+        "dynamicsCompressorParams": {
+          "threshold": -24,
+          "knee": 30,
+          "ratio": 12,
+          "attack": 0.003,
+          "release": 0.25
+        }
+      },
+      "fontInventory": [
+        "Arial",
+        "Calibri",
+        "Cambria",
+        "Consolas",
+        "Courier New",
+        "Georgia",
+        "Microsoft Sans Serif",
+        "Segoe UI",
+        "Segoe UI Emoji",
+        "Segoe UI Variable",
+        "Tahoma",
+        "Times New Roman",
+        "Verdana"
+      ],
+      "screenProfile": {
+        "width": 2880,
+        "height": 1800,
+        "availWidth": 2880,
+        "availHeight": 1760,
+        "colorDepth": 24,
+        "pixelDepth": 24,
+        "scaleFactor": 1.5,
+        "isRetina": false
+      },
+      "scaleFactor": 1.5
+    },
+    {
+      "id": "win-amd-radeon-680m-laptop",
+      "displayName": "Lenovo Legion Slim 5 / AMD Radeon 680M Graphics (Ryzen 7 6800H)",
+      "weight": 0.045,
+      "gpu": {
+        "vendor": "Google Inc. (AMD)",
+        "renderer": "ANGLE (AMD, AMD Radeon 680M (0x00001681) Direct3D11 vs_5_0 ps_5_0, D3D11)",
+        "webgpuAdapter": "AMD Radeon 680M",
+        "limitsClass": "integrated"
+      },
+      "cpu": {
+        "coresMin": 8,
+        "coresMax": 16,
+        "arch": "x64"
+      },
+      "ramGB": [
+        16,
+        32
+      ],
+      "screen": {
+        "resolutions": [
+          {
+            "width": 2560,
+            "height": 1600
+          },
+          {
+            "width": 1920,
+            "height": 1200
+          }
+        ],
+        "dpr": 1.25,
+        "colorDepth": 24
+      },
+      "platformVersionRange": [
+        "10.0.22631",
+        "10.0.26100"
+      ],
+      "fontsClass": "win11-modern",
+      "localePool": [
+        "en-US",
+        "de-DE",
+        "fr-FR",
+        "zh-CN"
+      ],
+      "coherenceConstraints": {
+        "mobile": false,
+        "platform": "windows",
+        "platformArch": "x86",
+        "bitness": "64",
+        "direct3dFeatureLevel": "12_1"
+      },
+      "citation": {
+        "source": "Steam Hardware Survey",
+        "date": "2026-08",
+        "notes": "Popular Ryzen 6000 RDNA2 APU laptop profiles"
+      },
+      "gpuRenderer": "ANGLE (AMD, AMD Radeon 680M (0x00001681) Direct3D11 vs_5_0 ps_5_0, D3D11)",
+      "audioSignature": {
+        "sampleRate": 48000,
+        "channelCount": 2,
+        "oscillatorLatencyMs": 10,
+        "noiseOffset": 0.00012,
+        "dynamicsCompressorParams": {
+          "threshold": -24,
+          "knee": 30,
+          "ratio": 12,
+          "attack": 0.003,
+          "release": 0.25
+        }
+      },
+      "fontInventory": [
+        "Arial",
+        "Calibri",
+        "Cambria",
+        "Comic Sans MS",
+        "Consolas",
+        "Courier New",
+        "Georgia",
+        "Impact",
+        "Lucida Console",
+        "Microsoft Sans Serif",
+        "Segoe UI",
+        "Segoe UI Emoji",
+        "Segoe UI Historic",
+        "Segoe UI Symbol",
+        "Segoe UI Variable",
+        "Tahoma",
+        "Times New Roman",
+        "Trebuchet MS",
+        "Verdana",
+        "MS Gothic",
+        "Yu Gothic"
+      ],
+      "screenProfile": {
+        "width": 2560,
+        "height": 1600,
+        "availWidth": 2560,
+        "availHeight": 1560,
+        "colorDepth": 24,
+        "pixelDepth": 24,
+        "scaleFactor": 1.25,
+        "isRetina": false
+      },
+      "scaleFactor": 1.25
+    },
+    {
+      "id": "win-amd-radeon-780m-laptop",
+      "displayName": "ASUS ROG Zephyrus / AMD Radeon 780M Graphics (Ryzen 7 7840HS / 8845HS)",
+      "weight": 0.04,
+      "gpu": {
+        "vendor": "Google Inc. (AMD)",
+        "renderer": "ANGLE (AMD, AMD Radeon 780M (0x000015BF) Direct3D11 vs_5_0 ps_5_0, D3D11)",
+        "webgpuAdapter": "AMD Radeon 780M",
+        "limitsClass": "integrated"
+      },
+      "cpu": {
+        "coresMin": 8,
+        "coresMax": 16,
+        "arch": "x64"
+      },
+      "ramGB": [
+        16,
+        32
+      ],
+      "screen": {
+        "resolutions": [
+          {
+            "width": 2560,
+            "height": 1600
+          },
+          {
+            "width": 2880,
+            "height": 1800
+          }
+        ],
+        "dpr": 1.5,
+        "colorDepth": 24
+      },
+      "platformVersionRange": [
+        "10.0.22631",
+        "10.0.26100"
+      ],
+      "fontsClass": "win11-modern",
+      "localePool": [
+        "en-US",
+        "en-GB",
+        "de-DE",
+        "ru-RU"
+      ],
+      "coherenceConstraints": {
+        "mobile": false,
+        "platform": "windows",
+        "platformArch": "x86",
+        "bitness": "64",
+        "direct3dFeatureLevel": "12_2"
+      },
+      "citation": {
+        "source": "Steam Hardware Survey",
+        "date": "2026-08",
+        "notes": "Ryzen 7000/8000 RDNA3 high performance APUs"
+      },
+      "gpuRenderer": "ANGLE (AMD, AMD Radeon 780M (0x000015BF) Direct3D11 vs_5_0 ps_5_0, D3D11)",
+      "audioSignature": {
+        "sampleRate": 48000,
+        "channelCount": 2,
+        "oscillatorLatencyMs": 10,
+        "noiseOffset": 0.00012,
+        "dynamicsCompressorParams": {
+          "threshold": -24,
+          "knee": 30,
+          "ratio": 12,
+          "attack": 0.003,
+          "release": 0.25
+        }
+      },
+      "fontInventory": [
+        "Arial",
+        "Calibri",
+        "Cambria",
+        "Comic Sans MS",
+        "Consolas",
+        "Courier New",
+        "Georgia",
+        "Impact",
+        "Lucida Console",
+        "Microsoft Sans Serif",
+        "Segoe UI",
+        "Segoe UI Emoji",
+        "Segoe UI Historic",
+        "Segoe UI Symbol",
+        "Segoe UI Variable",
+        "Tahoma",
+        "Times New Roman",
+        "Trebuchet MS",
+        "Verdana",
+        "MS Gothic",
+        "Yu Gothic"
+      ],
+      "screenProfile": {
+        "width": 2560,
+        "height": 1600,
+        "availWidth": 2560,
+        "availHeight": 1560,
+        "colorDepth": 24,
+        "pixelDepth": 24,
+        "scaleFactor": 1.5,
+        "isRetina": false
+      },
+      "scaleFactor": 1.5
+    },
+    {
+      "id": "win-amd-radeon-vega-8-laptop",
+      "displayName": "HP Envy x360 / AMD Radeon(TM) Vega 8 Graphics (Ryzen 5 3500U/4500U/5500U)",
+      "weight": 0.045,
+      "gpu": {
+        "vendor": "Google Inc. (AMD)",
+        "renderer": "ANGLE (AMD, AMD Radeon(TM) Graphics (0x00001636) Direct3D11 vs_5_0 ps_5_0, D3D11)",
+        "webgpuAdapter": "AMD Radeon(TM) Graphics",
+        "limitsClass": "integrated"
+      },
+      "cpu": {
+        "coresMin": 4,
+        "coresMax": 8,
+        "arch": "x64"
+      },
+      "ramGB": [
+        8,
+        16
+      ],
+      "screen": {
+        "resolutions": [
+          {
+            "width": 1920,
+            "height": 1080
+          }
+        ],
+        "dpr": 1,
+        "colorDepth": 24
+      },
+      "platformVersionRange": [
+        "10.0.19045",
+        "10.0.22631"
+      ],
+      "fontsClass": "win10-legacy",
+      "localePool": [
+        "en-US",
+        "es-ES",
+        "pt-BR",
+        "pl-PL"
+      ],
+      "coherenceConstraints": {
+        "mobile": false,
+        "platform": "windows",
+        "platformArch": "x86",
+        "bitness": "64",
+        "direct3dFeatureLevel": "12_0"
+      },
+      "citation": {
+        "source": "StatCounter / Steam Survey",
+        "date": "2026-08",
+        "notes": "Widespread budget-to-mid AMD Ryzen 3000-5000 Vega laptops"
+      },
+      "gpuRenderer": "ANGLE (AMD, AMD Radeon(TM) Graphics (0x00001636) Direct3D11 vs_5_0 ps_5_0, D3D11)",
+      "audioSignature": {
+        "sampleRate": 48000,
+        "channelCount": 2,
+        "oscillatorLatencyMs": 10,
+        "noiseOffset": 0.00012,
+        "dynamicsCompressorParams": {
+          "threshold": -24,
+          "knee": 30,
+          "ratio": 12,
+          "attack": 0.003,
+          "release": 0.25
+        }
+      },
+      "fontInventory": [
+        "Arial",
+        "Calibri",
+        "Cambria",
+        "Comic Sans MS",
+        "Consolas",
+        "Courier New",
+        "Georgia",
+        "Impact",
+        "Lucida Console",
+        "Microsoft Sans Serif",
+        "Segoe UI",
+        "Segoe UI Emoji",
+        "Segoe UI Historic",
+        "Segoe UI Symbol",
+        "Segoe UI Variable",
+        "Tahoma",
+        "Times New Roman",
+        "Trebuchet MS",
+        "Verdana",
+        "MS Gothic",
+        "Yu Gothic"
+      ],
+      "screenProfile": {
+        "width": 1920,
+        "height": 1080,
+        "availWidth": 1920,
+        "availHeight": 1040,
+        "colorDepth": 24,
+        "pixelDepth": 24,
+        "scaleFactor": 1,
+        "isRetina": false
+      },
+      "scaleFactor": 1
+    },
+    {
+      "id": "win-nvidia-rtx-3060-desktop",
+      "displayName": "Gaming PC / NVIDIA GeForce RTX 3060 (Ryzen 5 5600X / Core i5-12400F)",
+      "weight": 0.06,
+      "gpu": {
+        "vendor": "Google Inc. (NVIDIA)",
+        "renderer": "ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 (0x00002503) Direct3D11 vs_5_0 ps_5_0, D3D11)",
+        "webgpuAdapter": "NVIDIA GeForce RTX 3060",
+        "limitsClass": "mid-range"
+      },
+      "cpu": {
+        "coresMin": 6,
+        "coresMax": 12,
+        "arch": "x64"
+      },
+      "ramGB": [
+        16,
+        32
+      ],
+      "screen": {
+        "resolutions": [
+          {
+            "width": 1920,
+            "height": 1080
+          },
+          {
+            "width": 2560,
+            "height": 1440
+          }
+        ],
+        "dpr": 1,
+        "colorDepth": 24
+      },
+      "platformVersionRange": [
+        "10.0.19045",
+        "10.0.22631",
+        "10.0.26100"
+      ],
+      "fontsClass": "win10-legacy",
+      "localePool": [
+        "en-US",
+        "en-GB",
+        "de-DE",
+        "ru-RU",
+        "zh-CN"
+      ],
+      "coherenceConstraints": {
+        "mobile": false,
+        "platform": "windows",
+        "platformArch": "x86",
+        "bitness": "64",
+        "direct3dFeatureLevel": "12_1"
+      },
+      "citation": {
+        "source": "Steam Hardware Survey #1 GPU",
+        "date": "2026-08",
+        "notes": "Top desktop gaming GPU in Steam statistics"
+      },
+      "gpuRenderer": "ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 (0x00002503) Direct3D11 vs_5_0 ps_5_0, D3D11)",
+      "audioSignature": {
+        "sampleRate": 48000,
+        "channelCount": 2,
+        "oscillatorLatencyMs": 10,
+        "noiseOffset": 0.00012,
+        "dynamicsCompressorParams": {
+          "threshold": -24,
+          "knee": 30,
+          "ratio": 12,
+          "attack": 0.003,
+          "release": 0.25
+        }
+      },
+      "fontInventory": [
+        "Arial",
+        "Calibri",
+        "Cambria",
+        "Comic Sans MS",
+        "Consolas",
+        "Courier New",
+        "Georgia",
+        "Impact",
+        "Lucida Console",
+        "Microsoft Sans Serif",
+        "Segoe UI",
+        "Segoe UI Emoji",
+        "Segoe UI Historic",
+        "Segoe UI Symbol",
+        "Segoe UI Variable",
+        "Tahoma",
+        "Times New Roman",
+        "Trebuchet MS",
+        "Verdana",
+        "MS Gothic",
+        "Yu Gothic"
+      ],
+      "screenProfile": {
+        "width": 1920,
+        "height": 1080,
+        "availWidth": 1920,
+        "availHeight": 1040,
+        "colorDepth": 24,
+        "pixelDepth": 24,
+        "scaleFactor": 1,
+        "isRetina": false
+      },
+      "scaleFactor": 1
+    },
+    {
+      "id": "win-nvidia-rtx-4060-desktop",
+      "displayName": "Gaming PC / NVIDIA GeForce RTX 4060 (Core i5-13400F / Ryzen 5 7600)",
+      "weight": 0.05,
+      "gpu": {
+        "vendor": "Google Inc. (NVIDIA)",
+        "renderer": "ANGLE (NVIDIA, NVIDIA GeForce RTX 4060 (0x00002882) Direct3D11 vs_5_0 ps_5_0, D3D11)",
+        "webgpuAdapter": "NVIDIA GeForce RTX 4060",
+        "limitsClass": "mid-range"
+      },
+      "cpu": {
+        "coresMin": 6,
+        "coresMax": 16,
+        "arch": "x64"
+      },
+      "ramGB": [
+        16,
+        32
+      ],
+      "screen": {
+        "resolutions": [
+          {
+            "width": 1920,
+            "height": 1080
+          },
+          {
+            "width": 2560,
+            "height": 1440
+          }
+        ],
+        "dpr": 1,
+        "colorDepth": 24
+      },
+      "platformVersionRange": [
+        "10.0.22631",
+        "10.0.26100"
+      ],
+      "fontsClass": "win11-modern",
+      "localePool": [
+        "en-US",
+        "de-DE",
+        "fr-FR",
+        "ja-JP",
+        "ko-KR"
+      ],
+      "coherenceConstraints": {
+        "mobile": false,
+        "platform": "windows",
+        "platformArch": "x86",
+        "bitness": "64",
+        "direct3dFeatureLevel": "12_2"
+      },
+      "citation": {
+        "source": "Steam Hardware Survey Top Gainers",
+        "date": "2026-08",
+        "notes": "Leading mainstream Ada Lovelace desktop GPU"
+      },
+      "gpuRenderer": "ANGLE (NVIDIA, NVIDIA GeForce RTX 4060 (0x00002882) Direct3D11 vs_5_0 ps_5_0, D3D11)",
+      "audioSignature": {
+        "sampleRate": 48000,
+        "channelCount": 2,
+        "oscillatorLatencyMs": 10,
+        "noiseOffset": 0.00012,
+        "dynamicsCompressorParams": {
+          "threshold": -24,
+          "knee": 30,
+          "ratio": 12,
+          "attack": 0.003,
+          "release": 0.25
+        }
+      },
+      "fontInventory": [
+        "Arial",
+        "Calibri",
+        "Cambria",
+        "Comic Sans MS",
+        "Consolas",
+        "Courier New",
+        "Georgia",
+        "Impact",
+        "Lucida Console",
+        "Microsoft Sans Serif",
+        "Segoe UI",
+        "Segoe UI Emoji",
+        "Segoe UI Historic",
+        "Segoe UI Symbol",
+        "Segoe UI Variable",
+        "Tahoma",
+        "Times New Roman",
+        "Trebuchet MS",
+        "Verdana",
+        "MS Gothic",
+        "Yu Gothic"
+      ],
+      "screenProfile": {
+        "width": 1920,
+        "height": 1080,
+        "availWidth": 1920,
+        "availHeight": 1040,
+        "colorDepth": 24,
+        "pixelDepth": 24,
+        "scaleFactor": 1,
+        "isRetina": false
+      },
+      "scaleFactor": 1
+    },
+    {
+      "id": "win-nvidia-rtx-4060-laptop",
+      "displayName": "Lenovo Legion 5 / NVIDIA GeForce RTX 4060 Laptop GPU (i7-13700HX)",
+      "weight": 0.035,
+      "gpu": {
+        "vendor": "Google Inc. (NVIDIA)",
+        "renderer": "ANGLE (NVIDIA, NVIDIA GeForce RTX 4060 Laptop GPU (0x000028E0) Direct3D11 vs_5_0 ps_5_0, D3D11)",
+        "webgpuAdapter": "NVIDIA GeForce RTX 4060 Laptop GPU",
+        "limitsClass": "mid-range"
+      },
+      "cpu": {
+        "coresMin": 12,
+        "coresMax": 16,
+        "arch": "x64"
+      },
+      "ramGB": [
+        16,
+        32
+      ],
+      "screen": {
+        "resolutions": [
+          {
+            "width": 2560,
+            "height": 1600
+          },
+          {
+            "width": 1920,
+            "height": 1200
+          }
+        ],
+        "dpr": 1.25,
+        "colorDepth": 24
+      },
+      "platformVersionRange": [
+        "10.0.22631",
+        "10.0.26100"
+      ],
+      "fontsClass": "win11-modern",
+      "localePool": [
+        "en-US",
+        "en-GB",
+        "de-DE",
+        "zh-CN"
+      ],
+      "coherenceConstraints": {
+        "mobile": false,
+        "platform": "windows",
+        "platformArch": "x86",
+        "bitness": "64",
+        "direct3dFeatureLevel": "12_2"
+      },
+      "citation": {
+        "source": "Steam Hardware Survey Laptop Segment",
+        "date": "2026-08",
+        "notes": "Most common gaming laptop discrete GPU"
+      },
+      "gpuRenderer": "ANGLE (NVIDIA, NVIDIA GeForce RTX 4060 Laptop GPU (0x000028E0) Direct3D11 vs_5_0 ps_5_0, D3D11)",
+      "audioSignature": {
+        "sampleRate": 48000,
+        "channelCount": 2,
+        "oscillatorLatencyMs": 10,
+        "noiseOffset": 0.00012,
+        "dynamicsCompressorParams": {
+          "threshold": -24,
+          "knee": 30,
+          "ratio": 12,
+          "attack": 0.003,
+          "release": 0.25
+        }
+      },
+      "fontInventory": [
+        "Arial",
+        "Calibri",
+        "Cambria",
+        "Comic Sans MS",
+        "Consolas",
+        "Courier New",
+        "Georgia",
+        "Impact",
+        "Lucida Console",
+        "Microsoft Sans Serif",
+        "Segoe UI",
+        "Segoe UI Emoji",
+        "Segoe UI Historic",
+        "Segoe UI Symbol",
+        "Segoe UI Variable",
+        "Tahoma",
+        "Times New Roman",
+        "Trebuchet MS",
+        "Verdana",
+        "MS Gothic",
+        "Yu Gothic"
+      ],
+      "screenProfile": {
+        "width": 2560,
+        "height": 1600,
+        "availWidth": 2560,
+        "availHeight": 1560,
+        "colorDepth": 24,
+        "pixelDepth": 24,
+        "scaleFactor": 1.25,
+        "isRetina": false
+      },
+      "scaleFactor": 1.25
+    },
+    {
+      "id": "win-nvidia-gtx-1650-desktop",
+      "displayName": "Budget Gaming / NVIDIA GeForce GTX 1650 (i5-10400F / Ryzen 5 3600)",
+      "weight": 0.03,
+      "gpu": {
+        "vendor": "Google Inc. (NVIDIA)",
+        "renderer": "ANGLE (NVIDIA, NVIDIA GeForce GTX 1650 (0x00001F82) Direct3D11 vs_5_0 ps_5_0, D3D11)",
+        "webgpuAdapter": "NVIDIA GeForce GTX 1650",
+        "limitsClass": "budget"
+      },
+      "cpu": {
+        "coresMin": 4,
+        "coresMax": 6,
+        "arch": "x64"
+      },
+      "ramGB": [
+        8,
+        16
+      ],
+      "screen": {
+        "resolutions": [
+          {
+            "width": 1920,
+            "height": 1080
+          }
+        ],
+        "dpr": 1,
+        "colorDepth": 24
+      },
+      "platformVersionRange": [
+        "10.0.19045",
+        "10.0.22631"
+      ],
+      "fontsClass": "win10-legacy",
+      "localePool": [
+        "en-US",
+        "es-ES",
+        "pt-BR",
+        "ru-RU"
+      ],
+      "coherenceConstraints": {
+        "mobile": false,
+        "platform": "windows",
+        "platformArch": "x86",
+        "bitness": "64",
+        "direct3dFeatureLevel": "12_0"
+      },
+      "citation": {
+        "source": "Steam Survey Historical Rank",
+        "date": "2026-08",
+        "notes": "Enduring budget discrete GPU in global market"
+      },
+      "gpuRenderer": "ANGLE (NVIDIA, NVIDIA GeForce GTX 1650 (0x00001F82) Direct3D11 vs_5_0 ps_5_0, D3D11)",
+      "audioSignature": {
+        "sampleRate": 48000,
+        "channelCount": 2,
+        "oscillatorLatencyMs": 10,
+        "noiseOffset": 0.00012,
+        "dynamicsCompressorParams": {
+          "threshold": -24,
+          "knee": 30,
+          "ratio": 12,
+          "attack": 0.003,
+          "release": 0.25
+        }
+      },
+      "fontInventory": [
+        "Arial",
+        "Calibri",
+        "Cambria",
+        "Comic Sans MS",
+        "Consolas",
+        "Courier New",
+        "Georgia",
+        "Impact",
+        "Lucida Console",
+        "Microsoft Sans Serif",
+        "Segoe UI",
+        "Segoe UI Emoji",
+        "Segoe UI Historic",
+        "Segoe UI Symbol",
+        "Segoe UI Variable",
+        "Tahoma",
+        "Times New Roman",
+        "Trebuchet MS",
+        "Verdana",
+        "MS Gothic",
+        "Yu Gothic"
+      ],
+      "screenProfile": {
+        "width": 1920,
+        "height": 1080,
+        "availWidth": 1920,
+        "availHeight": 1040,
+        "colorDepth": 24,
+        "pixelDepth": 24,
+        "scaleFactor": 1,
+        "isRetina": false
+      },
+      "scaleFactor": 1
+    },
+    {
+      "id": "win-amd-rx-6600-desktop",
+      "displayName": "Gaming PC / AMD Radeon RX 6600 (Ryzen 5 5600)",
+      "weight": 0.02,
+      "gpu": {
+        "vendor": "Google Inc. (AMD)",
+        "renderer": "ANGLE (AMD, AMD Radeon RX 6600 (0x000073FF) Direct3D11 vs_5_0 ps_5_0, D3D11)",
+        "webgpuAdapter": "AMD Radeon RX 6600",
+        "limitsClass": "mid-range"
+      },
+      "cpu": {
+        "coresMin": 6,
+        "coresMax": 12,
+        "arch": "x64"
+      },
+      "ramGB": [
+        16,
+        32
+      ],
+      "screen": {
+        "resolutions": [
+          {
+            "width": 1920,
+            "height": 1080
+          },
+          {
+            "width": 2560,
+            "height": 1440
+          }
+        ],
+        "dpr": 1,
+        "colorDepth": 24
+      },
+      "platformVersionRange": [
+        "10.0.19045",
+        "10.0.22631",
+        "10.0.26100"
+      ],
+      "fontsClass": "win10-legacy",
+      "localePool": [
+        "en-US",
+        "de-DE",
+        "fr-FR",
+        "pl-PL"
+      ],
+      "coherenceConstraints": {
+        "mobile": false,
+        "platform": "windows",
+        "platformArch": "x86",
+        "bitness": "64",
+        "direct3dFeatureLevel": "12_1"
+      },
+      "citation": {
+        "source": "Steam Hardware Survey AMD Rank",
+        "date": "2026-08",
+        "notes": "Budget AMD RDNA2 discrete GPU standard"
+      },
+      "gpuRenderer": "ANGLE (AMD, AMD Radeon RX 6600 (0x000073FF) Direct3D11 vs_5_0 ps_5_0, D3D11)",
+      "audioSignature": {
+        "sampleRate": 48000,
+        "channelCount": 2,
+        "oscillatorLatencyMs": 10,
+        "noiseOffset": 0.00012,
+        "dynamicsCompressorParams": {
+          "threshold": -24,
+          "knee": 30,
+          "ratio": 12,
+          "attack": 0.003,
+          "release": 0.25
+        }
+      },
+      "fontInventory": [
+        "Arial",
+        "Calibri",
+        "Cambria",
+        "Comic Sans MS",
+        "Consolas",
+        "Courier New",
+        "Georgia",
+        "Impact",
+        "Lucida Console",
+        "Microsoft Sans Serif",
+        "Segoe UI",
+        "Segoe UI Emoji",
+        "Segoe UI Historic",
+        "Segoe UI Symbol",
+        "Segoe UI Variable",
+        "Tahoma",
+        "Times New Roman",
+        "Trebuchet MS",
+        "Verdana",
+        "MS Gothic",
+        "Yu Gothic"
+      ],
+      "screenProfile": {
+        "width": 1920,
+        "height": 1080,
+        "availWidth": 1920,
+        "availHeight": 1040,
+        "colorDepth": 24,
+        "pixelDepth": 24,
+        "scaleFactor": 1,
+        "isRetina": false
+      },
+      "scaleFactor": 1
+    },
+    {
+      "id": "win-nvidia-rtx-3050-laptop",
+      "displayName": "Dell G15 / NVIDIA GeForce RTX 3050 Laptop GPU (i5-11400H)",
+      "weight": 0.02,
+      "gpu": {
+        "vendor": "Google Inc. (NVIDIA)",
+        "renderer": "ANGLE (NVIDIA, NVIDIA GeForce RTX 3050 Laptop GPU (0x000025A2) Direct3D11 vs_5_0 ps_5_0, D3D11)",
+        "webgpuAdapter": "NVIDIA GeForce RTX 3050 Laptop GPU",
+        "limitsClass": "budget"
+      },
+      "cpu": {
+        "coresMin": 6,
+        "coresMax": 8,
+        "arch": "x64"
+      },
+      "ramGB": [
+        8,
+        16
+      ],
+      "screen": {
+        "resolutions": [
+          {
+            "width": 1920,
+            "height": 1080
+          }
+        ],
+        "dpr": 1,
+        "colorDepth": 24
+      },
+      "platformVersionRange": [
+        "10.0.19045",
+        "10.0.22631"
+      ],
+      "fontsClass": "win10-legacy",
+      "localePool": [
+        "en-US",
+        "es-MX",
+        "pt-BR",
+        "tr-TR"
+      ],
+      "coherenceConstraints": {
+        "mobile": false,
+        "platform": "windows",
+        "platformArch": "x86",
+        "bitness": "64",
+        "direct3dFeatureLevel": "12_1"
+      },
+      "citation": {
+        "source": "Steam Hardware Survey",
+        "date": "2026-08",
+        "notes": "Entry-level gaming laptops with RTX 3050"
+      },
+      "gpuRenderer": "ANGLE (NVIDIA, NVIDIA GeForce RTX 3050 Laptop GPU (0x000025A2) Direct3D11 vs_5_0 ps_5_0, D3D11)",
+      "audioSignature": {
+        "sampleRate": 48000,
+        "channelCount": 2,
+        "oscillatorLatencyMs": 10,
+        "noiseOffset": 0.00012,
+        "dynamicsCompressorParams": {
+          "threshold": -24,
+          "knee": 30,
+          "ratio": 12,
+          "attack": 0.003,
+          "release": 0.25
+        }
+      },
+      "fontInventory": [
+        "Arial",
+        "Calibri",
+        "Cambria",
+        "Comic Sans MS",
+        "Consolas",
+        "Courier New",
+        "Georgia",
+        "Impact",
+        "Lucida Console",
+        "Microsoft Sans Serif",
+        "Segoe UI",
+        "Segoe UI Emoji",
+        "Segoe UI Historic",
+        "Segoe UI Symbol",
+        "Segoe UI Variable",
+        "Tahoma",
+        "Times New Roman",
+        "Trebuchet MS",
+        "Verdana",
+        "MS Gothic",
+        "Yu Gothic"
+      ],
+      "screenProfile": {
+        "width": 1920,
+        "height": 1080,
+        "availWidth": 1920,
+        "availHeight": 1040,
+        "colorDepth": 24,
+        "pixelDepth": 24,
+        "scaleFactor": 1,
+        "isRetina": false
+      },
+      "scaleFactor": 1
+    },
+    {
+      "id": "win-amd-rx-7600-desktop",
+      "displayName": "Gaming PC / AMD Radeon RX 7600 (Ryzen 5 7600X)",
+      "weight": 0.005,
+      "gpu": {
+        "vendor": "Google Inc. (AMD)",
+        "renderer": "ANGLE (AMD, AMD Radeon RX 7600 (0x00007480) Direct3D11 vs_5_0 ps_5_0, D3D11)",
+        "webgpuAdapter": "AMD Radeon RX 7600",
+        "limitsClass": "mid-range"
+      },
+      "cpu": {
+        "coresMin": 6,
+        "coresMax": 12,
+        "arch": "x64"
+      },
+      "ramGB": [
+        16,
+        32
+      ],
+      "screen": {
+        "resolutions": [
+          {
+            "width": 1920,
+            "height": 1080
+          },
+          {
+            "width": 2560,
+            "height": 1440
+          }
+        ],
+        "dpr": 1,
+        "colorDepth": 24
+      },
+      "platformVersionRange": [
+        "10.0.22631",
+        "10.0.26100"
+      ],
+      "fontsClass": "win11-modern",
+      "localePool": [
+        "en-US",
+        "de-DE",
+        "en-CA"
+      ],
+      "coherenceConstraints": {
+        "mobile": false,
+        "platform": "windows",
+        "platformArch": "x86",
+        "bitness": "64",
+        "direct3dFeatureLevel": "12_2"
+      },
+      "citation": {
+        "source": "Steam Hardware Survey",
+        "date": "2026-08",
+        "notes": "Modern RDNA3 mid-range gaming desktop"
+      },
+      "gpuRenderer": "ANGLE (AMD, AMD Radeon RX 7600 (0x00007480) Direct3D11 vs_5_0 ps_5_0, D3D11)",
+      "audioSignature": {
+        "sampleRate": 48000,
+        "channelCount": 2,
+        "oscillatorLatencyMs": 10,
+        "noiseOffset": 0.00012,
+        "dynamicsCompressorParams": {
+          "threshold": -24,
+          "knee": 30,
+          "ratio": 12,
+          "attack": 0.003,
+          "release": 0.25
+        }
+      },
+      "fontInventory": [
+        "Arial",
+        "Calibri",
+        "Cambria",
+        "Comic Sans MS",
+        "Consolas",
+        "Courier New",
+        "Georgia",
+        "Impact",
+        "Lucida Console",
+        "Microsoft Sans Serif",
+        "Segoe UI",
+        "Segoe UI Emoji",
+        "Segoe UI Historic",
+        "Segoe UI Symbol",
+        "Segoe UI Variable",
+        "Tahoma",
+        "Times New Roman",
+        "Trebuchet MS",
+        "Verdana",
+        "MS Gothic",
+        "Yu Gothic"
+      ],
+      "screenProfile": {
+        "width": 1920,
+        "height": 1080,
+        "availWidth": 1920,
+        "availHeight": 1040,
+        "colorDepth": 24,
+        "pixelDepth": 24,
+        "scaleFactor": 1,
+        "isRetina": false
+      },
+      "scaleFactor": 1
+    },
+    {
+      "id": "win-nvidia-rtx-4070-desktop",
+      "displayName": "High-End Gaming PC / NVIDIA GeForce RTX 4070 (Ryzen 7 7800X3D)",
+      "weight": 0.06,
+      "gpu": {
+        "vendor": "Google Inc. (NVIDIA)",
+        "renderer": "ANGLE (NVIDIA, NVIDIA GeForce RTX 4070 (0x00002786) Direct3D11 vs_5_0 ps_5_0, D3D11)",
+        "webgpuAdapter": "NVIDIA GeForce RTX 4070",
+        "limitsClass": "high-end"
+      },
+      "cpu": {
+        "coresMin": 8,
+        "coresMax": 16,
+        "arch": "x64"
+      },
+      "ramGB": [
+        32,
+        64
+      ],
+      "screen": {
+        "resolutions": [
+          {
+            "width": 2560,
+            "height": 1440
+          },
+          {
+            "width": 3840,
+            "height": 2160
+          }
+        ],
+        "dpr": 1,
+        "colorDepth": 24
+      },
+      "platformVersionRange": [
+        "10.0.22631",
+        "10.0.26100"
+      ],
+      "fontsClass": "win11-modern",
+      "localePool": [
+        "en-US",
+        "en-GB",
+        "de-DE",
+        "fr-FR",
+        "ja-JP"
+      ],
+      "coherenceConstraints": {
+        "mobile": false,
+        "platform": "windows",
+        "platformArch": "x86",
+        "bitness": "64",
+        "direct3dFeatureLevel": "12_2"
+      },
+      "citation": {
+        "source": "Steam Hardware Survey 1440p Segment",
+        "date": "2026-08",
+        "notes": "High-end 1440p gaming desktop standard"
+      },
+      "gpuRenderer": "ANGLE (NVIDIA, NVIDIA GeForce RTX 4070 (0x00002786) Direct3D11 vs_5_0 ps_5_0, D3D11)",
+      "audioSignature": {
+        "sampleRate": 48000,
+        "channelCount": 2,
+        "oscillatorLatencyMs": 10,
+        "noiseOffset": 0.00012,
+        "dynamicsCompressorParams": {
+          "threshold": -24,
+          "knee": 30,
+          "ratio": 12,
+          "attack": 0.003,
+          "release": 0.25
+        }
+      },
+      "fontInventory": [
+        "Arial",
+        "Calibri",
+        "Cambria",
+        "Comic Sans MS",
+        "Consolas",
+        "Courier New",
+        "Georgia",
+        "Impact",
+        "Lucida Console",
+        "Microsoft Sans Serif",
+        "Segoe UI",
+        "Segoe UI Emoji",
+        "Segoe UI Historic",
+        "Segoe UI Symbol",
+        "Segoe UI Variable",
+        "Tahoma",
+        "Times New Roman",
+        "Trebuchet MS",
+        "Verdana",
+        "MS Gothic",
+        "Yu Gothic"
+      ],
+      "screenProfile": {
+        "width": 2560,
+        "height": 1440,
+        "availWidth": 2560,
+        "availHeight": 1400,
+        "colorDepth": 24,
+        "pixelDepth": 24,
+        "scaleFactor": 1,
+        "isRetina": false
+      },
+      "scaleFactor": 1
+    },
+    {
+      "id": "win-nvidia-rtx-4080-desktop",
+      "displayName": "Enthusiast PC / NVIDIA GeForce RTX 4080 (Core i7-14700K / Ryzen 9 7900X)",
+      "weight": 0.04,
+      "gpu": {
+        "vendor": "Google Inc. (NVIDIA)",
+        "renderer": "ANGLE (NVIDIA, NVIDIA GeForce RTX 4080 (0x00002704) Direct3D11 vs_5_0 ps_5_0, D3D11)",
+        "webgpuAdapter": "NVIDIA GeForce RTX 4080",
+        "limitsClass": "high-end"
+      },
+      "cpu": {
+        "coresMin": 12,
+        "coresMax": 20,
+        "arch": "x64"
+      },
+      "ramGB": [
+        32,
+        64
+      ],
+      "screen": {
+        "resolutions": [
+          {
+            "width": 3840,
+            "height": 2160
+          },
+          {
+            "width": 3440,
+            "height": 1440
+          },
+          {
+            "width": 2560,
+            "height": 1440
+          }
+        ],
+        "dpr": 1,
+        "colorDepth": 24
+      },
+      "platformVersionRange": [
+        "10.0.22631",
+        "10.0.26100"
+      ],
+      "fontsClass": "win11-modern",
+      "localePool": [
+        "en-US",
+        "en-CA",
+        "de-DE",
+        "ru-RU"
+      ],
+      "coherenceConstraints": {
+        "mobile": false,
+        "platform": "windows",
+        "platformArch": "x86",
+        "bitness": "64",
+        "direct3dFeatureLevel": "12_2"
+      },
+      "citation": {
+        "source": "Steam Hardware Survey 4K Segment",
+        "date": "2026-08",
+        "notes": "Enthusiast 4K gaming and 3D rendering setup"
+      },
+      "gpuRenderer": "ANGLE (NVIDIA, NVIDIA GeForce RTX 4080 (0x00002704) Direct3D11 vs_5_0 ps_5_0, D3D11)",
+      "audioSignature": {
+        "sampleRate": 48000,
+        "channelCount": 2,
+        "oscillatorLatencyMs": 10,
+        "noiseOffset": 0.00012,
+        "dynamicsCompressorParams": {
+          "threshold": -24,
+          "knee": 30,
+          "ratio": 12,
+          "attack": 0.003,
+          "release": 0.25
+        }
+      },
+      "fontInventory": [
+        "Arial",
+        "Calibri",
+        "Cambria",
+        "Comic Sans MS",
+        "Consolas",
+        "Courier New",
+        "Georgia",
+        "Impact",
+        "Lucida Console",
+        "Microsoft Sans Serif",
+        "Segoe UI",
+        "Segoe UI Emoji",
+        "Segoe UI Historic",
+        "Segoe UI Symbol",
+        "Segoe UI Variable",
+        "Tahoma",
+        "Times New Roman",
+        "Trebuchet MS",
+        "Verdana",
+        "MS Gothic",
+        "Yu Gothic"
+      ],
+      "screenProfile": {
+        "width": 3840,
+        "height": 2160,
+        "availWidth": 3840,
+        "availHeight": 2120,
+        "colorDepth": 24,
+        "pixelDepth": 24,
+        "scaleFactor": 1,
+        "isRetina": false
+      },
+      "scaleFactor": 1
+    },
+    {
+      "id": "win-nvidia-rtx-4090-desktop",
+      "displayName": "Extreme Rig / NVIDIA GeForce RTX 4090 (Core i9-14900K / Ryzen 9 7950X3D)",
+      "weight": 0.035,
+      "gpu": {
+        "vendor": "Google Inc. (NVIDIA)",
+        "renderer": "ANGLE (NVIDIA, NVIDIA GeForce RTX 4090 (0x00002684) Direct3D11 vs_5_0 ps_5_0, D3D11)",
+        "webgpuAdapter": "NVIDIA GeForce RTX 4090",
+        "limitsClass": "high-end"
+      },
+      "cpu": {
+        "coresMin": 16,
+        "coresMax": 24,
+        "arch": "x64"
+      },
+      "ramGB": [
+        32,
+        64
+      ],
+      "screen": {
+        "resolutions": [
+          {
+            "width": 3840,
+            "height": 2160
+          },
+          {
+            "width": 5120,
+            "height": 1440
+          }
+        ],
+        "dpr": 1.25,
+        "colorDepth": 24
+      },
+      "platformVersionRange": [
+        "10.0.22631",
+        "10.0.26100"
+      ],
+      "fontsClass": "win11-modern",
+      "localePool": [
+        "en-US",
+        "de-DE",
+        "zh-CN",
+        "ja-JP"
+      ],
+      "coherenceConstraints": {
+        "mobile": false,
+        "platform": "windows",
+        "platformArch": "x86",
+        "bitness": "64",
+        "direct3dFeatureLevel": "12_2"
+      },
+      "citation": {
+        "source": "Steam Hardware Survey Top Tier",
+        "date": "2026-08",
+        "notes": "Flagship Ada Lovelace extreme enthusiast workstation"
+      },
+      "gpuRenderer": "ANGLE (NVIDIA, NVIDIA GeForce RTX 4090 (0x00002684) Direct3D11 vs_5_0 ps_5_0, D3D11)",
+      "audioSignature": {
+        "sampleRate": 48000,
+        "channelCount": 2,
+        "oscillatorLatencyMs": 10,
+        "noiseOffset": 0.00012,
+        "dynamicsCompressorParams": {
+          "threshold": -24,
+          "knee": 30,
+          "ratio": 12,
+          "attack": 0.003,
+          "release": 0.25
+        }
+      },
+      "fontInventory": [
+        "Arial",
+        "Calibri",
+        "Cambria",
+        "Comic Sans MS",
+        "Consolas",
+        "Courier New",
+        "Georgia",
+        "Impact",
+        "Lucida Console",
+        "Microsoft Sans Serif",
+        "Segoe UI",
+        "Segoe UI Emoji",
+        "Segoe UI Historic",
+        "Segoe UI Symbol",
+        "Segoe UI Variable",
+        "Tahoma",
+        "Times New Roman",
+        "Trebuchet MS",
+        "Verdana",
+        "MS Gothic",
+        "Yu Gothic"
+      ],
+      "screenProfile": {
+        "width": 3840,
+        "height": 2160,
+        "availWidth": 3840,
+        "availHeight": 2120,
+        "colorDepth": 24,
+        "pixelDepth": 24,
+        "scaleFactor": 1.25,
+        "isRetina": false
+      },
+      "scaleFactor": 1.25
+    },
+    {
+      "id": "win-nvidia-rtx-3080-desktop",
+      "displayName": "Gaming Workstation / NVIDIA GeForce RTX 3080 (Core i7-10700K / Ryzen 7 5800X)",
+      "weight": 0.035,
+      "gpu": {
+        "vendor": "Google Inc. (NVIDIA)",
+        "renderer": "ANGLE (NVIDIA, NVIDIA GeForce RTX 3080 (0x00002206) Direct3D11 vs_5_0 ps_5_0, D3D11)",
+        "webgpuAdapter": "NVIDIA GeForce RTX 3080",
+        "limitsClass": "high-end"
+      },
+      "cpu": {
+        "coresMin": 8,
+        "coresMax": 16,
+        "arch": "x64"
+      },
+      "ramGB": [
+        16,
+        32,
+        64
+      ],
+      "screen": {
+        "resolutions": [
+          {
+            "width": 2560,
+            "height": 1440
+          },
+          {
+            "width": 3840,
+            "height": 2160
+          }
+        ],
+        "dpr": 1,
+        "colorDepth": 24
+      },
+      "platformVersionRange": [
+        "10.0.19045",
+        "10.0.22631"
+      ],
+      "fontsClass": "win10-legacy",
+      "localePool": [
+        "en-US",
+        "en-GB",
+        "de-DE",
+        "es-ES"
+      ],
+      "coherenceConstraints": {
+        "mobile": false,
+        "platform": "windows",
+        "platformArch": "x86",
+        "bitness": "64",
+        "direct3dFeatureLevel": "12_1"
+      },
+      "citation": {
+        "source": "Steam Hardware Survey",
+        "date": "2026-08",
+        "notes": "Popular Ampere generation high-end gaming desktop"
+      },
+      "gpuRenderer": "ANGLE (NVIDIA, NVIDIA GeForce RTX 3080 (0x00002206) Direct3D11 vs_5_0 ps_5_0, D3D11)",
+      "audioSignature": {
+        "sampleRate": 48000,
+        "channelCount": 2,
+        "oscillatorLatencyMs": 10,
+        "noiseOffset": 0.00012,
+        "dynamicsCompressorParams": {
+          "threshold": -24,
+          "knee": 30,
+          "ratio": 12,
+          "attack": 0.003,
+          "release": 0.25
+        }
+      },
+      "fontInventory": [
+        "Arial",
+        "Calibri",
+        "Cambria",
+        "Comic Sans MS",
+        "Consolas",
+        "Courier New",
+        "Georgia",
+        "Impact",
+        "Lucida Console",
+        "Microsoft Sans Serif",
+        "Segoe UI",
+        "Segoe UI Emoji",
+        "Segoe UI Historic",
+        "Segoe UI Symbol",
+        "Segoe UI Variable",
+        "Tahoma",
+        "Times New Roman",
+        "Trebuchet MS",
+        "Verdana",
+        "MS Gothic",
+        "Yu Gothic"
+      ],
+      "screenProfile": {
+        "width": 2560,
+        "height": 1440,
+        "availWidth": 2560,
+        "availHeight": 1400,
+        "colorDepth": 24,
+        "pixelDepth": 24,
+        "scaleFactor": 1,
+        "isRetina": false
+      },
+      "scaleFactor": 1
+    },
+    {
+      "id": "win-amd-rx-7900-xtx-desktop",
+      "displayName": "Gaming PC / AMD Radeon RX 7900 XTX (Ryzen 7 7800X3D)",
+      "weight": 0.015,
+      "gpu": {
+        "vendor": "Google Inc. (AMD)",
+        "renderer": "ANGLE (AMD, AMD Radeon RX 7900 XTX (0x0000744C) Direct3D11 vs_5_0 ps_5_0, D3D11)",
+        "webgpuAdapter": "AMD Radeon RX 7900 XTX",
+        "limitsClass": "high-end"
+      },
+      "cpu": {
+        "coresMin": 8,
+        "coresMax": 16,
+        "arch": "x64"
+      },
+      "ramGB": [
+        32,
+        64
+      ],
+      "screen": {
+        "resolutions": [
+          {
+            "width": 2560,
+            "height": 1440
+          },
+          {
+            "width": 3840,
+            "height": 2160
+          }
+        ],
+        "dpr": 1,
+        "colorDepth": 24
+      },
+      "platformVersionRange": [
+        "10.0.22631",
+        "10.0.26100"
+      ],
+      "fontsClass": "win11-modern",
+      "localePool": [
+        "en-US",
+        "de-DE",
+        "en-GB"
+      ],
+      "coherenceConstraints": {
+        "mobile": false,
+        "platform": "windows",
+        "platformArch": "x86",
+        "bitness": "64",
+        "direct3dFeatureLevel": "12_2"
+      },
+      "citation": {
+        "source": "Steam Hardware Survey AMD Flagship",
+        "date": "2026-08",
+        "notes": "AMD flagship RDNA3 enthusiast desktop build"
+      },
+      "gpuRenderer": "ANGLE (AMD, AMD Radeon RX 7900 XTX (0x0000744C) Direct3D11 vs_5_0 ps_5_0, D3D11)",
+      "audioSignature": {
+        "sampleRate": 48000,
+        "channelCount": 2,
+        "oscillatorLatencyMs": 10,
+        "noiseOffset": 0.00012,
+        "dynamicsCompressorParams": {
+          "threshold": -24,
+          "knee": 30,
+          "ratio": 12,
+          "attack": 0.003,
+          "release": 0.25
+        }
+      },
+      "fontInventory": [
+        "Arial",
+        "Calibri",
+        "Cambria",
+        "Comic Sans MS",
+        "Consolas",
+        "Courier New",
+        "Georgia",
+        "Impact",
+        "Lucida Console",
+        "Microsoft Sans Serif",
+        "Segoe UI",
+        "Segoe UI Emoji",
+        "Segoe UI Historic",
+        "Segoe UI Symbol",
+        "Segoe UI Variable",
+        "Tahoma",
+        "Times New Roman",
+        "Trebuchet MS",
+        "Verdana",
+        "MS Gothic",
+        "Yu Gothic"
+      ],
+      "screenProfile": {
+        "width": 2560,
+        "height": 1440,
+        "availWidth": 2560,
+        "availHeight": 1400,
+        "colorDepth": 24,
+        "pixelDepth": 24,
+        "scaleFactor": 1,
+        "isRetina": false
+      },
+      "scaleFactor": 1
+    },
+    {
+      "id": "win-nvidia-rtx-a4000-workstation",
+      "displayName": "Precision Workstation / NVIDIA RTX A4000 (Intel Xeon W / Core i9-13900)",
+      "weight": 0.015,
+      "gpu": {
+        "vendor": "Google Inc. (NVIDIA)",
+        "renderer": "ANGLE (NVIDIA, NVIDIA RTX A4000 (0x000024B0) Direct3D11 vs_5_0 ps_5_0, D3D11)",
+        "webgpuAdapter": "NVIDIA RTX A4000",
+        "limitsClass": "high-end"
+      },
+      "cpu": {
+        "coresMin": 12,
+        "coresMax": 24,
+        "arch": "x64"
+      },
+      "ramGB": [
+        32,
+        64
+      ],
+      "screen": {
+        "resolutions": [
+          {
+            "width": 3840,
+            "height": 2160
+          },
+          {
+            "width": 2560,
+            "height": 1440
+          }
+        ],
+        "dpr": 1,
+        "colorDepth": 24
+      },
+      "platformVersionRange": [
+        "10.0.22631",
+        "10.0.26100"
+      ],
+      "fontsClass": "win11-modern",
+      "localePool": [
+        "en-US",
+        "de-DE",
+        "ja-JP",
+        "fr-FR"
+      ],
+      "coherenceConstraints": {
+        "mobile": false,
+        "platform": "windows",
+        "platformArch": "x86",
+        "bitness": "64",
+        "direct3dFeatureLevel": "12_2"
+      },
+      "citation": {
+        "source": "Enterprise CAD Telemetry",
+        "date": "2026-08",
+        "notes": "Enterprise workstation for CAD/DCC architecture"
+      },
+      "gpuRenderer": "ANGLE (NVIDIA, NVIDIA RTX A4000 (0x000024B0) Direct3D11 vs_5_0 ps_5_0, D3D11)",
+      "audioSignature": {
+        "sampleRate": 48000,
+        "channelCount": 2,
+        "oscillatorLatencyMs": 10,
+        "noiseOffset": 0.00012,
+        "dynamicsCompressorParams": {
+          "threshold": -24,
+          "knee": 30,
+          "ratio": 12,
+          "attack": 0.003,
+          "release": 0.25
+        }
+      },
+      "fontInventory": [
+        "Arial",
+        "Calibri",
+        "Cambria",
+        "Comic Sans MS",
+        "Consolas",
+        "Courier New",
+        "Georgia",
+        "Impact",
+        "Lucida Console",
+        "Microsoft Sans Serif",
+        "Segoe UI",
+        "Segoe UI Emoji",
+        "Segoe UI Historic",
+        "Segoe UI Symbol",
+        "Segoe UI Variable",
+        "Tahoma",
+        "Times New Roman",
+        "Trebuchet MS",
+        "Verdana",
+        "MS Gothic",
+        "Yu Gothic"
+      ],
+      "screenProfile": {
+        "width": 3840,
+        "height": 2160,
+        "availWidth": 3840,
+        "availHeight": 2120,
+        "colorDepth": 24,
+        "pixelDepth": 24,
+        "scaleFactor": 1,
+        "isRetina": false
+      },
+      "scaleFactor": 1
+    },
+    {
+      "id": "win-amd-athlon-vega-3-budget",
+      "displayName": "Budget Desktop / AMD Radeon(TM) Vega 3 Graphics (Athlon 3000G / 200GE)",
+      "weight": 0.025,
+      "gpu": {
+        "vendor": "Google Inc. (AMD)",
+        "renderer": "ANGLE (AMD, AMD Radeon(TM) Vega 3 Graphics (0x000015D8) Direct3D11 vs_5_0 ps_5_0, D3D11)",
+        "webgpuAdapter": "AMD Radeon(TM) Vega 3 Graphics",
+        "limitsClass": "budget"
+      },
+      "cpu": {
+        "coresMin": 2,
+        "coresMax": 4,
+        "arch": "x64"
+      },
+      "ramGB": [
+        4,
+        8
+      ],
+      "screen": {
+        "resolutions": [
+          {
+            "width": 1366,
+            "height": 768
+          },
+          {
+            "width": 1920,
+            "height": 1080
+          }
+        ],
+        "dpr": 1,
+        "colorDepth": 24
+      },
+      "platformVersionRange": [
+        "10.0.19045"
+      ],
+      "fontsClass": "win10-legacy",
+      "localePool": [
+        "en-US",
+        "es-MX",
+        "pt-BR",
+        "id-ID",
+        "ru-RU"
+      ],
+      "coherenceConstraints": {
+        "mobile": false,
+        "platform": "windows",
+        "platformArch": "x86",
+        "bitness": "64",
+        "direct3dFeatureLevel": "12_0"
+      },
+      "citation": {
+        "source": "StatCounter Global Stats",
+        "date": "2026-08",
+        "notes": "Developing markets entry-level budget desktop systems"
+      },
+      "gpuRenderer": "ANGLE (AMD, AMD Radeon(TM) Vega 3 Graphics (0x000015D8) Direct3D11 vs_5_0 ps_5_0, D3D11)",
+      "audioSignature": {
+        "sampleRate": 48000,
+        "channelCount": 2,
+        "oscillatorLatencyMs": 10,
+        "noiseOffset": 0.00012,
+        "dynamicsCompressorParams": {
+          "threshold": -24,
+          "knee": 30,
+          "ratio": 12,
+          "attack": 0.003,
+          "release": 0.25
+        }
+      },
+      "fontInventory": [
+        "Arial",
+        "Calibri",
+        "Cambria",
+        "Comic Sans MS",
+        "Consolas",
+        "Courier New",
+        "Georgia",
+        "Impact",
+        "Lucida Console",
+        "Microsoft Sans Serif",
+        "Segoe UI",
+        "Segoe UI Emoji",
+        "Segoe UI Historic",
+        "Segoe UI Symbol",
+        "Segoe UI Variable",
+        "Tahoma",
+        "Times New Roman",
+        "Trebuchet MS",
+        "Verdana",
+        "MS Gothic",
+        "Yu Gothic"
+      ],
+      "screenProfile": {
+        "width": 1366,
+        "height": 768,
+        "availWidth": 1366,
+        "availHeight": 728,
+        "colorDepth": 24,
+        "pixelDepth": 24,
+        "scaleFactor": 1,
+        "isRetina": false
+      },
+      "scaleFactor": 1
+    },
+    {
+      "id": "win-intel-celeron-n5100-budget",
+      "displayName": "Budget Laptop / Intel UHD Graphics (Celeron N5100 / Pentium Silver N6000)",
+      "weight": 0.025,
+      "gpu": {
+        "vendor": "Google Inc. (Intel)",
+        "renderer": "ANGLE (Intel, Intel(R) UHD Graphics (0x00004E61) Direct3D11 vs_5_0 ps_5_0, D3D11)",
+        "webgpuAdapter": "Intel(R) UHD Graphics",
+        "limitsClass": "budget"
+      },
+      "cpu": {
+        "coresMin": 2,
+        "coresMax": 4,
+        "arch": "x64"
+      },
+      "ramGB": [
+        4,
+        8
+      ],
+      "screen": {
+        "resolutions": [
+          {
+            "width": 1366,
+            "height": 768
+          },
+          {
+            "width": 1920,
+            "height": 1080
+          }
+        ],
+        "dpr": 1,
+        "colorDepth": 24
+      },
+      "platformVersionRange": [
+        "10.0.19045",
+        "10.0.22631"
+      ],
+      "fontsClass": "win10-legacy",
+      "localePool": [
+        "en-US",
+        "es-ES",
+        "pt-BR",
+        "vi-VN",
+        "th-TH"
+      ],
+      "coherenceConstraints": {
+        "mobile": false,
+        "platform": "windows",
+        "platformArch": "x86",
+        "bitness": "64",
+        "direct3dFeatureLevel": "12_0"
+      },
+      "citation": {
+        "source": "StatCounter Windows Telemetry",
+        "date": "2026-08",
+        "notes": "Low-cost educational and office Jasper Lake budget laptops"
+      },
+      "gpuRenderer": "ANGLE (Intel, Intel(R) UHD Graphics (0x00004E61) Direct3D11 vs_5_0 ps_5_0, D3D11)",
+      "audioSignature": {
+        "sampleRate": 48000,
+        "channelCount": 2,
+        "oscillatorLatencyMs": 10,
+        "noiseOffset": 0.00012,
+        "dynamicsCompressorParams": {
+          "threshold": -24,
+          "knee": 30,
+          "ratio": 12,
+          "attack": 0.003,
+          "release": 0.25
+        }
+      },
+      "fontInventory": [
+        "Arial",
+        "Calibri",
+        "Cambria",
+        "Comic Sans MS",
+        "Consolas",
+        "Courier New",
+        "Georgia",
+        "Impact",
+        "Lucida Console",
+        "Microsoft Sans Serif",
+        "Segoe UI",
+        "Segoe UI Emoji",
+        "Segoe UI Historic",
+        "Segoe UI Symbol",
+        "Segoe UI Variable",
+        "Tahoma",
+        "Times New Roman",
+        "Trebuchet MS",
+        "Verdana",
+        "MS Gothic",
+        "Yu Gothic"
+      ],
+      "screenProfile": {
+        "width": 1366,
+        "height": 768,
+        "availWidth": 1366,
+        "availHeight": 728,
+        "colorDepth": 24,
+        "pixelDepth": 24,
+        "scaleFactor": 1,
+        "isRetina": false
+      },
+      "scaleFactor": 1
+    },
+    {
+      "id": "mac-m1-mba-2020",
+      "displayName": "MacBook Air 13\" (M1, 2020) / Apple M1 8-Core GPU",
+      "weight": 0.18,
+      "os": "macos",
+      "chip": "M1",
+      "gpu": {
+        "vendor": "Apple Inc. (Apple)",
+        "renderer": "ANGLE (Apple, Apple M1, OpenGL 4.1 Metal - 88.1)",
+        "webgpuAdapter": "Apple M1",
+        "limitsClass": "integrated"
+      },
+      "gpuRenderer": "ANGLE (Apple, Apple M1, OpenGL 4.1 Metal - 88.1)",
+      "cpu": {
+        "coresMin": 8,
+        "coresMax": 8,
+        "arch": "arm64"
+      },
+      "ramGB": [
+        8,
+        16
+      ],
+      "screen": {
+        "resolutions": [
+          {
+            "width": 1440,
+            "height": 900
+          },
+          {
+            "width": 1680,
+            "height": 1050
+          },
+          {
+            "width": 1280,
+            "height": 800
+          }
+        ],
+        "dpr": 2,
+        "colorDepth": 24
+      },
+      "screenProfile": {
+        "width": 1440,
+        "height": 900,
+        "availWidth": 1440,
+        "availHeight": 875,
+        "colorDepth": 24,
+        "pixelDepth": 24,
+        "scaleFactor": 2,
+        "isRetina": true
+      },
+      "scaleFactor": 2,
+      "audioSignature": {
+        "sampleRate": 44100,
+        "channelCount": 2,
+        "oscillatorLatencyMs": 8,
+        "noiseOffset": 0.00008,
+        "dynamicsCompressorParams": {
+          "threshold": -24,
+          "knee": 30,
+          "ratio": 12,
+          "attack": 0.003,
+          "release": 0.25
+        }
+      },
+      "fontInventory": [
+        "Arial",
+        "Arial Hebrew",
+        "Avenir",
+        "Avenir Next",
+        "Courier",
+        "Courier New",
+        "Geneva",
+        "Georgia",
+        "Helvetica",
+        "Helvetica Neue",
+        "Lucida Grande",
+        "Menlo",
+        "Monaco",
+        "Noteworthy",
+        "Optima",
+        "Palatino",
+        "PingFang SC",
+        "PingFang TC",
+        "SF Pro",
+        "SF Pro Display",
+        "SF Pro Text",
+        "Times",
+        "Times New Roman",
+        "Trebuchet MS",
+        "Verdana"
+      ],
+      "platformVersionRange": [
+        "13.6.7",
+        "14.5",
+        "14.6.1",
+        "15.0"
+      ],
+      "fontsClass": "macos-modern",
+      "localePool": [
+        "en-US",
+        "en-GB",
+        "fr-FR",
+        "de-DE",
+        "es-ES",
+        "ja-JP"
+      ],
+      "coherenceConstraints": {
+        "mobile": false,
+        "platform": "macos",
+        "platformArch": "arm",
+        "bitness": "64",
+        "metalSupport": true
+      },
+      "uaProfile": {
+        "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
+        "platformVersion": "14.5.0",
+        "architecture": "arm",
+        "bitness": "64",
+        "brands": [
+          {
+            "brand": "Chromium",
+            "version": "128"
+          },
+          {
+            "brand": "Not;A=Brand",
+            "version": "24"
+          },
+          {
+            "brand": "Google Chrome",
+            "version": "128"
+          }
+        ]
+      },
+      "citation": {
+        "source": "Apple Developer Hardware Documentation (MacBookAir10,1)",
+        "date": "2026-08",
+        "notes": "Standard 8-core CPU (4 performance + 4 efficiency), 7/8-core GPU, Apple Silicon M1 entry consumer laptop"
+      },
+      "hostTellsPolicy": [
+        {
+          "tell": "navigator.platform",
+          "strategy": "mask",
+          "rationale": "Windows host reports \"Win32\"; macOS must report \"MacIntel\" per Chromium standard even on Apple Silicon ARM chips."
+        },
+        {
+          "tell": "navigator.userAgentData.platform",
+          "strategy": "mask",
+          "rationale": "UA-CH on Windows reports \"Windows\"; macOS requires \"macOS\" with architecture \"arm\" or \"x86\"."
+        },
+        {
+          "tell": "navigator.oscpu",
+          "strategy": "mask",
+          "rationale": "Gecko/WebKit legacy property undefined in Chrome, but when probed must not expose Windows NT."
+        },
+        {
+          "tell": "navigator.maxTouchPoints",
+          "strategy": "mask",
+          "rationale": "macOS laptops and desktops do not have touchscreen panels; must always report 0 (Windows often reports >0 on touch/convertibles)."
+        },
+        {
+          "tell": "WebGL unmasked renderer / ANGLE string",
+          "strategy": "mask",
+          "rationale": "Windows ANGLE reports \"Direct3D11\" or \"Direct3D12\"; macOS WebGL reports \"Apple M1\", \"Apple M2\", \"Apple M3\", \"Apple M4\", or \"Intel Iris Plus Graphics OpenGL Engine / Metal\". Direct3D strings are fatal tell."
+        },
+        {
+          "tell": "Screen Retina scale factor and devicePixelRatio",
+          "strategy": "mask",
+          "rationale": "MacBook displays are Retina with devicePixelRatio = 2.0 (or scaled 2.0+). Standard Windows 1080p is 1.0. DPR mismatch with screen resolution is a major bot-detection signal."
+        },
+        {
+          "tell": "Menu bar geometry (window.screen.availHeight)",
+          "strategy": "mask",
+          "rationale": "Windows taskbar is typically 40-48px at screen bottom; macOS menu bar is 25px (or notch-aware ~32-38px) at screen top with Dock auto-hidden or bottom-offset."
+        },
+        {
+          "tell": "Core audio latency and default sample rate",
+          "strategy": "mask",
+          "rationale": "macOS CoreAudio defaults to 44100 Hz or 48000 Hz with lower oscillator buffer latency (~8ms) compared to Windows WASAPI defaults (~10-15ms)."
+        },
+        {
+          "tell": "System font availability",
+          "strategy": "mask",
+          "rationale": "Windows host lacks SF Pro / Helvetica Neue / Menlo, while possessing Segoe UI / Calibri. Font measurement probes reveal host OS fonts if not shinned/masked."
+        },
+        {
+          "tell": "Keyboard modifier key events (metaKey vs ctrlKey)",
+          "strategy": "exclude",
+          "rationale": "Physical keyboard layout differs (Command vs Control). In background headless/agent automation, keystroke mapping is synthesized via CDP Input domain; native OS shortcuts cannot be safely cross-virtualized without guest VM."
+        },
+        {
+          "tell": "Missing macOS-only APIs (e.g. apple-specific media decoders/codecs)",
+          "strategy": "exclude",
+          "rationale": "HEVC/ProRes hardware decoders in macOS AVFoundation cannot be safely synthesized on Windows DirectX host without software transcoding bugs; exclude media-codec fingerprint tests from relying on native Apple silicon decoder paths."
+        }
+      ]
+    },
+    {
+      "id": "mac-m1pro-mbp-14-2021",
+      "displayName": "MacBook Pro 14\" (M1 Pro, 2021) / Apple M1 Pro 14-Core GPU",
+      "weight": 0.12,
+      "os": "macos",
+      "chip": "M1",
+      "gpu": {
+        "vendor": "Apple Inc. (Apple)",
+        "renderer": "ANGLE (Apple, Apple M1 Pro, OpenGL 4.1 Metal - 88.1)",
+        "webgpuAdapter": "Apple M1 Pro",
+        "limitsClass": "mid-range"
+      },
+      "gpuRenderer": "ANGLE (Apple, Apple M1 Pro, OpenGL 4.1 Metal - 88.1)",
+      "cpu": {
+        "coresMin": 8,
+        "coresMax": 8,
+        "arch": "arm64"
+      },
+      "ramGB": [
+        16,
+        32
+      ],
+      "screen": {
+        "resolutions": [
+          {
+            "width": 1512,
+            "height": 982
+          },
+          {
+            "width": 1800,
+            "height": 1169
+          }
+        ],
+        "dpr": 2,
+        "colorDepth": 30
+      },
+      "screenProfile": {
+        "width": 1512,
+        "height": 982,
+        "availWidth": 1512,
+        "availHeight": 944,
+        "colorDepth": 30,
+        "pixelDepth": 30,
+        "scaleFactor": 2,
+        "isRetina": true
+      },
+      "scaleFactor": 2,
+      "audioSignature": {
+        "sampleRate": 48000,
+        "channelCount": 2,
+        "oscillatorLatencyMs": 7,
+        "noiseOffset": 0.00007,
+        "dynamicsCompressorParams": {
+          "threshold": -24,
+          "knee": 30,
+          "ratio": 12,
+          "attack": 0.003,
+          "release": 0.25
+        }
+      },
+      "fontInventory": [
+        "Arial",
+        "Arial Hebrew",
+        "Avenir",
+        "Avenir Next",
+        "Courier",
+        "Courier New",
+        "Geneva",
+        "Georgia",
+        "Helvetica",
+        "Helvetica Neue",
+        "Lucida Grande",
+        "Menlo",
+        "Monaco",
+        "Noteworthy",
+        "Optima",
+        "Palatino",
+        "PingFang SC",
+        "PingFang TC",
+        "SF Pro",
+        "SF Pro Display",
+        "SF Pro Text",
+        "Times",
+        "Times New Roman",
+        "Trebuchet MS",
+        "Verdana"
+      ],
+      "platformVersionRange": [
+        "13.6.7",
+        "14.5",
+        "14.6.1",
+        "15.1"
+      ],
+      "fontsClass": "macos-modern",
+      "localePool": [
+        "en-US",
+        "en-CA",
+        "de-DE",
+        "en-GB",
+        "ja-JP",
+        "zh-CN"
+      ],
+      "coherenceConstraints": {
+        "mobile": false,
+        "platform": "macos",
+        "platformArch": "arm",
+        "bitness": "64",
+        "metalSupport": true
+      },
+      "uaProfile": {
+        "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
+        "platformVersion": "14.6.1",
+        "architecture": "arm",
+        "bitness": "64",
+        "brands": [
+          {
+            "brand": "Chromium",
+            "version": "128"
+          },
+          {
+            "brand": "Not;A=Brand",
+            "version": "24"
+          },
+          {
+            "brand": "Google Chrome",
+            "version": "128"
+          }
+        ]
+      },
+      "citation": {
+        "source": "Apple Developer Hardware Documentation (MacBookPro18,3)",
+        "date": "2026-08",
+        "notes": "Liquid Retina XDR ProMotion display, Apple Silicon M1 Pro professional laptop"
+      },
+      "hostTellsPolicy": [
+        {
+          "tell": "navigator.platform",
+          "strategy": "mask",
+          "rationale": "Windows host reports \"Win32\"; macOS must report \"MacIntel\" per Chromium standard even on Apple Silicon ARM chips."
+        },
+        {
+          "tell": "navigator.userAgentData.platform",
+          "strategy": "mask",
+          "rationale": "UA-CH on Windows reports \"Windows\"; macOS requires \"macOS\" with architecture \"arm\" or \"x86\"."
+        },
+        {
+          "tell": "navigator.oscpu",
+          "strategy": "mask",
+          "rationale": "Gecko/WebKit legacy property undefined in Chrome, but when probed must not expose Windows NT."
+        },
+        {
+          "tell": "navigator.maxTouchPoints",
+          "strategy": "mask",
+          "rationale": "macOS laptops and desktops do not have touchscreen panels; must always report 0 (Windows often reports >0 on touch/convertibles)."
+        },
+        {
+          "tell": "WebGL unmasked renderer / ANGLE string",
+          "strategy": "mask",
+          "rationale": "Windows ANGLE reports \"Direct3D11\" or \"Direct3D12\"; macOS WebGL reports \"Apple M1\", \"Apple M2\", \"Apple M3\", \"Apple M4\", or \"Intel Iris Plus Graphics OpenGL Engine / Metal\". Direct3D strings are fatal tell."
+        },
+        {
+          "tell": "Screen Retina scale factor and devicePixelRatio",
+          "strategy": "mask",
+          "rationale": "MacBook displays are Retina with devicePixelRatio = 2.0 (or scaled 2.0+). Standard Windows 1080p is 1.0. DPR mismatch with screen resolution is a major bot-detection signal."
+        },
+        {
+          "tell": "Menu bar geometry (window.screen.availHeight)",
+          "strategy": "mask",
+          "rationale": "Windows taskbar is typically 40-48px at screen bottom; macOS menu bar is 25px (or notch-aware ~32-38px) at screen top with Dock auto-hidden or bottom-offset."
+        },
+        {
+          "tell": "Core audio latency and default sample rate",
+          "strategy": "mask",
+          "rationale": "macOS CoreAudio defaults to 44100 Hz or 48000 Hz with lower oscillator buffer latency (~8ms) compared to Windows WASAPI defaults (~10-15ms)."
+        },
+        {
+          "tell": "System font availability",
+          "strategy": "mask",
+          "rationale": "Windows host lacks SF Pro / Helvetica Neue / Menlo, while possessing Segoe UI / Calibri. Font measurement probes reveal host OS fonts if not shinned/masked."
+        },
+        {
+          "tell": "Keyboard modifier key events (metaKey vs ctrlKey)",
+          "strategy": "exclude",
+          "rationale": "Physical keyboard layout differs (Command vs Control). In background headless/agent automation, keystroke mapping is synthesized via CDP Input domain; native OS shortcuts cannot be safely cross-virtualized without guest VM."
+        },
+        {
+          "tell": "Missing macOS-only APIs (e.g. apple-specific media decoders/codecs)",
+          "strategy": "exclude",
+          "rationale": "HEVC/ProRes hardware decoders in macOS AVFoundation cannot be safely synthesized on Windows DirectX host without software transcoding bugs; exclude media-codec fingerprint tests from relying on native Apple silicon decoder paths."
+        }
+      ]
+    },
+    {
+      "id": "mac-m2-mba-2022",
+      "displayName": "MacBook Air 13\"/15\" (M2, 2022-2023) / Apple M2 8/10-Core GPU",
+      "weight": 0.22,
+      "os": "macos",
+      "chip": "M2",
+      "gpu": {
+        "vendor": "Apple Inc. (Apple)",
+        "renderer": "ANGLE (Apple, Apple M2, OpenGL 4.1 Metal - 88.1)",
+        "webgpuAdapter": "Apple M2",
+        "limitsClass": "integrated"
+      },
+      "gpuRenderer": "ANGLE (Apple, Apple M2, OpenGL 4.1 Metal - 88.1)",
+      "cpu": {
+        "coresMin": 8,
+        "coresMax": 8,
+        "arch": "arm64"
+      },
+      "ramGB": [
+        8,
+        16,
+        24
+      ],
+      "screen": {
+        "resolutions": [
+          {
+            "width": 1470,
+            "height": 956
+          },
+          {
+            "width": 1710,
+            "height": 1107
+          }
+        ],
+        "dpr": 2,
+        "colorDepth": 24
+      },
+      "screenProfile": {
+        "width": 1470,
+        "height": 956,
+        "availWidth": 1470,
+        "availHeight": 924,
+        "colorDepth": 24,
+        "pixelDepth": 24,
+        "scaleFactor": 2,
+        "isRetina": true
+      },
+      "scaleFactor": 2,
+      "audioSignature": {
+        "sampleRate": 44100,
+        "channelCount": 2,
+        "oscillatorLatencyMs": 8,
+        "noiseOffset": 0.00008,
+        "dynamicsCompressorParams": {
+          "threshold": -24,
+          "knee": 30,
+          "ratio": 12,
+          "attack": 0.003,
+          "release": 0.25
+        }
+      },
+      "fontInventory": [
+        "Arial",
+        "Arial Hebrew",
+        "Avenir",
+        "Avenir Next",
+        "Courier",
+        "Courier New",
+        "Geneva",
+        "Georgia",
+        "Helvetica",
+        "Helvetica Neue",
+        "Lucida Grande",
+        "Menlo",
+        "Monaco",
+        "Noteworthy",
+        "Optima",
+        "Palatino",
+        "PingFang SC",
+        "PingFang TC",
+        "SF Pro",
+        "SF Pro Display",
+        "SF Pro Text",
+        "Times",
+        "Times New Roman",
+        "Trebuchet MS",
+        "Verdana"
+      ],
+      "platformVersionRange": [
+        "14.4.1",
+        "14.5",
+        "14.6.1",
+        "15.0",
+        "15.2"
+      ],
+      "fontsClass": "macos-modern",
+      "localePool": [
+        "en-US",
+        "en-GB",
+        "de-DE",
+        "fr-FR",
+        "it-IT",
+        "ja-JP",
+        "pt-BR"
+      ],
+      "coherenceConstraints": {
+        "mobile": false,
+        "platform": "macos",
+        "platformArch": "arm",
+        "bitness": "64",
+        "metalSupport": true
+      },
+      "uaProfile": {
+        "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
+        "platformVersion": "14.6.1",
+        "architecture": "arm",
+        "bitness": "64",
+        "brands": [
+          {
+            "brand": "Chromium",
+            "version": "128"
+          },
+          {
+            "brand": "Not;A=Brand",
+            "version": "24"
+          },
+          {
+            "brand": "Google Chrome",
+            "version": "128"
+          }
+        ]
+      },
+      "citation": {
+        "source": "Apple Developer Hardware Documentation (Mac14,2 / Mac14,15)",
+        "date": "2026-08",
+        "notes": "Liquid Retina display with camera notch, Apple M2 second-generation Apple Silicon"
+      },
+      "hostTellsPolicy": [
+        {
+          "tell": "navigator.platform",
+          "strategy": "mask",
+          "rationale": "Windows host reports \"Win32\"; macOS must report \"MacIntel\" per Chromium standard even on Apple Silicon ARM chips."
+        },
+        {
+          "tell": "navigator.userAgentData.platform",
+          "strategy": "mask",
+          "rationale": "UA-CH on Windows reports \"Windows\"; macOS requires \"macOS\" with architecture \"arm\" or \"x86\"."
+        },
+        {
+          "tell": "navigator.oscpu",
+          "strategy": "mask",
+          "rationale": "Gecko/WebKit legacy property undefined in Chrome, but when probed must not expose Windows NT."
+        },
+        {
+          "tell": "navigator.maxTouchPoints",
+          "strategy": "mask",
+          "rationale": "macOS laptops and desktops do not have touchscreen panels; must always report 0 (Windows often reports >0 on touch/convertibles)."
+        },
+        {
+          "tell": "WebGL unmasked renderer / ANGLE string",
+          "strategy": "mask",
+          "rationale": "Windows ANGLE reports \"Direct3D11\" or \"Direct3D12\"; macOS WebGL reports \"Apple M1\", \"Apple M2\", \"Apple M3\", \"Apple M4\", or \"Intel Iris Plus Graphics OpenGL Engine / Metal\". Direct3D strings are fatal tell."
+        },
+        {
+          "tell": "Screen Retina scale factor and devicePixelRatio",
+          "strategy": "mask",
+          "rationale": "MacBook displays are Retina with devicePixelRatio = 2.0 (or scaled 2.0+). Standard Windows 1080p is 1.0. DPR mismatch with screen resolution is a major bot-detection signal."
+        },
+        {
+          "tell": "Menu bar geometry (window.screen.availHeight)",
+          "strategy": "mask",
+          "rationale": "Windows taskbar is typically 40-48px at screen bottom; macOS menu bar is 25px (or notch-aware ~32-38px) at screen top with Dock auto-hidden or bottom-offset."
+        },
+        {
+          "tell": "Core audio latency and default sample rate",
+          "strategy": "mask",
+          "rationale": "macOS CoreAudio defaults to 44100 Hz or 48000 Hz with lower oscillator buffer latency (~8ms) compared to Windows WASAPI defaults (~10-15ms)."
+        },
+        {
+          "tell": "System font availability",
+          "strategy": "mask",
+          "rationale": "Windows host lacks SF Pro / Helvetica Neue / Menlo, while possessing Segoe UI / Calibri. Font measurement probes reveal host OS fonts if not shinned/masked."
+        },
+        {
+          "tell": "Keyboard modifier key events (metaKey vs ctrlKey)",
+          "strategy": "exclude",
+          "rationale": "Physical keyboard layout differs (Command vs Control). In background headless/agent automation, keystroke mapping is synthesized via CDP Input domain; native OS shortcuts cannot be safely cross-virtualized without guest VM."
+        },
+        {
+          "tell": "Missing macOS-only APIs (e.g. apple-specific media decoders/codecs)",
+          "strategy": "exclude",
+          "rationale": "HEVC/ProRes hardware decoders in macOS AVFoundation cannot be safely synthesized on Windows DirectX host without software transcoding bugs; exclude media-codec fingerprint tests from relying on native Apple silicon decoder paths."
+        }
+      ]
+    },
+    {
+      "id": "mac-m3-mbp-14-2023",
+      "displayName": "MacBook Pro 14\" (M3, 2023) / Apple M3 10-Core GPU",
+      "weight": 0.16,
+      "os": "macos",
+      "chip": "M3",
+      "gpu": {
+        "vendor": "Apple Inc. (Apple)",
+        "renderer": "ANGLE (Apple, Apple M3, OpenGL 4.1 Metal - 89.2)",
+        "webgpuAdapter": "Apple M3",
+        "limitsClass": "mid-range"
+      },
+      "gpuRenderer": "ANGLE (Apple, Apple M3, OpenGL 4.1 Metal - 89.2)",
+      "cpu": {
+        "coresMin": 8,
+        "coresMax": 8,
+        "arch": "arm64"
+      },
+      "ramGB": [
+        8,
+        16,
+        24
+      ],
+      "screen": {
+        "resolutions": [
+          {
+            "width": 1512,
+            "height": 982
+          },
+          {
+            "width": 1800,
+            "height": 1169
+          }
+        ],
+        "dpr": 2,
+        "colorDepth": 30
+      },
+      "screenProfile": {
+        "width": 1512,
+        "height": 982,
+        "availWidth": 1512,
+        "availHeight": 944,
+        "colorDepth": 30,
+        "pixelDepth": 30,
+        "scaleFactor": 2,
+        "isRetina": true
+      },
+      "scaleFactor": 2,
+      "audioSignature": {
+        "sampleRate": 48000,
+        "channelCount": 2,
+        "oscillatorLatencyMs": 7,
+        "noiseOffset": 0.00007,
+        "dynamicsCompressorParams": {
+          "threshold": -24,
+          "knee": 30,
+          "ratio": 12,
+          "attack": 0.003,
+          "release": 0.25
+        }
+      },
+      "fontInventory": [
+        "Arial",
+        "Arial Hebrew",
+        "Avenir",
+        "Avenir Next",
+        "Courier",
+        "Courier New",
+        "Geneva",
+        "Georgia",
+        "Helvetica",
+        "Helvetica Neue",
+        "Lucida Grande",
+        "Menlo",
+        "Monaco",
+        "Noteworthy",
+        "Optima",
+        "Palatino",
+        "PingFang SC",
+        "PingFang TC",
+        "SF Pro",
+        "SF Pro Display",
+        "SF Pro Text",
+        "Times",
+        "Times New Roman",
+        "Trebuchet MS",
+        "Verdana"
+      ],
+      "platformVersionRange": [
+        "14.5",
+        "14.6.1",
+        "15.0",
+        "15.2"
+      ],
+      "fontsClass": "macos-modern",
+      "localePool": [
+        "en-US",
+        "en-GB",
+        "de-DE",
+        "nl-NL",
+        "sv-SE",
+        "ja-JP"
+      ],
+      "coherenceConstraints": {
+        "mobile": false,
+        "platform": "macos",
+        "platformArch": "arm",
+        "bitness": "64",
+        "metalSupport": true
+      },
+      "uaProfile": {
+        "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
+        "platformVersion": "15.0.0",
+        "architecture": "arm",
+        "bitness": "64",
+        "brands": [
+          {
+            "brand": "Chromium",
+            "version": "128"
+          },
+          {
+            "brand": "Not;A=Brand",
+            "version": "24"
+          },
+          {
+            "brand": "Google Chrome",
+            "version": "128"
+          }
+        ]
+      },
+      "citation": {
+        "source": "Apple Developer Hardware Documentation (Mac15,3)",
+        "date": "2026-08",
+        "notes": "3nm TSMC M3 architecture with hardware dynamic caching and ray tracing support in Metal 3"
+      },
+      "hostTellsPolicy": [
+        {
+          "tell": "navigator.platform",
+          "strategy": "mask",
+          "rationale": "Windows host reports \"Win32\"; macOS must report \"MacIntel\" per Chromium standard even on Apple Silicon ARM chips."
+        },
+        {
+          "tell": "navigator.userAgentData.platform",
+          "strategy": "mask",
+          "rationale": "UA-CH on Windows reports \"Windows\"; macOS requires \"macOS\" with architecture \"arm\" or \"x86\"."
+        },
+        {
+          "tell": "navigator.oscpu",
+          "strategy": "mask",
+          "rationale": "Gecko/WebKit legacy property undefined in Chrome, but when probed must not expose Windows NT."
+        },
+        {
+          "tell": "navigator.maxTouchPoints",
+          "strategy": "mask",
+          "rationale": "macOS laptops and desktops do not have touchscreen panels; must always report 0 (Windows often reports >0 on touch/convertibles)."
+        },
+        {
+          "tell": "WebGL unmasked renderer / ANGLE string",
+          "strategy": "mask",
+          "rationale": "Windows ANGLE reports \"Direct3D11\" or \"Direct3D12\"; macOS WebGL reports \"Apple M1\", \"Apple M2\", \"Apple M3\", \"Apple M4\", or \"Intel Iris Plus Graphics OpenGL Engine / Metal\". Direct3D strings are fatal tell."
+        },
+        {
+          "tell": "Screen Retina scale factor and devicePixelRatio",
+          "strategy": "mask",
+          "rationale": "MacBook displays are Retina with devicePixelRatio = 2.0 (or scaled 2.0+). Standard Windows 1080p is 1.0. DPR mismatch with screen resolution is a major bot-detection signal."
+        },
+        {
+          "tell": "Menu bar geometry (window.screen.availHeight)",
+          "strategy": "mask",
+          "rationale": "Windows taskbar is typically 40-48px at screen bottom; macOS menu bar is 25px (or notch-aware ~32-38px) at screen top with Dock auto-hidden or bottom-offset."
+        },
+        {
+          "tell": "Core audio latency and default sample rate",
+          "strategy": "mask",
+          "rationale": "macOS CoreAudio defaults to 44100 Hz or 48000 Hz with lower oscillator buffer latency (~8ms) compared to Windows WASAPI defaults (~10-15ms)."
+        },
+        {
+          "tell": "System font availability",
+          "strategy": "mask",
+          "rationale": "Windows host lacks SF Pro / Helvetica Neue / Menlo, while possessing Segoe UI / Calibri. Font measurement probes reveal host OS fonts if not shinned/masked."
+        },
+        {
+          "tell": "Keyboard modifier key events (metaKey vs ctrlKey)",
+          "strategy": "exclude",
+          "rationale": "Physical keyboard layout differs (Command vs Control). In background headless/agent automation, keystroke mapping is synthesized via CDP Input domain; native OS shortcuts cannot be safely cross-virtualized without guest VM."
+        },
+        {
+          "tell": "Missing macOS-only APIs (e.g. apple-specific media decoders/codecs)",
+          "strategy": "exclude",
+          "rationale": "HEVC/ProRes hardware decoders in macOS AVFoundation cannot be safely synthesized on Windows DirectX host without software transcoding bugs; exclude media-codec fingerprint tests from relying on native Apple silicon decoder paths."
+        }
+      ]
+    },
+    {
+      "id": "mac-m4-mini-2024",
+      "displayName": "Mac mini / iMac (M4, 2024) / Apple M4 10-Core GPU",
+      "weight": 0.12,
+      "os": "macos",
+      "chip": "M4",
+      "gpu": {
+        "vendor": "Apple Inc. (Apple)",
+        "renderer": "ANGLE (Apple, Apple M4, OpenGL 4.1 Metal - 90.1)",
+        "webgpuAdapter": "Apple M4",
+        "limitsClass": "mid-range"
+      },
+      "gpuRenderer": "ANGLE (Apple, Apple M4, OpenGL 4.1 Metal - 90.1)",
+      "cpu": {
+        "coresMin": 10,
+        "coresMax": 10,
+        "arch": "arm64"
+      },
+      "ramGB": [
+        16,
+        24,
+        32
+      ],
+      "screen": {
+        "resolutions": [
+          {
+            "width": 1920,
+            "height": 1080
+          },
+          {
+            "width": 2560,
+            "height": 1440
+          },
+          {
+            "width": 2048,
+            "height": 1152
+          }
+        ],
+        "dpr": 2,
+        "colorDepth": 30
+      },
+      "screenProfile": {
+        "width": 1920,
+        "height": 1080,
+        "availWidth": 1920,
+        "availHeight": 1055,
+        "colorDepth": 30,
+        "pixelDepth": 30,
+        "scaleFactor": 2,
+        "isRetina": true
+      },
+      "scaleFactor": 2,
+      "audioSignature": {
+        "sampleRate": 48000,
+        "channelCount": 2,
+        "oscillatorLatencyMs": 6,
+        "noiseOffset": 0.00006,
+        "dynamicsCompressorParams": {
+          "threshold": -24,
+          "knee": 30,
+          "ratio": 12,
+          "attack": 0.003,
+          "release": 0.25
+        }
+      },
+      "fontInventory": [
+        "Arial",
+        "Arial Hebrew",
+        "Avenir",
+        "Avenir Next",
+        "Courier",
+        "Courier New",
+        "Geneva",
+        "Georgia",
+        "Helvetica",
+        "Helvetica Neue",
+        "Lucida Grande",
+        "Menlo",
+        "Monaco",
+        "Noteworthy",
+        "Optima",
+        "Palatino",
+        "PingFang SC",
+        "PingFang TC",
+        "SF Pro",
+        "SF Pro Display",
+        "SF Pro Text",
+        "Times",
+        "Times New Roman",
+        "Trebuchet MS",
+        "Verdana"
+      ],
+      "platformVersionRange": [
+        "15.0",
+        "15.1",
+        "15.2"
+      ],
+      "fontsClass": "macos-modern",
+      "localePool": [
+        "en-US",
+        "en-CA",
+        "en-GB",
+        "de-DE",
+        "fr-FR",
+        "ja-JP",
+        "ko-KR"
+      ],
+      "coherenceConstraints": {
+        "mobile": false,
+        "platform": "macos",
+        "platformArch": "arm",
+        "bitness": "64",
+        "metalSupport": true
+      },
+      "uaProfile": {
+        "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
+        "platformVersion": "15.1.0",
+        "architecture": "arm",
+        "bitness": "64",
+        "brands": [
+          {
+            "brand": "Chromium",
+            "version": "128"
+          },
+          {
+            "brand": "Not;A=Brand",
+            "version": "24"
+          },
+          {
+            "brand": "Google Chrome",
+            "version": "128"
+          }
+        ]
+      },
+      "citation": {
+        "source": "Apple Developer Hardware Documentation (Mac16,10)",
+        "date": "2026-08",
+        "notes": "Second-generation 3nm Apple M4, 10-core CPU with upgraded neural engine and ray tracing"
+      },
+      "hostTellsPolicy": [
+        {
+          "tell": "navigator.platform",
+          "strategy": "mask",
+          "rationale": "Windows host reports \"Win32\"; macOS must report \"MacIntel\" per Chromium standard even on Apple Silicon ARM chips."
+        },
+        {
+          "tell": "navigator.userAgentData.platform",
+          "strategy": "mask",
+          "rationale": "UA-CH on Windows reports \"Windows\"; macOS requires \"macOS\" with architecture \"arm\" or \"x86\"."
+        },
+        {
+          "tell": "navigator.oscpu",
+          "strategy": "mask",
+          "rationale": "Gecko/WebKit legacy property undefined in Chrome, but when probed must not expose Windows NT."
+        },
+        {
+          "tell": "navigator.maxTouchPoints",
+          "strategy": "mask",
+          "rationale": "macOS laptops and desktops do not have touchscreen panels; must always report 0 (Windows often reports >0 on touch/convertibles)."
+        },
+        {
+          "tell": "WebGL unmasked renderer / ANGLE string",
+          "strategy": "mask",
+          "rationale": "Windows ANGLE reports \"Direct3D11\" or \"Direct3D12\"; macOS WebGL reports \"Apple M1\", \"Apple M2\", \"Apple M3\", \"Apple M4\", or \"Intel Iris Plus Graphics OpenGL Engine / Metal\". Direct3D strings are fatal tell."
+        },
+        {
+          "tell": "Screen Retina scale factor and devicePixelRatio",
+          "strategy": "mask",
+          "rationale": "MacBook displays are Retina with devicePixelRatio = 2.0 (or scaled 2.0+). Standard Windows 1080p is 1.0. DPR mismatch with screen resolution is a major bot-detection signal."
+        },
+        {
+          "tell": "Menu bar geometry (window.screen.availHeight)",
+          "strategy": "mask",
+          "rationale": "Windows taskbar is typically 40-48px at screen bottom; macOS menu bar is 25px (or notch-aware ~32-38px) at screen top with Dock auto-hidden or bottom-offset."
+        },
+        {
+          "tell": "Core audio latency and default sample rate",
+          "strategy": "mask",
+          "rationale": "macOS CoreAudio defaults to 44100 Hz or 48000 Hz with lower oscillator buffer latency (~8ms) compared to Windows WASAPI defaults (~10-15ms)."
+        },
+        {
+          "tell": "System font availability",
+          "strategy": "mask",
+          "rationale": "Windows host lacks SF Pro / Helvetica Neue / Menlo, while possessing Segoe UI / Calibri. Font measurement probes reveal host OS fonts if not shinned/masked."
+        },
+        {
+          "tell": "Keyboard modifier key events (metaKey vs ctrlKey)",
+          "strategy": "exclude",
+          "rationale": "Physical keyboard layout differs (Command vs Control). In background headless/agent automation, keystroke mapping is synthesized via CDP Input domain; native OS shortcuts cannot be safely cross-virtualized without guest VM."
+        },
+        {
+          "tell": "Missing macOS-only APIs (e.g. apple-specific media decoders/codecs)",
+          "strategy": "exclude",
+          "rationale": "HEVC/ProRes hardware decoders in macOS AVFoundation cannot be safely synthesized on Windows DirectX host without software transcoding bugs; exclude media-codec fingerprint tests from relying on native Apple silicon decoder paths."
+        }
+      ]
+    },
+    {
+      "id": "mac-intel-iris-plus-2020",
+      "displayName": "MacBook Pro 13\" (Intel Core i5/i7, 2020) / Intel Iris Plus Graphics 645/655",
+      "weight": 0.1,
+      "os": "macos",
+      "chip": "Intel",
+      "gpu": {
+        "vendor": "Intel Inc. (Intel)",
+        "renderer": "ANGLE (Intel, Intel Iris Plus Graphics 655, OpenGL 4.1 Metal - 88.1)",
+        "webgpuAdapter": "Intel(R) Iris(TM) Plus Graphics 655",
+        "limitsClass": "integrated"
+      },
+      "gpuRenderer": "ANGLE (Intel, Intel Iris Plus Graphics 655, OpenGL 4.1 Metal - 88.1)",
+      "cpu": {
+        "coresMin": 4,
+        "coresMax": 8,
+        "arch": "x64"
+      },
+      "ramGB": [
+        8,
+        16
+      ],
+      "screen": {
+        "resolutions": [
+          {
+            "width": 1440,
+            "height": 900
+          },
+          {
+            "width": 1680,
+            "height": 1050
+          }
+        ],
+        "dpr": 2,
+        "colorDepth": 24
+      },
+      "screenProfile": {
+        "width": 1440,
+        "height": 900,
+        "availWidth": 1440,
+        "availHeight": 875,
+        "colorDepth": 24,
+        "pixelDepth": 24,
+        "scaleFactor": 2,
+        "isRetina": true
+      },
+      "scaleFactor": 2,
+      "audioSignature": {
+        "sampleRate": 44100,
+        "channelCount": 2,
+        "oscillatorLatencyMs": 9,
+        "noiseOffset": 0.00009,
+        "dynamicsCompressorParams": {
+          "threshold": -24,
+          "knee": 30,
+          "ratio": 12,
+          "attack": 0.003,
+          "release": 0.25
+        }
+      },
+      "fontInventory": [
+        "Arial",
+        "Avenir",
+        "Courier New",
+        "Geneva",
+        "Georgia",
+        "Helvetica",
+        "Helvetica Neue",
+        "Lucida Grande",
+        "Menlo",
+        "Monaco",
+        "Palatino",
+        "PingFang SC",
+        "Times New Roman",
+        "Trebuchet MS",
+        "Verdana"
+      ],
+      "platformVersionRange": [
+        "13.6.7",
+        "14.4.1",
+        "14.5",
+        "14.6.1"
+      ],
+      "fontsClass": "macos-intel",
+      "localePool": [
+        "en-US",
+        "en-GB",
+        "de-DE",
+        "fr-FR",
+        "es-ES",
+        "it-IT"
+      ],
+      "coherenceConstraints": {
+        "mobile": false,
+        "platform": "macos",
+        "platformArch": "x86",
+        "bitness": "64",
+        "metalSupport": true
+      },
+      "uaProfile": {
+        "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
+        "platformVersion": "14.5.0",
+        "architecture": "x86",
+        "bitness": "64",
+        "brands": [
+          {
+            "brand": "Chromium",
+            "version": "128"
+          },
+          {
+            "brand": "Not;A=Brand",
+            "version": "24"
+          },
+          {
+            "brand": "Google Chrome",
+            "version": "128"
+          }
+        ]
+      },
+      "citation": {
+        "source": "Apple Developer Hardware Documentation (MacBookPro16,3 / EveryMac MBP 2020)",
+        "date": "2026-08",
+        "notes": "Final generation 13\" Intel MacBook Pro with Iris Plus Graphics and T2 security chip"
+      },
+      "hostTellsPolicy": [
+        {
+          "tell": "navigator.platform",
+          "strategy": "mask",
+          "rationale": "Windows host reports \"Win32\"; macOS must report \"MacIntel\" per Chromium standard even on Apple Silicon ARM chips."
+        },
+        {
+          "tell": "navigator.userAgentData.platform",
+          "strategy": "mask",
+          "rationale": "UA-CH on Windows reports \"Windows\"; macOS requires \"macOS\" with architecture \"arm\" or \"x86\"."
+        },
+        {
+          "tell": "navigator.oscpu",
+          "strategy": "mask",
+          "rationale": "Gecko/WebKit legacy property undefined in Chrome, but when probed must not expose Windows NT."
+        },
+        {
+          "tell": "navigator.maxTouchPoints",
+          "strategy": "mask",
+          "rationale": "macOS laptops and desktops do not have touchscreen panels; must always report 0 (Windows often reports >0 on touch/convertibles)."
+        },
+        {
+          "tell": "WebGL unmasked renderer / ANGLE string",
+          "strategy": "mask",
+          "rationale": "Windows ANGLE reports \"Direct3D11\" or \"Direct3D12\"; macOS WebGL reports \"Apple M1\", \"Apple M2\", \"Apple M3\", \"Apple M4\", or \"Intel Iris Plus Graphics OpenGL Engine / Metal\". Direct3D strings are fatal tell."
+        },
+        {
+          "tell": "Screen Retina scale factor and devicePixelRatio",
+          "strategy": "mask",
+          "rationale": "MacBook displays are Retina with devicePixelRatio = 2.0 (or scaled 2.0+). Standard Windows 1080p is 1.0. DPR mismatch with screen resolution is a major bot-detection signal."
+        },
+        {
+          "tell": "Menu bar geometry (window.screen.availHeight)",
+          "strategy": "mask",
+          "rationale": "Windows taskbar is typically 40-48px at screen bottom; macOS menu bar is 25px (or notch-aware ~32-38px) at screen top with Dock auto-hidden or bottom-offset."
+        },
+        {
+          "tell": "Core audio latency and default sample rate",
+          "strategy": "mask",
+          "rationale": "macOS CoreAudio defaults to 44100 Hz or 48000 Hz with lower oscillator buffer latency (~8ms) compared to Windows WASAPI defaults (~10-15ms)."
+        },
+        {
+          "tell": "System font availability",
+          "strategy": "mask",
+          "rationale": "Windows host lacks SF Pro / Helvetica Neue / Menlo, while possessing Segoe UI / Calibri. Font measurement probes reveal host OS fonts if not shinned/masked."
+        },
+        {
+          "tell": "Keyboard modifier key events (metaKey vs ctrlKey)",
+          "strategy": "exclude",
+          "rationale": "Physical keyboard layout differs (Command vs Control). In background headless/agent automation, keystroke mapping is synthesized via CDP Input domain; native OS shortcuts cannot be safely cross-virtualized without guest VM."
+        },
+        {
+          "tell": "Missing macOS-only APIs (e.g. apple-specific media decoders/codecs)",
+          "strategy": "exclude",
+          "rationale": "HEVC/ProRes hardware decoders in macOS AVFoundation cannot be safely synthesized on Windows DirectX host without software transcoding bugs; exclude media-codec fingerprint tests from relying on native Apple silicon decoder paths."
+        }
+      ]
+    },
+    {
+      "id": "win11-rtx-4070-mainstream",
+      "displayName": "Desktop Gaming / NVIDIA GeForce RTX 4070 (Core i7-14700K / Ryzen 7 7800X3D)",
+      "weight": 0.28,
+      "gpu": {
+        "vendor": "Google Inc. (NVIDIA)",
+        "renderer": "ANGLE (NVIDIA, NVIDIA GeForce RTX 4070 (0x00002786) Direct3D11 vs_5_0 ps_5_0, D3D11)",
+        "webgpuAdapter": "NVIDIA GeForce RTX 4070",
+        "limitsClass": "high-end"
+      },
+      "gpuRenderer": "ANGLE (NVIDIA, NVIDIA GeForce RTX 4070 (0x00002786) Direct3D11 vs_5_0 ps_5_0, D3D11)",
+      "cpu": {
+        "coresMin": 8,
+        "coresMax": 20,
+        "arch": "x64"
+      },
+      "ramGB": [
+        16,
+        32,
+        64
+      ],
+      "screen": {
+        "resolutions": [
+          {
+            "width": 2560,
+            "height": 1440
+          },
+          {
+            "width": 1920,
+            "height": 1080
+          },
+          {
+            "width": 3840,
+            "height": 2160
+          }
+        ],
+        "dpr": 1,
+        "colorDepth": 24
+      },
+      "screenProfile": {
+        "width": 2560,
+        "height": 1440,
+        "availWidth": 2560,
+        "availHeight": 1400,
+        "colorDepth": 24,
+        "pixelDepth": 24,
+        "scaleFactor": 1,
+        "isRetina": false
+      },
+      "scaleFactor": 1,
+      "audioSignature": {
+        "sampleRate": 48000,
+        "channelCount": 2,
+        "oscillatorLatencyMs": 10,
+        "noiseOffset": 0.00012,
+        "dynamicsCompressorParams": {
+          "threshold": -24,
+          "knee": 30,
+          "ratio": 12,
+          "attack": 0.003,
+          "release": 0.25
+        }
+      },
+      "fontInventory": [
+        "Arial",
+        "Calibri",
+        "Cambria",
+        "Comic Sans MS",
+        "Consolas",
+        "Courier New",
+        "Georgia",
+        "Impact",
+        "Lucida Console",
+        "Microsoft Sans Serif",
+        "Segoe UI",
+        "Segoe UI Emoji",
+        "Segoe UI Historic",
+        "Segoe UI Symbol",
+        "Segoe UI Variable",
+        "Tahoma",
+        "Times New Roman",
+        "Trebuchet MS",
+        "Verdana",
+        "MS Gothic",
+        "Yu Gothic"
+      ],
+      "platformVersionRange": [
+        "10.0.22631",
+        "10.0.26100"
+      ],
+      "fontsClass": "win11-modern",
+      "localePool": [
+        "en-US",
+        "de-DE",
+        "en-GB",
+        "fr-FR",
+        "ja-JP",
+        "ru-RU",
+        "zh-CN"
+      ],
+      "coherenceConstraints": {
+        "mobile": false,
+        "platform": "windows",
+        "platformArch": "x86",
+        "bitness": "64",
+        "direct3dFeatureLevel": "12_2"
+      },
+      "uaProfile": {
+        "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
+        "platformVersion": "15.0.0",
+        "architecture": "x86",
+        "bitness": "64",
+        "brands": [
+          {
+            "brand": "Chromium",
+            "version": "128"
+          },
+          {
+            "brand": "Not;A=Brand",
+            "version": "24"
+          },
+          {
+            "brand": "Google Chrome",
+            "version": "128"
+          }
+        ]
+      },
+      "citation": {
+        "source": "Steam Hardware Survey / TechPowerUp GPU Database",
+        "date": "2026-08",
+        "notes": "Most popular 1440p mainstream gaming GPU on Windows 11 (AD104 Ada Lovelace architecture)"
+      }
+    },
+    {
+      "id": "win11-intel-arc-ultra7",
+      "displayName": "Modern Ultrabook / Intel Core Ultra 7 155H / Intel Arc Graphics",
+      "weight": 0.26,
+      "gpu": {
+        "vendor": "Google Inc. (Intel)",
+        "renderer": "ANGLE (Intel, Intel(R) Arc(TM) Graphics (0x00007D55) Direct3D11 vs_5_0 ps_5_0, D3D11)",
+        "webgpuAdapter": "Intel(R) Arc(TM) Graphics",
+        "limitsClass": "mid-range"
+      },
+      "gpuRenderer": "ANGLE (Intel, Intel(R) Arc(TM) Graphics (0x00007D55) Direct3D11 vs_5_0 ps_5_0, D3D11)",
+      "cpu": {
+        "coresMin": 14,
+        "coresMax": 16,
+        "arch": "x64"
+      },
+      "ramGB": [
+        16,
+        32
+      ],
+      "screen": {
+        "resolutions": [
+          {
+            "width": 1920,
+            "height": 1200
+          },
+          {
+            "width": 2880,
+            "height": 1800
+          },
+          {
+            "width": 1920,
+            "height": 1080
+          }
+        ],
+        "dpr": 1.25,
+        "colorDepth": 24
+      },
+      "screenProfile": {
+        "width": 1920,
+        "height": 1200,
+        "availWidth": 1920,
+        "availHeight": 1160,
+        "colorDepth": 24,
+        "pixelDepth": 24,
+        "scaleFactor": 1.25,
+        "isRetina": false
+      },
+      "scaleFactor": 1.25,
+      "audioSignature": {
+        "sampleRate": 48000,
+        "channelCount": 2,
+        "oscillatorLatencyMs": 10,
+        "noiseOffset": 0.00012,
+        "dynamicsCompressorParams": {
+          "threshold": -24,
+          "knee": 30,
+          "ratio": 12,
+          "attack": 0.003,
+          "release": 0.25
+        }
+      },
+      "fontInventory": [
+        "Arial",
+        "Calibri",
+        "Cambria",
+        "Comic Sans MS",
+        "Consolas",
+        "Courier New",
+        "Georgia",
+        "Impact",
+        "Lucida Console",
+        "Microsoft Sans Serif",
+        "Segoe UI",
+        "Segoe UI Emoji",
+        "Segoe UI Historic",
+        "Segoe UI Symbol",
+        "Segoe UI Variable",
+        "Tahoma",
+        "Times New Roman",
+        "Trebuchet MS",
+        "Verdana",
+        "MS Gothic",
+        "Yu Gothic"
+      ],
+      "platformVersionRange": [
+        "10.0.22631",
+        "10.0.26100"
+      ],
+      "fontsClass": "win11-modern",
+      "localePool": [
+        "en-US",
+        "en-GB",
+        "de-DE",
+        "fr-FR",
+        "es-ES",
+        "it-IT",
+        "ja-JP"
+      ],
+      "coherenceConstraints": {
+        "mobile": false,
+        "platform": "windows",
+        "platformArch": "x86",
+        "bitness": "64",
+        "direct3dFeatureLevel": "12_1"
+      },
+      "uaProfile": {
+        "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
+        "platformVersion": "15.0.0",
+        "architecture": "x86",
+        "bitness": "64",
+        "brands": [
+          {
+            "brand": "Chromium",
+            "version": "128"
+          },
+          {
+            "brand": "Not;A=Brand",
+            "version": "24"
+          },
+          {
+            "brand": "Google Chrome",
+            "version": "128"
+          }
+        ]
+      },
+      "citation": {
+        "source": "Intel Ark Product Specifications / Microsoft OEM hardware matrix",
+        "date": "2026-08",
+        "notes": "Mainstream premium Windows 11 Evo/Copilot laptops with Intel Arc integrated Xe-LPG architecture"
+      }
+    },
+    {
+      "id": "win11-amd-radeon-7800xt",
+      "displayName": "Desktop Enthusiast / AMD Radeon RX 7800 XT (Ryzen 7 7700X / 7800X3D)",
+      "weight": 0.24,
+      "gpu": {
+        "vendor": "Google Inc. (AMD)",
+        "renderer": "ANGLE (AMD, AMD Radeon RX 7800 XT (0x0000747E) Direct3D11 vs_5_0 ps_5_0, D3D11)",
+        "webgpuAdapter": "AMD Radeon RX 7800 XT",
+        "limitsClass": "high-end"
+      },
+      "gpuRenderer": "ANGLE (AMD, AMD Radeon RX 7800 XT (0x0000747E) Direct3D11 vs_5_0 ps_5_0, D3D11)",
+      "cpu": {
+        "coresMin": 8,
+        "coresMax": 16,
+        "arch": "x64"
+      },
+      "ramGB": [
+        32,
+        64
+      ],
+      "screen": {
+        "resolutions": [
+          {
+            "width": 2560,
+            "height": 1440
+          },
+          {
+            "width": 3840,
+            "height": 2160
+          }
+        ],
+        "dpr": 1,
+        "colorDepth": 24
+      },
+      "screenProfile": {
+        "width": 2560,
+        "height": 1440,
+        "availWidth": 2560,
+        "availHeight": 1400,
+        "colorDepth": 24,
+        "pixelDepth": 24,
+        "scaleFactor": 1,
+        "isRetina": false
+      },
+      "scaleFactor": 1,
+      "audioSignature": {
+        "sampleRate": 48000,
+        "channelCount": 2,
+        "oscillatorLatencyMs": 10,
+        "noiseOffset": 0.00012,
+        "dynamicsCompressorParams": {
+          "threshold": -24,
+          "knee": 30,
+          "ratio": 12,
+          "attack": 0.003,
+          "release": 0.25
+        }
+      },
+      "fontInventory": [
+        "Arial",
+        "Calibri",
+        "Cambria",
+        "Comic Sans MS",
+        "Consolas",
+        "Courier New",
+        "Georgia",
+        "Impact",
+        "Lucida Console",
+        "Microsoft Sans Serif",
+        "Segoe UI",
+        "Segoe UI Emoji",
+        "Segoe UI Historic",
+        "Segoe UI Symbol",
+        "Segoe UI Variable",
+        "Tahoma",
+        "Times New Roman",
+        "Trebuchet MS",
+        "Verdana",
+        "MS Gothic",
+        "Yu Gothic"
+      ],
+      "platformVersionRange": [
+        "10.0.22631",
+        "10.0.26100"
+      ],
+      "fontsClass": "win11-modern",
+      "localePool": [
+        "en-US",
+        "de-DE",
+        "en-GB",
+        "pl-PL",
+        "sv-SE",
+        "fr-FR",
+        "pt-BR"
+      ],
+      "coherenceConstraints": {
+        "mobile": false,
+        "platform": "windows",
+        "platformArch": "x86",
+        "bitness": "64",
+        "direct3dFeatureLevel": "12_2"
+      },
+      "uaProfile": {
+        "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
+        "platformVersion": "15.0.0",
+        "architecture": "x86",
+        "bitness": "64",
+        "brands": [
+          {
+            "brand": "Chromium",
+            "version": "128"
+          },
+          {
+            "brand": "Not;A=Brand",
+            "version": "24"
+          },
+          {
+            "brand": "Google Chrome",
+            "version": "128"
+          }
+        ]
+      },
+      "citation": {
+        "source": "Steam Hardware Survey / AMD Product Specs",
+        "date": "2026-08",
+        "notes": "Enthusiast 1440p/4K Windows 11 desktop gaming configuration (Navi 32 RDNA3)"
+      }
+    },
+    {
+      "id": "win11-snapdragon-x-elite",
+      "displayName": "Copilot+ PC / Qualcomm Snapdragon X Elite (Adreno X1-85 GPU)",
+      "weight": 0.22,
+      "gpu": {
+        "vendor": "Google Inc. (Qualcomm)",
+        "renderer": "ANGLE (Qualcomm, Qualcomm(R) Adreno(TM) X1-85 GPU Direct3D11 vs_5_0 ps_5_0, D3D11)",
+        "webgpuAdapter": "Qualcomm(R) Adreno(TM) X1-85 GPU",
+        "limitsClass": "integrated"
+      },
+      "gpuRenderer": "ANGLE (Qualcomm, Qualcomm(R) Adreno(TM) X1-85 GPU Direct3D11 vs_5_0 ps_5_0, D3D11)",
+      "cpu": {
+        "coresMin": 12,
+        "coresMax": 12,
+        "arch": "arm64"
+      },
+      "ramGB": [
+        16,
+        32
+      ],
+      "screen": {
+        "resolutions": [
+          {
+            "width": 2880,
+            "height": 1920
+          },
+          {
+            "width": 2304,
+            "height": 1536
+          }
+        ],
+        "dpr": 1.5,
+        "colorDepth": 24
+      },
+      "screenProfile": {
+        "width": 2880,
+        "height": 1920,
+        "availWidth": 2880,
+        "availHeight": 1872,
+        "colorDepth": 24,
+        "pixelDepth": 24,
+        "scaleFactor": 1.5,
+        "isRetina": false
+      },
+      "scaleFactor": 1.5,
+      "audioSignature": {
+        "sampleRate": 48000,
+        "channelCount": 2,
+        "oscillatorLatencyMs": 10,
+        "noiseOffset": 0.00012,
+        "dynamicsCompressorParams": {
+          "threshold": -24,
+          "knee": 30,
+          "ratio": 12,
+          "attack": 0.003,
+          "release": 0.25
+        }
+      },
+      "fontInventory": [
+        "Arial",
+        "Calibri",
+        "Cambria",
+        "Consolas",
+        "Courier New",
+        "Georgia",
+        "Microsoft Sans Serif",
+        "Segoe UI",
+        "Segoe UI Emoji",
+        "Segoe UI Variable",
+        "Tahoma",
+        "Times New Roman",
+        "Verdana"
+      ],
+      "platformVersionRange": [
+        "10.0.26100"
+      ],
+      "fontsClass": "win11-arm",
+      "localePool": [
+        "en-US",
+        "en-GB",
+        "de-DE",
+        "ja-JP",
+        "fr-FR",
+        "es-ES"
+      ],
+      "coherenceConstraints": {
+        "mobile": false,
+        "platform": "windows",
+        "platformArch": "arm",
+        "bitness": "64",
+        "direct3dFeatureLevel": "12_1"
+      },
+      "uaProfile": {
+        "userAgent": "Mozilla/5.0 (Windows NT 10.0; ARM64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
+        "platformVersion": "15.0.0",
+        "architecture": "arm",
+        "bitness": "64",
+        "brands": [
+          {
+            "brand": "Chromium",
+            "version": "128"
+          },
+          {
+            "brand": "Not;A=Brand",
+            "version": "24"
+          },
+          {
+            "brand": "Google Chrome",
+            "version": "128"
+          }
+        ]
+      },
+      "citation": {
+        "source": "Microsoft Surface Laptop 7th Edition Tech Specs / Qualcomm Snapdragon X Series Documentation",
+        "date": "2026-08",
+        "notes": "New generation Windows on ARM Copilot+ PC (Oryon 12-core CPU + Adreno X1-85 GPU)"
+      }
+    },
+    {
+      "id": "linux-ubuntu-2404-intel-uhd-gnome",
+      "displayName": "Ubuntu 24.04 LTS GNOME / Intel UHD Graphics 770 (Mesa)",
+      "weight": 0.05,
+      "os": "linux",
+      "gpu": {
+        "vendor": "Google Inc. (Intel)",
+        "renderer": "Mesa Intel(R) UHD Graphics 770 (ADL-S GT1)",
+        "webgpuAdapter": "Intel(R) UHD Graphics 770 (Mesa)",
+        "limitsClass": "integrated"
+      },
+      "cpu": {
+        "coresMin": 8,
+        "coresMax": 16,
+        "arch": "x86_64"
+      },
+      "ramGB": [
+        8,
+        16
+      ],
+      "screen": {
+        "resolutions": [
+          {
+            "width": 1920,
+            "height": 1080
+          },
+          {
+            "width": 2560,
+            "height": 1440
+          }
+        ],
+        "dpr": 1.25,
+        "colorDepth": 24
+      },
+      "screenProfile": {
+        "width": 1920,
+        "height": 1080,
+        "availWidth": 1920,
+        "availHeight": 1052,
+        "colorDepth": 24,
+        "pixelDepth": 24,
+        "scaleFactor": 1.25,
+        "isRetina": false
+      },
+      "scaleFactor": 1.25,
+      "audioSignature": {
+        "sampleRate": 48000,
+        "channelCount": 2,
+        "oscillatorLatencyMs": 9,
+        "noiseOffset": 0.00012,
+        "dynamicsCompressorParams": {
+          "threshold": -24,
+          "knee": 30,
+          "ratio": 12,
+          "attack": 0.003,
+          "release": 0.25
+        }
+      },
+      "fontInventory": [
+        "DejaVu Sans",
+        "DejaVu Serif",
+        "DejaVu Sans Mono",
+        "Liberation Sans",
+        "Liberation Serif",
+        "Liberation Mono",
+        "Ubuntu",
+        "Ubuntu Medium",
+        "Ubuntu Mono",
+        "Noto Sans",
+        "Noto Serif",
+        "Noto Color Emoji",
+        "FreeSans",
+        "FreeSerif",
+        "FreeMono"
+      ],
+      "platformVersionRange": [
+        "24.04",
+        "24.04.1"
+      ],
+      "fontsClass": "linux-freetype",
+      "localePool": [
+        "en-US",
+        "en-GB",
+        "de-DE",
+        "fr-FR",
+        "es-ES"
+      ],
+      "coherenceConstraints": {
+        "mobile": false,
+        "platform": "linux",
+        "platformArch": "x86",
+        "bitness": "64"
+      },
+      "uaProfile": {
+        "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+        "platformVersion": "24.04.0",
+        "architecture": "x86",
+        "bitness": "64",
+        "brands": [
+          {
+            "brand": "Chromium",
+            "version": "131"
+          },
+          {
+            "brand": "Not;A=Brand",
+            "version": "24"
+          },
+          {
+            "brand": "Google Chrome",
+            "version": "131"
+          }
+        ]
+      },
+      "gpuRenderer": "Mesa Intel(R) UHD Graphics 770 (ADL-S GT1)",
+      "citation": {
+        "source": "StatCounter Global Stats - Linux Desktop Distro Market Share",
+        "date": "2026-02",
+        "notes": "Ubuntu 24.04 LTS GNOME with Mesa Intel UHD graphics stack, primary enterprise Linux workstation."
+      }
+    },
+    {
+      "id": "linux-ubuntu-2204-amd-radeon-gnome",
+      "displayName": "Ubuntu 22.04 LTS / AMD Radeon RX 6700 XT (radeonsi)",
+      "weight": 0.04,
+      "os": "linux",
+      "gpu": {
+        "vendor": "Google Inc. (AMD)",
+        "renderer": "ANGLE (AMD, AMD Radeon RX 6700 XT (radeonsi navi22 LLVM 15.0.7), OpenGL 4.6)",
+        "webgpuAdapter": "AMD Radeon RX 6700 XT (radv)",
+        "limitsClass": "mid-range"
+      },
+      "cpu": {
+        "coresMin": 6,
+        "coresMax": 12,
+        "arch": "x86_64"
+      },
+      "ramGB": [
+        16,
+        32
+      ],
+      "screen": {
+        "resolutions": [
+          {
+            "width": 1920,
+            "height": 1080
+          },
+          {
+            "width": 2560,
+            "height": 1440
+          }
+        ],
+        "dpr": 1,
+        "colorDepth": 24
+      },
+      "screenProfile": {
+        "width": 1920,
+        "height": 1080,
+        "availWidth": 1920,
+        "availHeight": 1052,
+        "colorDepth": 24,
+        "pixelDepth": 24,
+        "scaleFactor": 1,
+        "isRetina": false
+      },
+      "scaleFactor": 1,
+      "audioSignature": {
+        "sampleRate": 48000,
+        "channelCount": 2,
+        "oscillatorLatencyMs": 9,
+        "noiseOffset": 0.00012,
+        "dynamicsCompressorParams": {
+          "threshold": -24,
+          "knee": 30,
+          "ratio": 12,
+          "attack": 0.003,
+          "release": 0.25
+        }
+      },
+      "fontInventory": [
+        "DejaVu Sans",
+        "DejaVu Serif",
+        "DejaVu Sans Mono",
+        "Liberation Sans",
+        "Liberation Serif",
+        "Liberation Mono",
+        "Ubuntu",
+        "Ubuntu Medium",
+        "Ubuntu Mono",
+        "Noto Sans",
+        "Noto Serif",
+        "Noto Color Emoji",
+        "FreeSans",
+        "FreeSerif",
+        "FreeMono"
+      ],
+      "platformVersionRange": [
+        "22.04",
+        "22.04.4"
+      ],
+      "fontsClass": "linux-freetype",
+      "localePool": [
+        "en-US",
+        "de-DE",
+        "ru-RU",
+        "zh-CN",
+        "ja-JP"
+      ],
+      "coherenceConstraints": {
+        "mobile": false,
+        "platform": "linux",
+        "platformArch": "x86",
+        "bitness": "64"
+      },
+      "uaProfile": {
+        "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36",
+        "platformVersion": "22.04.0",
+        "architecture": "x86",
+        "bitness": "64",
+        "brands": [
+          {
+            "brand": "Chromium",
+            "version": "130"
+          },
+          {
+            "brand": "Not;A=Brand",
+            "version": "24"
+          },
+          {
+            "brand": "Google Chrome",
+            "version": "130"
+          }
+        ]
+      },
+      "gpuRenderer": "AMD Radeon RX 6700 XT (radeonsi, navi22, LLVM 15.0.7, DRM 3.42)",
+      "citation": {
+        "source": "StatCounter Global Stats - Linux Desktop Distro Market Share",
+        "date": "2026-01",
+        "notes": "Ubuntu 22.04 LTS GNOME on AMD Radeon 6000 series with open-source Mesa radeonsi driver."
+      }
+    },
+    {
+      "id": "linux-fedora-40-intel-arc-gnome",
+      "displayName": "Fedora 40 Workstation / Intel Arc A770 (Mesa DG2)",
+      "weight": 0.035,
+      "os": "linux",
+      "gpu": {
+        "vendor": "Google Inc. (Intel)",
+        "renderer": "Mesa Intel(R) Arc(tm) A770 Graphics (DG2)",
+        "webgpuAdapter": "Intel(R) Arc(tm) A770 Graphics (DG2)",
+        "limitsClass": "mid-range"
+      },
+      "cpu": {
+        "coresMin": 8,
+        "coresMax": 20,
+        "arch": "x86_64"
+      },
+      "ramGB": [
+        16,
+        32
+      ],
+      "screen": {
+        "resolutions": [
+          {
+            "width": 1920,
+            "height": 1080
+          },
+          {
+            "width": 3840,
+            "height": 2160
+          }
+        ],
+        "dpr": 1,
+        "colorDepth": 24
+      },
+      "screenProfile": {
+        "width": 3840,
+        "height": 2160,
+        "availWidth": 3840,
+        "availHeight": 2132,
+        "colorDepth": 24,
+        "pixelDepth": 24,
+        "scaleFactor": 1,
+        "isRetina": false
+      },
+      "scaleFactor": 1,
+      "audioSignature": {
+        "sampleRate": 48000,
+        "channelCount": 2,
+        "oscillatorLatencyMs": 9,
+        "noiseOffset": 0.00012,
+        "dynamicsCompressorParams": {
+          "threshold": -24,
+          "knee": 30,
+          "ratio": 12,
+          "attack": 0.003,
+          "release": 0.25
+        }
+      },
+      "fontInventory": [
+        "DejaVu Sans",
+        "DejaVu Serif",
+        "DejaVu Sans Mono",
+        "Liberation Sans",
+        "Liberation Serif",
+        "Liberation Mono",
+        "Ubuntu",
+        "Ubuntu Medium",
+        "Ubuntu Mono",
+        "Noto Sans",
+        "Noto Serif",
+        "Noto Color Emoji",
+        "FreeSans",
+        "FreeSerif",
+        "FreeMono"
+      ],
+      "platformVersionRange": [
+        "40",
+        "40.1"
+      ],
+      "fontsClass": "linux-freetype",
+      "localePool": [
+        "en-US",
+        "en-CA",
+        "de-DE",
+        "pl-PL",
+        "nl-NL"
+      ],
+      "coherenceConstraints": {
+        "mobile": false,
+        "platform": "linux",
+        "platformArch": "x86",
+        "bitness": "64"
+      },
+      "uaProfile": {
+        "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+        "platformVersion": "40.0",
+        "architecture": "x86",
+        "bitness": "64",
+        "brands": [
+          {
+            "brand": "Chromium",
+            "version": "131"
+          },
+          {
+            "brand": "Not;A=Brand",
+            "version": "24"
+          },
+          {
+            "brand": "Google Chrome",
+            "version": "131"
+          }
+        ]
+      },
+      "gpuRenderer": "Mesa Intel(R) Arc(tm) A770 Graphics (DG2)",
+      "citation": {
+        "source": "StatCounter Global Stats - Linux Desktop Distro Market Share",
+        "date": "2026-02",
+        "notes": "Fedora 40 Workstation GNOME with modern Intel Arc graphics running latest Mesa driver stack."
+      }
+    },
+    {
+      "id": "linux-debian-12-kde-amd",
+      "displayName": "Debian 12 (Bookworm) KDE / AMD Ryzen Radeon Graphics",
+      "weight": 0.025,
+      "os": "linux",
+      "gpu": {
+        "vendor": "Google Inc. (AMD)",
+        "renderer": "ANGLE (AMD, AMD Radeon 780M Graphics (radeonsi phoenix LLVM 15.0.7), OpenGL 4.6)",
+        "webgpuAdapter": "AMD Radeon 780M (radv)",
+        "limitsClass": "integrated"
+      },
+      "cpu": {
+        "coresMin": 8,
+        "coresMax": 16,
+        "arch": "x86_64"
+      },
+      "ramGB": [
+        16,
+        32
+      ],
+      "screen": {
+        "resolutions": [
+          {
+            "width": 1920,
+            "height": 1080
+          },
+          {
+            "width": 2560,
+            "height": 1440
+          }
+        ],
+        "dpr": 1,
+        "colorDepth": 24
+      },
+      "screenProfile": {
+        "width": 2560,
+        "height": 1440,
+        "availWidth": 2560,
+        "availHeight": 1412,
+        "colorDepth": 24,
+        "pixelDepth": 24,
+        "scaleFactor": 1,
+        "isRetina": false
+      },
+      "scaleFactor": 1,
+      "audioSignature": {
+        "sampleRate": 48000,
+        "channelCount": 2,
+        "oscillatorLatencyMs": 9,
+        "noiseOffset": 0.00012,
+        "dynamicsCompressorParams": {
+          "threshold": -24,
+          "knee": 30,
+          "ratio": 12,
+          "attack": 0.003,
+          "release": 0.25
+        }
+      },
+      "fontInventory": [
+        "DejaVu Sans",
+        "DejaVu Serif",
+        "DejaVu Sans Mono",
+        "Liberation Sans",
+        "Liberation Serif",
+        "Liberation Mono",
+        "Ubuntu",
+        "Ubuntu Medium",
+        "Ubuntu Mono",
+        "Noto Sans",
+        "Noto Serif",
+        "Noto Color Emoji",
+        "FreeSans",
+        "FreeSerif",
+        "FreeMono"
+      ],
+      "platformVersionRange": [
+        "12",
+        "12.4"
+      ],
+      "fontsClass": "linux-freetype",
+      "localePool": [
+        "en-US",
+        "en-GB",
+        "fr-FR",
+        "de-DE",
+        "ru-RU"
+      ],
+      "coherenceConstraints": {
+        "mobile": false,
+        "platform": "linux",
+        "platformArch": "x86",
+        "bitness": "64"
+      },
+      "uaProfile": {
+        "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36",
+        "platformVersion": "12.4.0",
+        "architecture": "x86",
+        "bitness": "64",
+        "brands": [
+          {
+            "brand": "Chromium",
+            "version": "129"
+          },
+          {
+            "brand": "Not;A=Brand",
+            "version": "24"
+          },
+          {
+            "brand": "Google Chrome",
+            "version": "129"
+          }
+        ]
+      },
+      "gpuRenderer": "AMD Radeon 780M Graphics (radeonsi, phoenix, LLVM 15.0.7, DRM 3.54)",
+      "citation": {
+        "source": "StatCounter Global Stats - Linux Desktop Distro Market Share",
+        "date": "2026-01",
+        "notes": "Debian 12 KDE Plasma on AMD Ryzen APU with Radeon 780M integrated graphics (radeonsi)."
+      }
+    },
+    {
+      "id": "linux-ubuntu-wayland-nvidia-rtx",
+      "displayName": "Ubuntu 24.04 Wayland / NVIDIA GeForce RTX 4060 (nvidia-drm)",
+      "weight": 0.015,
+      "os": "linux",
+      "gpu": {
+        "vendor": "Google Inc. (NVIDIA)",
+        "renderer": "ANGLE (NVIDIA, NVIDIA GeForce RTX 4060 (nvidia-drm), OpenGL 4.6)",
+        "webgpuAdapter": "NVIDIA GeForce RTX 4060",
+        "limitsClass": "high-end"
+      },
+      "cpu": {
+        "coresMin": 8,
+        "coresMax": 24,
+        "arch": "x86_64"
+      },
+      "ramGB": [
+        32
+      ],
+      "screen": {
+        "resolutions": [
+          {
+            "width": 2560,
+            "height": 1440
+          },
+          {
+            "width": 3840,
+            "height": 2160
+          }
+        ],
+        "dpr": 1,
+        "colorDepth": 24
+      },
+      "screenProfile": {
+        "width": 2560,
+        "height": 1440,
+        "availWidth": 2560,
+        "availHeight": 1412,
+        "colorDepth": 24,
+        "pixelDepth": 24,
+        "scaleFactor": 1,
+        "isRetina": false
+      },
+      "scaleFactor": 1,
+      "audioSignature": {
+        "sampleRate": 48000,
+        "channelCount": 2,
+        "oscillatorLatencyMs": 9,
+        "noiseOffset": 0.00012,
+        "dynamicsCompressorParams": {
+          "threshold": -24,
+          "knee": 30,
+          "ratio": 12,
+          "attack": 0.003,
+          "release": 0.25
+        }
+      },
+      "fontInventory": [
+        "DejaVu Sans",
+        "DejaVu Serif",
+        "DejaVu Sans Mono",
+        "Liberation Sans",
+        "Liberation Serif",
+        "Liberation Mono",
+        "Ubuntu",
+        "Ubuntu Medium",
+        "Ubuntu Mono",
+        "Noto Sans",
+        "Noto Serif",
+        "Noto Color Emoji",
+        "FreeSans",
+        "FreeSerif",
+        "FreeMono"
+      ],
+      "platformVersionRange": [
+        "24.04",
+        "24.04.1"
+      ],
+      "fontsClass": "linux-freetype",
+      "localePool": [
+        "en-US",
+        "en-GB",
+        "de-DE",
+        "ja-JP",
+        "ko-KR"
+      ],
+      "coherenceConstraints": {
+        "mobile": false,
+        "platform": "linux",
+        "platformArch": "x86",
+        "bitness": "64"
+      },
+      "uaProfile": {
+        "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+        "platformVersion": "24.04.0",
+        "architecture": "x86",
+        "bitness": "64",
+        "brands": [
+          {
+            "brand": "Chromium",
+            "version": "131"
+          },
+          {
+            "brand": "Not;A=Brand",
+            "version": "24"
+          },
+          {
+            "brand": "Google Chrome",
+            "version": "131"
+          }
+        ]
+      },
+      "gpuRenderer": "NVIDIA GeForce RTX 4060/PCIe/SSE2",
+      "citation": {
+        "source": "StatCounter Global Stats - Linux Desktop Distro Market Share / Steam Hardware Survey",
+        "date": "2026-02",
+        "notes": "Ubuntu Wayland session with NVIDIA discrete RTX 40-series GPU on proprietary nvidia-drm driver."
+      }
+    },
+    {
+      "id": "linux-mint-21-cinnamon-intel",
+      "displayName": "Linux Mint 21.3 Cinnamon / Intel UHD Graphics 620",
+      "weight": 0.015,
+      "os": "linux",
+      "gpu": {
+        "vendor": "Google Inc. (Intel)",
+        "renderer": "Mesa Intel(R) UHD Graphics 620 (KBL GT2)",
+        "webgpuAdapter": "Intel(R) UHD Graphics 620 (Mesa)",
+        "limitsClass": "integrated"
+      },
+      "cpu": {
+        "coresMin": 4,
+        "coresMax": 8,
+        "arch": "x86_64"
+      },
+      "ramGB": [
+        8,
+        16
+      ],
+      "screen": {
+        "resolutions": [
+          {
+            "width": 1600,
+            "height": 900
+          },
+          {
+            "width": 1920,
+            "height": 1080
+          }
+        ],
+        "dpr": 1,
+        "colorDepth": 24
+      },
+      "screenProfile": {
+        "width": 1920,
+        "height": 1080,
+        "availWidth": 1920,
+        "availHeight": 1052,
+        "colorDepth": 24,
+        "pixelDepth": 24,
+        "scaleFactor": 1,
+        "isRetina": false
+      },
+      "scaleFactor": 1,
+      "audioSignature": {
+        "sampleRate": 48000,
+        "channelCount": 2,
+        "oscillatorLatencyMs": 9,
+        "noiseOffset": 0.00012,
+        "dynamicsCompressorParams": {
+          "threshold": -24,
+          "knee": 30,
+          "ratio": 12,
+          "attack": 0.003,
+          "release": 0.25
+        }
+      },
+      "fontInventory": [
+        "DejaVu Sans",
+        "DejaVu Serif",
+        "DejaVu Sans Mono",
+        "Liberation Sans",
+        "Liberation Serif",
+        "Liberation Mono",
+        "Ubuntu",
+        "Ubuntu Medium",
+        "Ubuntu Mono",
+        "Noto Sans",
+        "Noto Serif",
+        "Noto Color Emoji",
+        "FreeSans",
+        "FreeSerif",
+        "FreeMono"
+      ],
+      "platformVersionRange": [
+        "21.3",
+        "21.2"
+      ],
+      "fontsClass": "linux-freetype",
+      "localePool": [
+        "en-US",
+        "es-ES",
+        "pt-BR",
+        "it-IT",
+        "de-DE"
+      ],
+      "coherenceConstraints": {
+        "mobile": false,
+        "platform": "linux",
+        "platformArch": "x86",
+        "bitness": "64"
+      },
+      "uaProfile": {
+        "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
+        "platformVersion": "21.3.0",
+        "architecture": "x86",
+        "bitness": "64",
+        "brands": [
+          {
+            "brand": "Chromium",
+            "version": "128"
+          },
+          {
+            "brand": "Not;A=Brand",
+            "version": "24"
+          },
+          {
+            "brand": "Google Chrome",
+            "version": "128"
+          }
+        ]
+      },
+      "gpuRenderer": "Mesa Intel(R) UHD Graphics 620 (KBL GT2)",
+      "citation": {
+        "source": "StatCounter Global Stats - Linux Desktop Distro Market Share",
+        "date": "2026-01",
+        "notes": "Linux Mint 21.3 Cinnamon on legacy Intel KBL integrated graphics, popular budget desktop distribution."
+      }
+    }
+  ]
+}
