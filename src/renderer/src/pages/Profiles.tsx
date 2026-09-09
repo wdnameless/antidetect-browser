@@ -82,6 +82,7 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
   const [modalMode, setModalMode] = useState<'create' | 'edit' | null>(null);
   const [profileId, setProfileId] = useState('');
   const [name, setName] = useState('');
+  const [profileColor, setProfileColor] = useState<string>('');
   const [groupId, setGroupId] = useState('');
   const [deviceId, setDeviceId] = useState('');
   const [seed, setSeed] = useState<number>(0);
@@ -540,6 +541,7 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
           user_agent: userAgent.trim() || undefined,
           proxy_id: proxyIdPayload || undefined,
           proxy: proxyPayload,
+          color: profileColor.trim() || undefined,
         });
         if (res.code === 0) {
           setModalMode(null);
@@ -559,6 +561,7 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
           user_agent: userAgent.trim() || undefined,
           proxy_id: proxyIdPayload,
           proxy: proxyPayload,
+          color: profileColor.trim() ? profileColor.trim() : null,
         });
         if (res.code === 0) {
           setModalMode(null);
@@ -1397,7 +1400,16 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
                   </td>
                   <td>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-                      <strong style={{ fontSize: 14, color: '#f3f4f6' }}>{p.name || 'Unnamed Profile'}</strong>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        {p.color ? (
+                          <span
+                            data-testid="profile-color-dot"
+                            title={p.color}
+                            style={{ width: 10, height: 10, borderRadius: 999, background: p.color, flexShrink: 0, border: '1px solid rgba(255,255,255,0.25)' }}
+                          />
+                        ) : null}
+                        <strong style={{ fontSize: 14, color: '#f3f4f6' }}>{p.name || 'Unnamed Profile'}</strong>
+                      </div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                         <span className="group-tag">
                           <FolderIcon size={10} />
@@ -2044,6 +2056,26 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
                       onChange={(e) => setName(e.target.value)}
                       autoFocus
                     />
+                  </div>
+
+                  <div className="form-group">
+                    <label>Window Badge Color (optional)</label>
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                      <input
+                        type="color"
+                        data-testid="profile-color-picker"
+                        value={/^#[0-9a-fA-F]{6}$/.test(profileColor) ? profileColor : '#555555'}
+                        onChange={(e) => setProfileColor(e.target.value)}
+                        style={{ width: 42, height: 30, padding: 0, background: 'transparent', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 6 }}
+                      />
+                      <input
+                        placeholder="#RRGGBB (empty = no badge)"
+                        data-testid="profile-color-input"
+                        value={profileColor}
+                        onChange={(e) => setProfileColor(e.target.value)}
+                        style={{ flex: 1 }}
+                      />
+                    </div>
                   </div>
 
                   <div className="form-group">

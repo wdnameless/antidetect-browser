@@ -26,6 +26,7 @@ export interface ProfileListItem {
   fingerprint_seed?: number | null;
   platform?: string | null;
   device_name?: string | null;
+  color?: string | null;
 }
 
 export interface ProfileDetails {
@@ -414,6 +415,7 @@ export const api = {
     mobile_model_id?: string;
     user_agent?: string;
     timezone?: string;
+    color?: string | null;
   }) =>
     request<{ user_id: string }>('/api/v1/browser-profile/create', {
       method: 'POST',
@@ -424,6 +426,7 @@ export const api = {
   stop: (id: string) =>
     request<Record<string, never>>(`/api/v1/browser/stop?user_id=${encodeURIComponent(id)}`),
   profileUpdate: (body: {
+    color?: string | null;
     user_id: string;
     name?: string;
     group_id?: string | null;

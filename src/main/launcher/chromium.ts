@@ -33,7 +33,7 @@ import {
   UdpRelayState,
 } from '../proxy/udpRelay';
 import { TransportDropMonitor } from '../proxy/transportDropMonitor';
-import { appendProfileArgs } from '../profiles/profileManager';
+import { appendProfileArgs, formatBadgeTitlePrefix } from '../profiles/profileManager';
 import {
   verifyStealthExtensionDirectory,
   getEphemeralStealthKeyPair,
@@ -458,6 +458,30 @@ export async function startProfile(cfg: LaunchConfig): Promise<StartResult> {
         }
       } catch {
         // screen override is best-effort; window-size flag already applied
+      }
+    }
+
+    // Profile window badge (parity program): prepend the color badge to the
+    // window title via CDP Page.setTitle on every open page. Best-effort.
+    if (cfg.color) {
+      try {
+        const bBrowser = await puppeteer.connect({ browserWSEndpoint: wsPuppeteer, defaultViewport: null });
+        const prefix = formatBadgeTitlePrefix(cfg.color, cfg.profileName);
+        const bPages = await bBrowser.pages();
+        for (const bp of bPages) {
+          // puppeteer-core Page lacks setTitle: use the CDP session directly.
+          const session = await bp.createCDPSession();
+          // 'Page.setTitle' is outside the typed Commands union — raw send.
+          const title = `${prefix}${await bp.title()}`;
+          await (session.send as (m: string, p?: Record<string, unknown>) => Promise<void>)(
+            'Page.setTitle',
+            { title }
+          ).catch(() => undefined);
+          await session.detach().catch(() => undefined);
+        }
+        bBrowser.disconnect();
+      } catch {
+        // badge prefix is cosmetic; launch continues without it
       }
     }
 

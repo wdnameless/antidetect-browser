@@ -214,6 +214,8 @@ export function migrate(db: Database): void {
   ensureColumn(db, 'profiles', 'path', 'TEXT');
   // Extra per-profile Chromium launch args (parity program: extra-launch-args).
   ensureColumn(db, 'profiles', 'launch_args', 'TEXT');
+  // Profile window badge color (parity program: profile-window-badge).
+  ensureColumn(db, 'profiles', 'color', 'TEXT');
   migrateProxyHealth(db);
   migratePreservedBrowserData(db);
   migrateTaskGroups(db);

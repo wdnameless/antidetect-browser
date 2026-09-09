@@ -492,6 +492,7 @@ const createSchema = z.object({
   proxy: proxyInputSchema.optional(),
   start_urls: z.array(z.string()).optional(),
   mobile_model_id: z.string().optional(),
+  color: z.string().optional(),
 });
 
 router.post('/api/v1/browser-profile/create', (req, res) => {
@@ -512,6 +513,7 @@ router.post('/api/v1/browser-profile/create', (req, res) => {
     proxy: parsed.data.proxy ? (parsed.data.proxy as pm.ProxyInput) : undefined,
     start_urls: parsed.data.start_urls,
     mobile_model_id: parsed.data.mobile_model_id,
+    color: parsed.data.color,
   };
   try {
     const id = pm.createProfile(input);

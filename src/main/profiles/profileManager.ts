@@ -42,6 +42,8 @@ export interface CreateProfileInput {
   mobile_model_id?: string;
   /** Extra Chromium switches appended LAST (after all launcher defaults). */
   launch_args?: string[];
+  /** Profile badge color (3/6-digit hex; null clears). */
+  color?: string | null;
 }
 
 export interface ProfileRow {
@@ -65,6 +67,8 @@ export interface ProfileRow {
   deleted_at: number | null;
   /** Extra per-profile Chromium switches (JSON array; appended last at launch). */
   launch_args: string | null;
+  /** Profile badge color (canonical 6-digit hex or null). */
+  color: string | null;
 }
 
 export interface ProxyRow {
@@ -153,6 +157,10 @@ export interface LaunchConfig {
   temporary?: boolean;
   /** Extra per-profile Chromium switches (appended last). */
   launch_args?: string[];
+  /** Window badge color (parity program: profile-window-badge). */
+  color?: string | null;
+  /** Profile display name (badge prefix source). */
+  profileName?: string | null;
 }
 export * from './temporaryRegistry';
 
@@ -168,6 +176,7 @@ export interface ProfileListItem {
   fingerprint_seed?: number | null;
   platform?: string | null;
   device_name?: string | null;
+  color?: string | null;
 }
 
 export interface ProfileDetails {
@@ -180,6 +189,7 @@ export interface ProfileDetails {
   user_agent: string | null;
   timezone: string | null;
   launch_args: string[];
+  color: string | null;
   proxy?: {
     id: string;
     type: ProxyType;
@@ -203,6 +213,33 @@ export interface ProfileDetails {
     platform: string;
     config: Record<string, unknown>;
   } | null;
+}
+
+// ---------------------------------------------------------------------------
+// Profile window badge (parity program: profile-window-badge)
+// ---------------------------------------------------------------------------
+
+/** Canonicalizes a user color to 6-digit lowercase hex; null when invalid. */
+export function normalizeProfileColor(input: string | null | undefined): string | null {
+  if (typeof input !== 'string') return null;
+  let hex = input.trim().replace(/^#/, '').toLowerCase();
+  if (/^[0-9a-f]{3}$/.test(hex)) {
+    hex = hex.split('').map((c) => c + c).join('');
+  }
+  return /^[0-9a-f]{6}$/.test(hex) ? `#${hex}` : null;
+}
+
+/** First two alphanumeric characters uppercased; 'P' fallback. */
+export function deriveBadgeInitials(name: string | null | undefined): string {
+  const alnum = (name ?? '').replace(/[^\p{L}\p{N}]/gu, '');
+  if (alnum.length === 0) return 'P';
+  return alnum.slice(0, 2).toUpperCase();
+}
+
+/** '[XX] ' prefix for the launched window title; '' without a color. */
+export function formatBadgeTitlePrefix(color: string | null | undefined, name: string | null | undefined): string {
+  if (!color) return '';
+  return `[${deriveBadgeInitials(name)}] `;
 }
 
 // ---------------------------------------------------------------------------
@@ -311,12 +348,18 @@ export function createProfile(input: CreateProfileInput): string {
   ).run(fpId, 'default', seed, defaultFpConfig, now);
 
   const validatedArgs = validateLaunchArgs(input.launch_args);
+  const badgeColor = input.color !== undefined && input.color !== null
+    ? normalizeProfileColor(input.color)
+    : null;
+  if (input.color !== undefined && input.color !== null && !badgeColor) {
+    throw new Error(`invalid profile color: '${input.color}'`);
+  }
   db.prepare(
     `INSERT INTO profiles (
        id, name, group_id, proxy_id, fingerprint_id, device_id,
-       browser_type, user_agent, timezone, geolocation, start_urls, mobile_model_id, launch_args, status,
+       browser_type, user_agent, timezone, geolocation, start_urls, mobile_model_id, launch_args, color, status,
        created_at, updated_at
-     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'closed', ?, ?)`
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'closed', ?, ?)`
   ).run(
     profileId,
     input.name ?? null,
@@ -331,6 +374,7 @@ export function createProfile(input: CreateProfileInput): string {
     input.start_urls && input.start_urls.length ? JSON.stringify(input.start_urls) : null,
     input.mobile_model_id ?? null,
     validatedArgs.length ? JSON.stringify(validatedArgs) : null,
+    badgeColor,
     now,
     now
   );
@@ -617,6 +661,7 @@ export function getProfileDetails(id: string): ProfileDetails | null {
     user_agent: p.user_agent,
     timezone: p.timezone,
     launch_args: parseLaunchArgsColumn(p.launch_args),
+    color: p.color ?? null,
     proxy,
     fingerprint,
     device,
@@ -995,6 +1040,7 @@ export function updateProfile(
     start_urls?: string[] | null;
     mobile_model_id?: string | null;
     launch_args?: string[] | null;
+    color?: string | null;
   }
 ): boolean {
   const db = getDb();
@@ -1063,6 +1109,14 @@ export function updateProfile(
     const validated = validateLaunchArgs(updates.launch_args);
     sets.push('launch_args = ?');
     params.push(validated.length ? JSON.stringify(validated) : null);
+  }
+  if (updates.color !== undefined) {
+    const badge = updates.color === null ? null : normalizeProfileColor(updates.color);
+    if (updates.color !== null && !badge) {
+      throw new Error(`invalid profile color: '${updates.color}'`);
+    }
+    sets.push('color = ?');
+    params.push(badge);
   }
 
   if (sets.length === 0) return true;
@@ -1180,7 +1234,7 @@ export function listProfiles(
         LEFT JOIN devices dev ON dev.id = p.device_id${where}`).get(...params) as { c: number }).c;
   const rows = db
     .prepare(
-      `SELECT p.id, p.name, p.status, p.group_id,
+      `SELECT p.id, p.name, p.status, p.group_id, p.color,
               px.type AS proxy_type, px.host AS proxy_host, px.port AS proxy_port, px.country AS proxy_country,
               fp.seed AS fingerprint_seed,
               dev.platform AS platform, dev.name AS device_name
@@ -1203,6 +1257,7 @@ export function listProfiles(
     fingerprint_seed: number | null;
     platform: string | null;
     device_name: string | null;
+    color: string | null;
   }>;
 
   const list: ProfileListItem[] = rows.map((r) => ({
@@ -1487,5 +1542,7 @@ export function resolveLaunchConfig(id: string): LaunchConfig {
     timezone: profile.timezone ?? undefined,
     screenOverride,
     launch_args: parseLaunchArgsColumn(profile.launch_args),
+    color: profile.color ?? null,
+    profileName: profile.name ?? null,
   };
 }
