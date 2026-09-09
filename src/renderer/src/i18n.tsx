@@ -8,6 +8,8 @@ const RU: Record<string, string> = {
   // Navigation
   'Profiles': 'Профили',
   'Groups': 'Группы',
+  'Calendar': 'Календарь',
+  'Jump to the group that owns this run': 'Перейти в группу, владеющую этим запуском',
   'Proxies': 'Прокси',
   'Devices': 'Устройства',
   'Extensions': 'Расширения',
