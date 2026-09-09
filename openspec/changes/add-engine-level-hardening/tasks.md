@@ -17,7 +17,8 @@
 
 ## 4. Chromium Command-line Interface
 
-- [ ] 4.1 Implement `--stealth-engine-profile=<id>` switch in Chromium startup argument parser.
+- [x] 4.1 Launcher-side switch delivery: `buildChromiumArgs` emits `--stealth-engine-profile=<id>` and dumps the fingerprint payload JSON to `<user-data-dir>/stealth-engine-profile.json` when a stealth-engine build is selected (env `ANTIDETECT_ENGINE_PROFILE`); zero behavior change on stock kernels. In-parser argument handling (C++) remains with the private-engine chain.
+- [ ] 4.1b Implement `--stealth-engine-profile=<id>` switch parsing in the patched Chromium startup (private-engine chain).
 - [ ] 4.2 Verify CreepJS, Pixelscan, and BrowserLeaks test suites pass with 100% native trust scores.
 
 ## 5. WebGPU adapter spoofing (parity program 2026-09-07)

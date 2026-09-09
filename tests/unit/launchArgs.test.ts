@@ -11,6 +11,10 @@ import {
 import { buildChromiumArgs } from '../../src/main/launcher/chromium';
 import { initDb, closeDb } from '../../src/main/db';
 import type { LaunchConfig } from '../../src/main/profiles/profileManager';
+import * as fs from 'fs';
+import * as path from 'path';
+import * as os from 'os';
+
 
 describe('launchArgs - pure appendProfileArgs', () => {
   it('appends user args LAST in override order', () => {
@@ -150,5 +154,42 @@ describe('launchArgs - buildChromiumArgs composition', () => {
     const len = args.length;
     expect(args[len - 2]).toBe('--custom-override-flag=1');
     expect(args[len - 1]).toBe('--no-first-run');
+  });
+});
+
+describe('stealth-engine-profile switch (add-engine-level-hardening 4.1)', () => {
+  it('emits --stealth-engine-profile and dumps the profile JSON when set', async () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'engine-prof-'));
+    const cfg: LaunchConfig = {
+      profileId: 'engine-profile-test',
+      userDataDir: tmpDir,
+      fingerprintSeed: 12345,
+      stealthEngineProfileId: 'engine-148-01',
+      fingerprint: { seed: 12345, platform: 'windows' },
+    };
+
+    const args = await buildChromiumArgs(cfg);
+    const switchArg = args.find((a) => a.startsWith('--stealth-engine-profile='));
+    expect(switchArg).toBe('--stealth-engine-profile=engine-148-01');
+
+    const dumpPath = path.join(tmpDir, 'stealth-engine-profile.json');
+    expect(fs.existsSync(dumpPath)).toBe(true);
+    const dump = JSON.parse(fs.readFileSync(dumpPath, 'utf8'));
+    expect(dump.id).toBe('engine-148-01');
+    expect(dump.fingerprint.seed).toBe(12345);
+
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('emits nothing without the engine profile set (zero behavior change)', async () => {
+    const tmpDir2 = fs.mkdtempSync(path.join(os.tmpdir(), 'engine-prof-off-'));
+    const args = await buildChromiumArgs({
+      profileId: 'no-engine',
+      userDataDir: tmpDir2,
+      fingerprintSeed: 1,
+    });
+    expect(args.some((a) => a.startsWith('--stealth-engine-profile'))).toBe(false);
+    expect(fs.existsSync(path.join(tmpDir2, 'stealth-engine-profile.json'))).toBe(false);
+    fs.rmSync(tmpDir2, { recursive: true, force: true });
   });
 });

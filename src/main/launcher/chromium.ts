@@ -242,6 +242,26 @@ export async function buildChromiumArgs(
     }
   }
 
+  // Private-engine switch (parity program, add-engine-level-hardening task 4.1):
+  // when a stealth-engine build is selected, pass its profile id and dump the
+  // full fingerprint payload next to the user-data-dir so the patched C++ core
+  // can read it. A stock Chromium binary ignores the unknown switch — zero
+  // behavior change without the engine.
+  const engineProfileId = (cfg as { stealthEngineProfileId?: string }).stealthEngineProfileId;
+  if (engineProfileId) {
+    args.push(`--stealth-engine-profile=${engineProfileId}`);
+    try {
+      const engineCfgPath = path.join(cfg.userDataDir, 'stealth-engine-profile.json');
+      fs.writeFileSync(
+        engineCfgPath,
+        JSON.stringify({ id: engineProfileId, fingerprint: cfg.fingerprint, color: cfg.color }, null, 2),
+        'utf8'
+      );
+    } catch {
+      // profile dump is best-effort; the switch itself is already passed
+    }
+  }
+
   // Extensions & Stealth layer: load bound unpacked extensions and stealth MV3 extension.
   // CDP script injection is broken in this kernel, so the stealth script ships as an
   // extension loaded via --load-extension (kernel supports it, verified in Sprint B).

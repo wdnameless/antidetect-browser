@@ -161,6 +161,8 @@ export interface LaunchConfig {
   color?: string | null;
   /** Profile display name (badge prefix source). */
   profileName?: string | null;
+  /** Set when a stealth-engine build is selected: id passed as --stealth-engine-profile. */
+  stealthEngineProfileId?: string;
 }
 export * from './temporaryRegistry';
 
@@ -1544,5 +1546,10 @@ export function resolveLaunchConfig(id: string): LaunchConfig {
     launch_args: parseLaunchArgsColumn(profile.launch_args),
     color: profile.color ?? null,
     profileName: profile.name ?? null,
+    stealthEngineProfileId:
+      (typeof process.env.ANTIDETECT_ENGINE_PROFILE === 'string' &&
+        process.env.ANTIDETECT_ENGINE_PROFILE.length > 0)
+        ? process.env.ANTIDETECT_ENGINE_PROFILE
+        : undefined,
   };
 }
