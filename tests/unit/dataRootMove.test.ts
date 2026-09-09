@@ -62,6 +62,9 @@ describe('Data Root Mover', () => {
     fs.mkdirSync(sourceDir, { recursive: true });
 
     process.env.ANTIDETECT_DATA_DIR = sourceDir;
+    // Redirect settings.json to the sandbox too: setDataDir() inside the mover
+    // must never touch the developer's real settings file.
+    process.env.ANTIDETECT_SETTINGS_DIR = tempBase;
     setRunningChecker(null);
     setFsSeam(null);
 
@@ -87,6 +90,7 @@ describe('Data Root Mover', () => {
     } else {
       delete process.env.ANTIDETECT_DATA_DIR;
     }
+    delete process.env.ANTIDETECT_SETTINGS_DIR;
 
     try {
       fs.rmSync(tempBase, { recursive: true, force: true });
