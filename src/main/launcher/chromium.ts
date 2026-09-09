@@ -38,6 +38,7 @@ import {
   getEphemeralStealthKeyPair,
   StealthExtensionVerificationError,
 } from '../security/extensionVerifier';
+import { mergeManagedBookmarks, getProfileGroupBookmarks } from '../folders/bookmarks';
 
 interface RunningProfile {
   pid: number;
@@ -283,6 +284,15 @@ export async function startProfile(cfg: LaunchConfig): Promise<StartResult> {
       verifyStealthExtensionDirectory(stealthExtDir, { profileId: cfg.profileId });
     }
   }
+  // Sync folder bookmarks before launch (non-fatal on error)
+  try {
+    const groupBookmarks = getProfileGroupBookmarks(cfg.profileId);
+    const mergedCount = mergeManagedBookmarks(cfg.userDataDir, groupBookmarks);
+    console.log(`[bookmarks] synced ${mergedCount} folder bookmarks for profile ${cfg.profileId}`);
+  } catch (err) {
+    console.warn(`[bookmarks] failed to sync folder bookmarks for profile ${cfg.profileId}:`, err);
+  }
+
 
   // SSH proxies are tunneled to a local SOCKS5 endpoint first.
   let tunnel: SshTunnel | undefined;

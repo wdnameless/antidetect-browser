@@ -444,14 +444,28 @@ router.post('/api/v1/group/create', (req, res) => {
   res.json({ code: 0, msg: 'success', data: { group_id: id } });
 });
 
-const updateGroupSchema = z.object({ group_id: z.string(), name: z.string().min(1) });
+const updateGroupSchema = z.object({
+  group_id: z.string(),
+  name: z.string().min(1).optional(),
+  bookmarks: z
+    .array(
+      z.object({
+        title: z.string().min(1).max(200),
+        url: z.string().url().refine((u) => /^https?:\/\//i.test(u), {
+          message: 'Only http and https URLs are allowed',
+        }),
+      })
+    )
+    .optional(),
+});
 router.post('/api/v1/group/update', (req, res) => {
   const parsed = updateGroupSchema.safeParse(req.body);
   if (!parsed.success) {
     res.json({ code: -1, msg: 'invalid body', data: {} });
     return;
   }
-  const ok = pm.updateGroup(parsed.data.group_id, parsed.data.name);
+  const bookmarksJson = parsed.data.bookmarks !== undefined ? JSON.stringify(parsed.data.bookmarks) : undefined;
+  const ok = pm.updateGroup(parsed.data.group_id, parsed.data.name, bookmarksJson);
   res.json(ok ? { code: 0, msg: 'success', data: {} } : { code: -1, msg: 'group update failed', data: {} });
 });
 

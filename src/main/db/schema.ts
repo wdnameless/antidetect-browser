@@ -209,6 +209,7 @@ export function migrate(db: Database): void {
   ensureColumn(db, 'profiles', 'mobile_model_id', 'TEXT');
   // Trash (soft delete): NULL = live profile, timestamp = moved to trash.
   ensureColumn(db, 'profiles', 'deleted_at', 'INTEGER');
+  ensureColumn(db, 'groups', 'bookmarks', 'TEXT');
   migrateProxyHealth(db);
   migratePreservedBrowserData(db);
   migrateTaskGroups(db);
