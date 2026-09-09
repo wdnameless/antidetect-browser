@@ -88,11 +88,17 @@ export interface ExtensionItem {
   enabled: boolean;
 }
 
+export interface GroupBookmark {
+  title: string;
+  url: string;
+}
+
 export interface GroupItem {
   id: string;
   name: string;
   created_at: number;
   profile_count: number;
+  bookmarks?: string | null;
 }
 
 export interface ProxyTestResult {
@@ -485,8 +491,11 @@ export const api = {
   groupList: () => request<{ list: GroupItem[] }>('/api/v1/group/list'),
   groupCreate: (name: string) =>
     request<{ group_id: string }>('/api/v1/group/create', { method: 'POST', body: JSON.stringify({ name }) }),
-  groupUpdate: (group_id: string, name: string) =>
-    request<Record<string, never>>('/api/v1/group/update', { method: 'POST', body: JSON.stringify({ group_id, name }) }),
+  groupUpdate: (group_id: string, name?: string, bookmarks?: GroupBookmark[]) =>
+    request<Record<string, never>>('/api/v1/group/update', {
+      method: 'POST',
+      body: JSON.stringify({ group_id, ...(name !== undefined ? { name } : {}), ...(bookmarks !== undefined ? { bookmarks } : {}) }),
+    }),
   groupDelete: (group_id: string) =>
     request<Record<string, never>>('/api/v1/group/delete', { method: 'POST', body: JSON.stringify({ group_id }) }),
   proxyList: () => request<{ list: ProxyItem[]; total: number }>('/api/v1/proxy/list'),

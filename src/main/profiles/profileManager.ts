@@ -1022,6 +1022,7 @@ export interface GroupItem {
   name: string;
   created_at: number;
   profile_count: number;
+  bookmarks?: string | null;
 }
 
 export function createGroup(name: string): string {
@@ -1032,8 +1033,21 @@ export function createGroup(name: string): string {
   return id;
 }
 
-export function updateGroup(id: string, name: string): boolean {
-  const res = getDb().prepare('UPDATE groups SET name = ? WHERE id = ?').run(name, id);
+export function updateGroup(id: string, name?: string, bookmarks?: string | null): boolean {
+  const db = getDb();
+  const sets: string[] = [];
+  const params: unknown[] = [];
+  if (name !== undefined) {
+    sets.push('name = ?');
+    params.push(name);
+  }
+  if (bookmarks !== undefined) {
+    sets.push('bookmarks = ?');
+    params.push(bookmarks);
+  }
+  if (sets.length === 0) return false;
+  params.push(id);
+  const res = db.prepare(`UPDATE groups SET ${sets.join(', ')} WHERE id = ?`).run(...params);
   return res.changes > 0;
 }
 
@@ -1048,13 +1062,13 @@ export function listGroups(): GroupItem[] {
   const db = getDb();
   const rows = db
     .prepare(
-      `SELECT g.id, g.name, g.created_at, COUNT(p.id) AS profile_count
+      `SELECT g.id, g.name, g.created_at, g.bookmarks, COUNT(p.id) AS profile_count
        FROM groups g
        LEFT JOIN profiles p ON p.group_id = g.id AND p.deleted_at IS NULL
        GROUP BY g.id
        ORDER BY g.created_at DESC`
     )
-    .all() as Array<{ id: string; name: string; created_at: number; profile_count: number }>;
+    .all() as Array<{ id: string; name: string; created_at: number; bookmarks?: string | null; profile_count: number }>;
   return rows;
 }
 

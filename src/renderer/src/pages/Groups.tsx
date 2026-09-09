@@ -16,7 +16,10 @@ export function Groups({ onSelectGroup }: { onSelectGroup?: (groupId: string) =>
 
   const [editingGroupId, setEditingGroupId] = useState<string | null>(null);
   const [editGroupName, setEditGroupName] = useState('');
-
+  const [editBookmarks, setEditBookmarks] = useState<{ title: string; url: string }[]>([]);
+  const [newBmTitle, setNewBmTitle] = useState('');
+  const [newBmUrl, setNewBmUrl] = useState('');
+  const [bmError, setBmError] = useState('');
   const loadData = useCallback(async () => {
     try {
       setError('');
@@ -59,10 +62,11 @@ export function Groups({ onSelectGroup }: { onSelectGroup?: (groupId: string) =>
     setBusy(true);
     setError('');
     try {
-      const res = await api.groupUpdate(editingGroupId, editGroupName.trim());
+      const res = await api.groupUpdate(editingGroupId, editGroupName.trim(), editBookmarks);
       if (res.code === 0) {
         setEditingGroupId(null);
         setEditGroupName('');
+        setEditBookmarks([]);
         await loadData();
       } else {
         setError(res.msg);
@@ -73,7 +77,6 @@ export function Groups({ onSelectGroup }: { onSelectGroup?: (groupId: string) =>
       setBusy(false);
     }
   };
-
   const handleDeleteGroup = async (groupId: string, groupName: string) => {
     const count = profiles.filter((p) => p.group_id === groupId).length;
     const msg = count > 0
