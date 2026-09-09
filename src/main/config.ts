@@ -16,7 +16,7 @@ function settingsFile(): string {
   return path.join(settingsBase(), 'settings.json');
 }
 
-function readSettings(): Record<string, unknown> {
+export function readSettings(): Record<string, unknown> {
   try {
     return JSON.parse(fs.readFileSync(settingsFile(), 'utf8')) as Record<string, unknown>;
   } catch {
