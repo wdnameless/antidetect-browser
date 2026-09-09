@@ -5,6 +5,7 @@ import { useI18n, type Lang } from '../i18n';
 import { SettingsIcon, RefreshIcon, CopyIcon, CheckIcon } from '../icons';
 import { SyncSettings } from './SyncSettings';
 import { LicenseSettings } from './LicenseSettings';
+import { SecuritySettings } from './SecuritySettings';
 
 function formatBytes(n: number): string {
   if (!Number.isFinite(n) || n <= 0) return '—';
@@ -18,7 +19,7 @@ function formatBytes(n: number): string {
   return `${v.toFixed(v >= 100 ? 0 : 1)} ${units[i]}`;
 }
 
-type Section = 'general' | 'api' | 'data' | 'updates' | 'diagnostics' | 'sync' | 'license';
+type Section = 'general' | 'api' | 'data' | 'security' | 'updates' | 'diagnostics' | 'sync' | 'license';
 
 export function Settings() {
   const { t, lang, setLang } = useI18n();
@@ -189,6 +190,7 @@ export function Settings() {
     { key: 'general', label: t('General') },
     { key: 'api', label: t('Automation API') },
     { key: 'data', label: t('Data Folder') },
+    { key: 'security', label: t('Security') },
     { key: 'sync', label: t('Sync') },
     { key: 'license', label: t('License') },
     { key: 'updates', label: t('Updates') },
@@ -296,6 +298,8 @@ export function Settings() {
               </p>
             </div>
           ) : null}
+
+          {section === 'security' && <SecuritySettings />}
 
           {section === 'data' && dataApiAvailable ? (
             <div className="panel">

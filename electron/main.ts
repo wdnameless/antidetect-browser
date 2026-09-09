@@ -236,6 +236,18 @@ function initAutoUpdater(): void {
 }
 app.whenReady().then(() => {
   createWindow();
+  // Screen-capture protection + idle auto-lock (parity program):
+  // read persisted settings, apply toggle to all windows, wire idle poll.
+  {
+    const { readSettings } = require('../src/main/config') as { readSettings(): Record<string, unknown> };
+    const sp = require('../src/main/security/screenProtection') as {
+      initScreenProtection(options: { idleTimeoutMinutes?: number }): void;
+      setCaptureProtection(enabled: boolean): void;
+    };
+    const settings = readSettings();
+    sp.initScreenProtection({ idleTimeoutMinutes: typeof settings.autoLockMinutes === 'number' ? settings.autoLockMinutes : 15 });
+    if (settings.captureProtection === true) sp.setCaptureProtection(true);
+  }
   initAutoUpdater();
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();

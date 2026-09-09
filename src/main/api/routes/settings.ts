@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { moveDataRoot, getMoveStatus, cancelMove } from '../../dataRoot/mover';
+import { getSetting, setSetting } from '../../config';
 
 const router = Router();
 
@@ -24,6 +25,48 @@ router.post('/api/v1/settings/data-root/move', async (req: Request, res: Respons
   });
 
   res.json({ code: 0, msg: 'Move started', data: getMoveStatus() });
+});
+
+// GET /api/v1/settings/security (capture protection + auto-lock)
+router.get('/api/v1/settings/security', (_req: Request, res: Response) => {
+  res.json({
+    code: 0,
+    msg: 'success',
+    data: {
+      captureProtection: getSetting('captureProtection') === true,
+      autoLockMinutes: typeof getSetting('autoLockMinutes') === 'number' ? getSetting('autoLockMinutes') : 15,
+    },
+  });
+});
+
+// PUT /api/v1/settings/security — persists and applies immediately
+router.put('/api/v1/settings/security', (req: Request, res: Response) => {
+  const { captureProtection, autoLockMinutes } = req.body || {};
+  if (typeof captureProtection === 'boolean') setSetting('captureProtection', captureProtection);
+  if (autoLockMinutes === null || (typeof autoLockMinutes === 'number' && autoLockMinutes >= 0)) {
+    setSetting('autoLockMinutes', autoLockMinutes ?? 15);
+  }
+  // Apply live (service mode): re-init protection from the persisted settings.
+  try {
+    const sp = require('../../security/screenProtection') as {
+      initScreenProtection(options: { idleTimeoutMinutes?: number }): void;
+      setCaptureProtection(enabled: boolean): void;
+    };
+    sp.initScreenProtection({
+      idleTimeoutMinutes: typeof getSetting('autoLockMinutes') === 'number' ? (getSetting('autoLockMinutes') as number) : 15,
+    });
+    sp.setCaptureProtection(getSetting('captureProtection') === true);
+  } catch {
+    // Electron absent (standalone service): settings apply on next window session.
+  }
+  res.json({
+    code: 0,
+    msg: 'success',
+    data: {
+      captureProtection: getSetting('captureProtection') === true,
+      autoLockMinutes: getSetting('autoLockMinutes'),
+    },
+  });
 });
 
 // GET /api/v1/settings/data-root/move/status

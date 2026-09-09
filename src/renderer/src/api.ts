@@ -866,6 +866,13 @@ export const api = {
       }
     ),
   // ---- Task Groups ----
+  securitySettingsGet: () =>
+    request<{ captureProtection: boolean; autoLockMinutes: number }>('/api/v1/settings/security'),
+  securitySettingsSet: (body: { captureProtection?: boolean; autoLockMinutes?: number | null }) =>
+    request<{ captureProtection: boolean; autoLockMinutes: number }>('/api/v1/settings/security', {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    }),
   taskGroupsList: () => request<{ list: TaskGroupItem[] }>('/api/task-groups'),
   taskGroupGet: (id: string) => request<TaskGroupItem>(`/api/task-groups/${encodeURIComponent(id)}`),
 };
