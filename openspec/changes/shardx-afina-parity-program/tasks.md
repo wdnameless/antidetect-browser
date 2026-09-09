@@ -1,8 +1,8 @@
 ## 1. Program governance
 
-- [ ] 1.1 All children validated with `openspec validate <child> --strict` before implementation; umbrella validation once children exist.
-- [ ] 1.2 Wave A+B children spawn in parallel worktrees (max 8 concurrent subagents, repo cap); each child gets one file-owner map; `src/main/api/server.ts` and page registry edits serialized through the Wave B integration owner at merge.
-- [ ] 1.3 Every merge to main requires: full vitest suite green (baseline 601 + child additions), `npx tsc -p tsconfig.main.json --noEmit` clean, and updated CHANGELOG entry.
+- [x] 1.1 All children validated with `openspec validate <child> --strict` before implementation; umbrella validation once children exist.
+- [x] 1.2 Wave A+B children spawn in parallel worktrees (max 8 concurrent subagents, repo cap); each child gets one file-owner map; `src/main/api/server.ts` and page registry edits serialized through the Wave B integration owner at merge.
+- [x] 1.3 Every merge to main requires: full vitest suite green (baseline 601 + child additions), `npx tsc -p tsconfig.main.json --noEmit` clean, and updated CHANGELOG entry.
 
 ## 2. Wave A — catalog + rotation + engine surfaces (parallel)
 
@@ -18,14 +18,14 @@
 
 ## 4. Wave C — UX suite (after A/B merge; parallel among themselves)
 
-- [ ] 4.1 `add-task-calendar`: month-grid calendar page rendering task-group cron triggers; nav entry; component tests.
-- [ ] 4.2 `add-screen-capture-protection`: `SetWindowDisplayAffinity(WDA_EXCLUDEFROMCAPTURE)` toggle + idle auto-lock; seam-injected unit tests for affinity call and lock timer.
-- [ ] 4.3 `add-movable-data-root`: copy-verify-swap relocation with progress reporting and launch gating; fs-sandbox tests.
-- [ ] 4.4 `add-profile-window-badge`: per-profile color + name badge on window icon; badge-render unit tests.
-- [ ] 4.5 `add-extra-launch-args`: per-profile launch arg list appended last; arg-merging tests (override precedence).
-- [ ] 4.6 `add-folder-bookmarks`: managed bookmarks folder per folder-linked site; launch-time rewrite; JSON-shape tests.
+- [x] 4.1 `add-task-calendar`: month-grid calendar page rendering task-group cron triggers; nav entry; component tests.
+- [x] 4.2 `add-screen-capture-protection`: `SetWindowDisplayAffinity(WDA_EXCLUDEFROMCAPTURE)` toggle + idle auto-lock; seam-injected unit tests for affinity call and lock timer.
+- [x] 4.3 `add-movable-data-root`: copy-verify-swap relocation with progress reporting and launch gating; fs-sandbox tests.
+- [x] 4.4 `add-profile-window-badge`: per-profile color + name badge on window icon; badge-render unit tests.
+- [x] 4.5 `add-extra-launch-args`: per-profile launch arg list appended last; arg-merging tests (override precedence).
+- [x] 4.6 `add-folder-bookmarks`: managed bookmarks folder per folder-linked site; launch-time rewrite; JSON-shape tests.
 
 ## 5. Program closure
 
-- [ ] 5.1 Reconcile child evidence: each child's tasks all checked, tests green, CHANGELOG updated; archive children in dependency order, umbrella last.
-- [ ] 5.2 Verify no child left `TODO` markers unaccounted for (JS-interim fallbacks must reference their engine-parity patch row).
+- [x] 5.1 Reconcile child evidence: each child's tasks all checked, tests green, CHANGELOG updated; archive children in dependency order, umbrella last.
+- [x] 5.2 Verify no child left `TODO` markers unaccounted for (JS-interim fallbacks must reference their engine-parity patch row).

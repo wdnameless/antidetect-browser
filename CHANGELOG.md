@@ -3,6 +3,53 @@
 All notable changes are documented here. Releases are published on
 [GitHub Releases](https://github.com/wdnameless/antidetect-browser/releases).
 
+## v0.2.34 - ShardX/Afina parity program: human input, engine surfaces, fleet UX
+
+Parity program vs ProxyShard/ShardX and Afina.io (10 OpenSpec children).
+
+- **Motion CDP domain** (hidden, engine-parity contract stable): Fitts's-law
+  pointer glide with per-profile motor seeds, per-key typing with seeded pace
+  and optional typo+backspace model. Surfaces: MCP tools
+  `browser.human_type` / `browser.human_click`, flow nodes `human_click` /
+  `human_type` in the no-code canvas, Node/Python SDK method surface.
+- **Engine surfaces (JS-interim, `TODO(engine-parity)` marked)**:
+  `navigator.gpu.requestAdapter` resolves the profile family's GPU (host GPU
+  never surfaces; WebGPU-less families resolve `undefined` like real Linux
+  Chrome); `PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable`
+  answers the claimed-device matrix, not the host.
+- **Web Store extension installer**: install by URL or 32-char ID — CRX fetch
+  via the versioned update protocol, signature verification, localized
+  manifest unpack, idempotent registration (`POST /api/v1/extension/install`).
+- **Bulk fingerprint rotation**: `POST /api/v1/browser-profile/bulk-fingerprint`
+  with `rotate` (weighted coherent family resample, seed-hint replayable) and
+  `patch` modes; per-item report, coherence-gated persistence, running
+  profiles fail closed. Bulk bar action in Profiles UI.
+- **Fingerprint catalog v2**: deterministic `catalog-v2.json` bundle (46
+  families, sha256-stable), AudioContext/OS-audio coherence rule
+  (macOS 48000/44100, Win/Linux 44100/48000 PulseAudio-realistic), coherent
+  archetype sampling at profile creation (new profiles derive every hardware
+  surface from one weighted family + seed).
+- **Screen-capture protection + auto-lock**: `setContentProtection` on app
+  windows (WDA_EXCLUDEFROMCAPTURE), idle auto-lock with lock-screen/suspend
+  engagement; Settings → Security.
+- **Movable data root**: copy-verify-swap relocation with progress/cancel
+  (`/api/v1/settings/data-root/move*`), SQLite-image integrity checks,
+  absolute-path rewrite; Settings → Data Folder.
+- **Task Calendar**: month-grid view over cron triggers and task-group time
+  windows (client-side cron projection); sidebar entry.
+- **Profile window badge**: per-profile color (3/6-digit hex), badge initials,
+  `[XX] ` window title prefix at launch via CDP, color dot in the profiles
+  table and picker in the editor.
+- **Extra launch args**: per-profile Chromium switches appended LAST
+  (last-wins override), save-time denylist (`--fingerprint*`,
+  `--remote-debugging*`, `--user-data-dir`, `--proxy-server`,
+  `--load-extension`, `--disable-extensions`).
+- **Folder bookmarks**: folder-scoped shared bookmarks merged into every member
+  profile's Chromium `Bookmarks` at launch (managed node only; user data
+  byte-preserved; malformed files quarantined as `.bak`).
+- Engine-level hardening change extended with WebGPU/WebAuthn/native-Motion
+  patch rows (private-engine chain prerequisite unchanged).
+
 ## v0.2.30 - Cloud Sync tab: connect, deploy, sync from the desktop app
 
 - **New "Cloud Sync" tab**: connect the desktop app to your self-hosted
