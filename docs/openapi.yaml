@@ -571,6 +571,127 @@ paths:
               schema:
                 $ref: '#/components/schemas/ProfileListResponse'
 
+  /api/v1/motion/{profileId}/createPointer:
+    post:
+      summary: Create a Motion pointer (hidden human-input domain)
+      parameters:
+        - name: profileId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                seed: { type: integer }
+                profileSeed: { type: integer }
+                paceScale: { type: number }
+                startX: { type: integer }
+                startY: { type: integer }
+      responses:
+        '200':
+          description: Pointer state
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+  /api/v1/motion/{profileId}/glideTo:
+    post:
+      summary: Glide the pointer to a target with Fitts-law timing
+      parameters:
+        - name: profileId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [x, y]
+              properties:
+                x: { type: integer }
+                y: { type: integer }
+                targetWidth: { type: integer }
+      responses:
+        '200':
+          description: Glide duration
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+  /api/v1/motion/{profileId}/tap:
+    post:
+      summary: Click at the current pointer position
+      parameters:
+        - name: profileId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                clickCount: { type: integer }
+                button: { type: string, enum: [left, right, middle] }
+                delayMs: { type: integer }
+      responses:
+        '200':
+          description: Tap result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+  /api/v1/motion/{profileId}/enterText:
+    post:
+      summary: Type text key-by-key with the profile's motor pace (optional typo model)
+      parameters:
+        - name: profileId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [text]
+              properties:
+                text: { type: string }
+                allowTypos: { type: boolean }
+      responses:
+        '200':
+          description: Typing duration
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+  /api/v1/motion/{profileId}/destroyPointer:
+    post:
+      summary: Destroy the profile's Motion pointer
+      parameters:
+        - name: profileId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Destroy result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
 components:
   securitySchemes:
     BearerAuth:

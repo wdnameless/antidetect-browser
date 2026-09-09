@@ -232,6 +232,50 @@ export class AntidetectClient {
     },
   };
 
+  /** Human input (Motion domain): per-profile motor seeds, Fitts glide, paced typing. */
+  public readonly motion = {
+    createPointer: async (
+      profileId: string,
+      options: { seed?: number; profileSeed?: number; paceScale?: number; startX?: number; startY?: number } = {}
+    ): Promise<ApiResponse<Record<string, unknown>>> =>
+      this.request(`/api/v1/motion/${encodeURIComponent(profileId)}/createPointer`, {
+        method: 'POST',
+        body: options,
+      }),
+    glideTo: async (
+      profileId: string,
+      x: number,
+      y: number,
+      targetWidth = 32
+    ): Promise<ApiResponse<Record<string, unknown>>> =>
+      this.request(`/api/v1/motion/${encodeURIComponent(profileId)}/glideTo`, {
+        method: 'POST',
+        body: { x, y, targetWidth },
+      }),
+    tap: async (
+      profileId: string,
+      options: { clickCount?: number; button?: 'left' | 'right' | 'middle'; delayMs?: number } = {}
+    ): Promise<ApiResponse<Record<string, unknown>>> =>
+      this.request(`/api/v1/motion/${encodeURIComponent(profileId)}/tap`, {
+        method: 'POST',
+        body: options,
+      }),
+    enterText: async (
+      profileId: string,
+      text: string,
+      allowTypos = false
+    ): Promise<ApiResponse<Record<string, unknown>>> =>
+      this.request(`/api/v1/motion/${encodeURIComponent(profileId)}/enterText`, {
+        method: 'POST',
+        body: { text, allowTypos },
+      }),
+    destroyPointer: async (profileId: string): Promise<ApiResponse<Record<string, unknown>>> =>
+      this.request(`/api/v1/motion/${encodeURIComponent(profileId)}/destroyPointer`, {
+        method: 'POST',
+        body: {},
+      }),
+  };
+
   public readonly diagnostics = {
     run: async (profileId: string): Promise<ApiResponse<DiagnosticReport>> => {
       return this.request<DiagnosticReport>(`/api/v1/diagnostics/${encodeURIComponent(profileId)}`, {

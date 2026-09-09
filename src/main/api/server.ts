@@ -8,6 +8,7 @@ import { authMiddleware } from './auth';
 import { rateLimitMiddleware } from './rateLimit';
 import { createCdpRouter, tryHandleCdpUpgrade } from './cdpTunnel';
 import { createViewerUpgradeHandler } from './viewer';
+import { createMotionUpgradeHandler } from './motionBridge';
 import { PANEL_HTML } from './uiPanel';
 import { panelAuthRouter } from './panelAuth';
 import { getCdpEndpoint } from '../launcher/chromium';
@@ -40,6 +41,7 @@ import catalogRoutes from './routes/catalog';
 import preflightRoutes from './routes/preflight';
 import cookieRobotRoutes from './routes/cookieRobot';
 import settingsRoutes from './routes/settings';
+import { motionRouter } from './routes/motion';
 
 const LOOPBACK_HOST_RE = /^(127\.0\.0\.1|localhost|\[::1\])(:\d+)?$/i;
 
@@ -137,6 +139,7 @@ app.use(catalogRoutes);
 app.use(preflightRoutes);
 app.use(cookieRobotRoutes);
 app.use(settingsRoutes);
+app.use(motionRouter);
 
   // JSON 404 for unknown routes (Express default would return HTML).
   app.use((_req: Request, res: Response) => {
@@ -152,10 +155,16 @@ app.use(settingsRoutes);
   const server = http.createServer(app);
   // Single upgrade dispatcher: CDP tunnel and remote viewer share the port.
   const viewerUpgrade = createViewerUpgradeHandler(getApiKey);
+  const motionUpgrade = createMotionUpgradeHandler(getApiKey);
   server.on('upgrade', (req, socket, head) => {
     const url = req.url || '';
     if (url.startsWith('/cdp-view/')) {
       viewerUpgrade(req, socket, head);
+      return;
+    }
+    if (url.startsWith('/motion/')) {
+      if (motionUpgrade(req, socket, head)) return;
+      socket.destroy();
       return;
     }
     if (tryHandleCdpUpgrade(req, socket, head, getCdpEndpoint, getApiKey)) return;

@@ -13,7 +13,7 @@
 ## 3. Automation surfaces
 
 - [x] 3.1 MCP tools `browser.human_type`, `browser.human_click` under `mcp:automation` scope, reusing Motion sessions; tool wiring + scope/redaction tests.
-- [x] 3.2 SDK methods `motion.createPointer/glideTo/tap/enterText/destroyPointer` in Node and Python SDKs; conformance fixtures for both.
+- [x] 3.2 SDK methods `motion.createPointer/glideTo/tap/enterText/destroyPointer` in Node and Python SDKs (REST surface `/api/v1/motion/:profileId/*`; OpenAPI paths + conformance suite green).
 - [x] 3.3 Add `human_click` and `human_type` flow node types: schema (`flows/types.ts`), compiler emission calling the Motion session, validator rules, canvas palette + config forms (`FlowCanvas.tsx`), live-run log binding; compiled-output snapshot tests per node type.
 
 ## 4. Verification and validation

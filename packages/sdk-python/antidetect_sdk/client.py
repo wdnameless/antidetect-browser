@@ -135,6 +135,42 @@ class _SyncProfilesNamespace:
         return self._c.request("POST", "/api/v1/profiles/temporary", json=payload)
 
 
+class _SyncMotionNamespace:
+    """Human input (Motion domain): per-profile motor seeds, Fitts glide, paced typing."""
+
+    def __init__(self, client: "AntidetectClient") -> None:
+        self._c = client
+
+    def create_pointer(self, profile_id: str, seed: Optional[int] = None, profile_seed: Optional[int] = None,
+                       pace_scale: Optional[float] = None, start_x: Optional[int] = None,
+                       start_y: Optional[int] = None, **extra: Any) -> ApiResponse:
+        payload: Dict[str, Any] = {k: v for k, v in {
+            "seed": seed, "profileSeed": profile_seed, "paceScale": pace_scale,
+            "startX": start_x, "startY": start_y,
+        }.items() if v is not None}
+        payload.update(extra)
+        return self._c.request("POST", f"/api/v1/motion/{profile_id}/createPointer", json=payload)
+
+    def glide_to(self, profile_id: str, x: float, y: float, target_width: int = 32, **extra: Any) -> ApiResponse:
+        payload: Dict[str, Any] = {"x": x, "y": y, "targetWidth": target_width, **extra}
+        return self._c.request("POST", f"/api/v1/motion/{profile_id}/glideTo", json=payload)
+
+    def tap(self, profile_id: str, click_count: Optional[int] = None,
+            button: Optional[str] = None, delay_ms: Optional[int] = None, **extra: Any) -> ApiResponse:
+        payload: Dict[str, Any] = {k: v for k, v in {
+            "clickCount": click_count, "button": button, "delayMs": delay_ms,
+        }.items() if v is not None}
+        payload.update(extra)
+        return self._c.request("POST", f"/api/v1/motion/{profile_id}/tap", json=payload)
+
+    def enter_text(self, profile_id: str, text: str, allow_typos: bool = False, **extra: Any) -> ApiResponse:
+        payload: Dict[str, Any] = {"text": text, "allowTypos": allowTypos, **extra}
+        return self._c.request("POST", f"/api/v1/motion/{profile_id}/enterText", json=payload)
+
+    def destroy_pointer(self, profile_id: str, **extra: Any) -> ApiResponse:
+        return self._c.request("POST", f"/api/v1/motion/{profile_id}/destroyPointer", json={**extra})
+
+
 class _SyncBrowserNamespace:
     def __init__(self, client: "AntidetectClient") -> None:
         self._c = client
@@ -331,6 +367,7 @@ class AntidetectClient:
         self.profiles = _SyncProfilesNamespace(self)
         self.browser = _SyncBrowserNamespace(self)
         self.proxy = _SyncProxyNamespace(self)
+        self.motion = _SyncMotionNamespace(self)
         self.diagnostics = _SyncDiagnosticsNamespace(self)
         self.adspower = _SyncAdsPowerNamespace(self)
 
@@ -454,6 +491,42 @@ class _AsyncProfilesNamespace:
         if ttl_minutes is not None:
             payload["ttl_minutes"] = ttl_minutes
         return await self._c.request("POST", "/api/v1/profiles/temporary", json=payload)
+
+
+class _AsyncMotionNamespace:
+    """Human input (Motion domain): per-profile motor seeds, Fitts glide, paced typing."""
+
+    def __init__(self, client: "AsyncAntidetectClient") -> None:
+        self._c = client
+
+    async def create_pointer(self, profile_id: str, seed: Optional[int] = None, profile_seed: Optional[int] = None,
+                             pace_scale: Optional[float] = None, start_x: Optional[int] = None,
+                             start_y: Optional[int] = None, **extra: Any) -> ApiResponse:
+        payload: Dict[str, Any] = {k: v for k, v in {
+            "seed": seed, "profileSeed": profile_seed, "paceScale": pace_scale,
+            "startX": start_x, "startY": start_y,
+        }.items() if v is not None}
+        payload.update(extra)
+        return await self._c.request("POST", f"/api/v1/motion/{profile_id}/createPointer", json=payload)
+
+    async def glide_to(self, profile_id: str, x: float, y: float, target_width: int = 32, **extra: Any) -> ApiResponse:
+        payload: Dict[str, Any] = {"x": x, "y": y, "targetWidth": target_width, **extra}
+        return await self._c.request("POST", f"/api/v1/motion/{profile_id}/glideTo", json=payload)
+
+    async def tap(self, profile_id: str, click_count: Optional[int] = None,
+                  button: Optional[str] = None, delay_ms: Optional[int] = None, **extra: Any) -> ApiResponse:
+        payload: Dict[str, Any] = {k: v for k, v in {
+            "clickCount": click_count, "button": button, "delayMs": delay_ms,
+        }.items() if v is not None}
+        payload.update(extra)
+        return await self._c.request("POST", f"/api/v1/motion/{profile_id}/tap", json=payload)
+
+    async def enter_text(self, profile_id: str, text: str, allow_typos: bool = False, **extra: Any) -> ApiResponse:
+        payload: Dict[str, Any] = {"text": text, "allowTypos": allowTypos, **extra}
+        return await self._c.request("POST", f"/api/v1/motion/{profile_id}/enterText", json=payload)
+
+    async def destroy_pointer(self, profile_id: str, **extra: Any) -> ApiResponse:
+        return await self._c.request("POST", f"/api/v1/motion/{profile_id}/destroyPointer", json={**extra})
 
 
 class _AsyncBrowserNamespace:
@@ -652,6 +725,7 @@ class AsyncAntidetectClient:
         self.profiles = _AsyncProfilesNamespace(self)
         self.browser = _AsyncBrowserNamespace(self)
         self.proxy = _AsyncProxyNamespace(self)
+        self.motion = _AsyncMotionNamespace(self)
         self.diagnostics = _AsyncDiagnosticsNamespace(self)
         self.adspower = _AsyncAdsPowerNamespace(self)
 
