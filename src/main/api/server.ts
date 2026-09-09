@@ -39,6 +39,7 @@ import flowsRoutes from './routes/flows';
 import catalogRoutes from './routes/catalog';
 import preflightRoutes from './routes/preflight';
 import cookieRobotRoutes from './routes/cookieRobot';
+import settingsRoutes from './routes/settings';
 
 const LOOPBACK_HOST_RE = /^(127\.0\.0\.1|localhost|\[::1\])(:\d+)?$/i;
 
@@ -135,6 +136,7 @@ app.use(flowsRoutes);
 app.use(catalogRoutes);
 app.use(preflightRoutes);
 app.use(cookieRobotRoutes);
+app.use(settingsRoutes);
 
   // JSON 404 for unknown routes (Express default would return HTML).
   app.use((_req: Request, res: Response) => {
