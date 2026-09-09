@@ -536,6 +536,9 @@ export async function startProfile(cfg: LaunchConfig): Promise<StartResult> {
       cleanupRelay: relayCleanup,
       relayState: profileRelayState,
     };
+    // Register the running profile BEFORE wiring transport-loss hooks: the
+    // hook itself reads this map (regression fix: a51adf2 dropped the set).
+    running.set(cfg.profileId, rec);
     const unregisterTransport = registerActiveProfile(cfg.profileId, (reason) => {
       // Immediate mid-session termination on transport loss (zero direct fallback)
       const current = running.get(cfg.profileId);

@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import { motionSessions } from '../../motion/session';
 import type { GlidePlan, MoveStep } from '../../motion/trajectory';
 import type { TypingPlan } from '../../motion/typing';
+import { getCdpEndpoint, getRunningPort } from '../../launcher/chromium';
 
 export const motionRouter = Router();
 
@@ -24,45 +25,89 @@ interface RawCdp {
   close(): void;
 }
 
-/** Minimal browser-level CDP client over the DevTools WebSocket. */
+/** Minimal browser-level CDP client; auto-attaches to the first page target. */
 async function connectRawCdp(profileId: string): Promise<RawCdp> {
-  const { getCdpEndpoint } = require('../launcher/chromium') as {
-    getCdpEndpoint(profileId: string): { port: string; wsPath: string } | undefined;
-  };
   const ep = getCdpEndpoint(profileId);
   if (!ep) {
     throw new Error('profile is not running');
   }
   const WebSocket = (require('ws') as { WebSocket: new (url: string) => RawWsSocket }).WebSocket;
-  const ws = new WebSocket(`ws://${LOOPBACK}:${ep.port}/devtools/browser/${ep.wsPath}`);
+  const ws = new WebSocket(`ws://${LOOPBACK}:${ep.port}${ep.wsPath}`);
   await new Promise<void>((resolve, reject) => {
     ws.once('open', resolve);
     ws.once('error', reject);
   });
+
   let nextId = 1;
   const pending = new Map<number, { resolve: (v: Record<string, unknown>) => void; reject: (e: Error) => void }>();
+  let pageSessionId: string | null = null;
+
+  const rawSend = (frame: Record<string, unknown>): void => {
+    ws.send(JSON.stringify(frame));
+  };
+  const call = <T = Record<string, unknown>>(method: string, params?: Record<string, unknown>): Promise<T> => {
+    const id = nextId++;
+    return new Promise<T>((resolve, reject) => {
+      pending.set(id, { resolve: resolve as (v: Record<string, unknown>) => void, reject });
+      rawSend({ id, method, params: params ?? {} });
+    });
+  };
+
   ws.on('message', (data: unknown) => {
     try {
-      const msg = JSON.parse(String(data)) as { id?: number; error?: unknown; result?: Record<string, unknown> };
+      const msg = JSON.parse(String(data)) as {
+        id?: number;
+        error?: unknown;
+        result?: Record<string, unknown>;
+        method?: string;
+        params?: Record<string, unknown>;
+      };
       if (typeof msg.id === 'number' && pending.has(msg.id)) {
         const p = pending.get(msg.id)!;
         pending.delete(msg.id);
         if (msg.error) {
           p.reject(new Error(JSON.stringify(msg.error)));
         } else {
-          p.resolve(msg.result ?? {});
+          p.resolve((msg.result ?? {}) as Record<string, unknown>);
+        }
+        return;
+      }
+      if (msg.method === 'Target.attachedToTarget' && msg.params) {
+        const info = msg.params as { sessionId: string; targetInfo: { type: string } };
+        if (info.targetInfo?.type === 'page') {
+          pageSessionId = info.sessionId;
         }
       }
     } catch {
       // ignore malformed frames
     }
   });
+
+  // Attach to the first page target: the Input domain lives on the page.
+  const { targetInfos } = await call<{ targetInfos: Array<{ targetId: string; type: string }> }>(
+    'Target.getTargets'
+  );
+  const page = targetInfos.find((t) => t.type === 'page');
+  if (!page) {
+    ws.close();
+    throw new Error('no page target in browser');
+  }
+  await call('Target.attachToTarget', { targetId: page.targetId, flatten: true });
+  if (!pageSessionId) {
+    ws.close();
+    throw new Error('failed to attach to page target');
+  }
+
   return {
     send(method, params) {
       const id = nextId++;
+      const frame: Record<string, unknown> = { id, method, params: params ?? {} };
+      if (pageSessionId && (method.startsWith('Input.') || method.startsWith('Page.'))) {
+        frame.sessionId = pageSessionId;
+      }
       return new Promise<Record<string, unknown>>((resolve, reject) => {
         pending.set(id, { resolve, reject });
-        ws.send(JSON.stringify({ id, method, params: params ?? {} }));
+        rawSend(frame);
       });
     },
     close() {
