@@ -33,6 +33,7 @@ import {
   UdpRelayState,
 } from '../proxy/udpRelay';
 import { TransportDropMonitor } from '../proxy/transportDropMonitor';
+import { appendProfileArgs } from '../profiles/profileManager';
 import {
   verifyStealthExtensionDirectory,
   getEphemeralStealthKeyPair,
@@ -261,7 +262,9 @@ export async function buildChromiumArgs(
   if (extensionsToLoad.length > 0) {
     args.push(`--load-extension=${extensionsToLoad.join(',')}`);
   }
-  return args;
+  // Per-profile extra switches go LAST so Chromium's last-wins rule lets the
+  // user override launcher defaults (parity program: extra-launch-args).
+  return appendProfileArgs(args, cfg.launch_args);
 }
 
 export async function startProfile(cfg: LaunchConfig): Promise<StartResult> {

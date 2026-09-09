@@ -81,6 +81,7 @@ export function migrate(db: Database): void {
     CREATE TABLE IF NOT EXISTS profile_extensions (
       profile_id   TEXT NOT NULL,
       extension_id TEXT NOT NULL,
+      launch_args    TEXT,
       PRIMARY KEY (profile_id, extension_id)
     );
 
@@ -211,7 +212,8 @@ export function migrate(db: Database): void {
   ensureColumn(db, 'profiles', 'deleted_at', 'INTEGER');
   // Movable data root: absolute workspace path rewritten on relocation.
   ensureColumn(db, 'profiles', 'path', 'TEXT');
-  ensureColumn(db, 'groups', 'bookmarks', 'TEXT');
+  // Extra per-profile Chromium launch args (parity program: extra-launch-args).
+  ensureColumn(db, 'profiles', 'launch_args', 'TEXT');
   migrateProxyHealth(db);
   migratePreservedBrowserData(db);
   migrateTaskGroups(db);

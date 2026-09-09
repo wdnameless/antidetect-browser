@@ -40,6 +40,8 @@ export interface CreateProfileInput {
   start_urls?: string[];
   /** Explicit mobile model from the pool (fixed "phone" for long-lived accounts). */
   mobile_model_id?: string;
+  /** Extra Chromium switches appended LAST (after all launcher defaults). */
+  launch_args?: string[];
 }
 
 export interface ProfileRow {
@@ -61,6 +63,8 @@ export interface ProfileRow {
   updated_at: number;
   /** Trash (Sprint 2.4): NULL = live, timestamp = moved to trash. */
   deleted_at: number | null;
+  /** Extra per-profile Chromium switches (JSON array; appended last at launch). */
+  launch_args: string | null;
 }
 
 export interface ProxyRow {
@@ -147,6 +151,8 @@ export interface LaunchConfig {
   screenOverride?: { width: number; height: number };
   headless?: boolean;
   temporary?: boolean;
+  /** Extra per-profile Chromium switches (appended last). */
+  launch_args?: string[];
 }
 export * from './temporaryRegistry';
 
@@ -173,6 +179,7 @@ export interface ProfileDetails {
   browser_type: string;
   user_agent: string | null;
   timezone: string | null;
+  launch_args: string[];
   proxy?: {
     id: string;
     type: ProxyType;
@@ -196,6 +203,58 @@ export interface ProfileDetails {
     platform: string;
     config: Record<string, unknown>;
   } | null;
+}
+
+// ---------------------------------------------------------------------------
+// Extra launch args (parity program: extra-launch-args)
+// ---------------------------------------------------------------------------
+
+/** Switch prefixes that would break stealth or isolation invariants. */
+export const DENIED_LAUNCH_ARGS = [
+  '--fingerprint',
+  '--remote-debugging',
+  '--user-data-dir',
+  '--proxy-server',
+  '--load-extension',
+  '--disable-extensions',
+] as const;
+
+/**
+ * Validates the per-profile extra launch args at SAVE time: any denied prefix
+ * throws, naming the denied token. Benign switches pass verbatim.
+ */
+export function validateLaunchArgs(args: string[] | null | undefined): string[] {
+  const list = args ?? [];
+  for (const arg of list) {
+    for (const denied of DENIED_LAUNCH_ARGS) {
+      if (arg.startsWith(denied)) {
+        throw new Error(`launch_args: denied token '${denied}' in '${arg}'`);
+      }
+    }
+  }
+  return [...list];
+}
+
+/**
+ * Appends the user's profile args LAST: Chromium's last-wins rule lets them
+ * override launcher defaults without a merge protocol.
+ */
+export function appendProfileArgs(
+  base: string[],
+  extra: string[] | null | undefined
+): string[] {
+  if (!extra || extra.length === 0) return [...base];
+  return [...base, ...extra];
+}
+
+function parseLaunchArgsColumn(raw: string | null): string[] {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    return Array.isArray(parsed) ? parsed.filter((v): v is string => typeof v === 'string') : [];
+  } catch {
+    return [];
+  }
 }
 
 export function createProfile(input: CreateProfileInput): string {
@@ -251,12 +310,13 @@ export function createProfile(input: CreateProfileInput): string {
     'INSERT INTO fingerprints (id, label, seed, config_json, created_at) VALUES (?, ?, ?, ?, ?)'
   ).run(fpId, 'default', seed, defaultFpConfig, now);
 
+  const validatedArgs = validateLaunchArgs(input.launch_args);
   db.prepare(
     `INSERT INTO profiles (
        id, name, group_id, proxy_id, fingerprint_id, device_id,
-       browser_type, user_agent, timezone, geolocation, start_urls, mobile_model_id, status,
+       browser_type, user_agent, timezone, geolocation, start_urls, mobile_model_id, launch_args, status,
        created_at, updated_at
-     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'closed', ?, ?)`
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'closed', ?, ?)`
   ).run(
     profileId,
     input.name ?? null,
@@ -270,6 +330,7 @@ export function createProfile(input: CreateProfileInput): string {
     input.geolocation ?? null,
     input.start_urls && input.start_urls.length ? JSON.stringify(input.start_urls) : null,
     input.mobile_model_id ?? null,
+    validatedArgs.length ? JSON.stringify(validatedArgs) : null,
     now,
     now
   );
@@ -555,6 +616,7 @@ export function getProfileDetails(id: string): ProfileDetails | null {
     browser_type: p.browser_type || 'chromium',
     user_agent: p.user_agent,
     timezone: p.timezone,
+    launch_args: parseLaunchArgsColumn(p.launch_args),
     proxy,
     fingerprint,
     device,
@@ -932,6 +994,7 @@ export function updateProfile(
     timezone?: string | null;
     start_urls?: string[] | null;
     mobile_model_id?: string | null;
+    launch_args?: string[] | null;
   }
 ): boolean {
   const db = getDb();
@@ -995,6 +1058,11 @@ export function updateProfile(
   if (updates.mobile_model_id !== undefined) {
     sets.push('mobile_model_id = ?');
     params.push(updates.mobile_model_id);
+  }
+  if (updates.launch_args !== undefined) {
+    const validated = validateLaunchArgs(updates.launch_args);
+    sets.push('launch_args = ?');
+    params.push(validated.length ? JSON.stringify(validated) : null);
   }
 
   if (sets.length === 0) return true;
@@ -1418,5 +1486,6 @@ export function resolveLaunchConfig(id: string): LaunchConfig {
     userAgent: profile.user_agent ?? undefined,
     timezone: profile.timezone ?? undefined,
     screenOverride,
+    launch_args: parseLaunchArgsColumn(profile.launch_args),
   };
 }
