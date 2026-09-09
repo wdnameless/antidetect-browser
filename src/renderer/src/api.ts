@@ -357,6 +357,19 @@ export interface TriggerItem {
   created_at: number;
 }
 
+export interface TaskGroupItem {
+  id: string;
+  name: string;
+  workflow_id: string;
+  workflow_name?: string;
+  active_session_cap: number;
+  randomize_profile_order: boolean | number;
+  time_window_cron?: string | null;
+  status: string;
+  created_at: number;
+  updated_at: number;
+}
+
 export interface CatalogScriptItem {
   id: string;
   name: string;
@@ -852,4 +865,7 @@ export const api = {
         body: JSON.stringify({ blockOnFail }),
       }
     ),
+  // ---- Task Groups ----
+  taskGroupsList: () => request<{ list: TaskGroupItem[] }>('/api/task-groups'),
+  taskGroupGet: (id: string) => request<TaskGroupItem>(`/api/task-groups/${encodeURIComponent(id)}`),
 };

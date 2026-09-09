@@ -10,6 +10,7 @@ import {
 } from './sidebarLogic';
 import { Profiles } from './pages/Profiles';
 import { Groups } from './pages/Groups';
+import { Calendar } from './pages/Calendar';
 import { Proxies } from './pages/Proxies';
 import { Devices } from './pages/Devices';
 import { Extensions } from './pages/Extensions';
@@ -34,12 +35,11 @@ import {
   UsersIcon,
   KeyIcon,
   TrashIcon,
-  DiceIcon,
   CookieIcon,
   FlowIcon,
+  CalendarIcon,
 } from './icons';
-
-type Page = 'profiles' | 'groups' | 'proxies' | 'devices' | 'extensions' | 'teams' | 'cloud' | 'diagnostics' | 'trash' | 'scripts' | 'catalog' | 'flows' | 'settings';
+type Page = 'profiles' | 'groups' | 'proxies' | 'devices' | 'extensions' | 'teams' | 'cloud' | 'diagnostics' | 'trash' | 'scripts' | 'catalog' | 'flows' | 'settings' | 'calendar';
 
 interface NavItem {
   key: Page;
@@ -55,9 +55,9 @@ const NAV: NavItem[] = [
   { key: 'extensions', label: 'Extensions', icon: ExtensionsIcon },
   { key: 'diagnostics', label: 'Diagnostics', icon: KeyIcon },
   { key: 'trash', label: 'Trash', icon: TrashIcon },
-  { key: 'scripts', label: 'Scripts', icon: DiceIcon },
-  { key: 'catalog', label: 'Catalog', icon: CookieIcon },
   { key: 'flows', label: 'Flow Canvas', icon: FlowIcon },
+  { key: 'calendar', label: 'Calendar', icon: CalendarIcon },
+  { key: 'catalog', label: 'Catalog', icon: CookieIcon },
   { key: 'teams', label: 'Teams', icon: UsersIcon },
   { key: 'cloud', label: 'Cloud Sync', icon: CloudIcon },
   { key: 'settings', label: 'Settings', icon: SettingsIcon },
@@ -260,6 +260,8 @@ export function App() {
             <CloudSync />
           ) : page === 'flows' ? (
             <FlowCanvas />
+          ) : page === 'calendar' ? (
+            <Calendar />
           ) : (
             <Settings />
           )}
