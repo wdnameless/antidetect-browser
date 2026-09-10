@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, dialog, shell } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, shell, Tray, Menu } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
 import { autoUpdater } from 'electron-updater';
@@ -145,6 +145,9 @@ async function bootstrap(): Promise<void> {
   });
 }
 
+let tray: Tray | null = null;
+let isQuitting = false;
+
 function createWindow(): void {
   const win = new BrowserWindow({
     width: 1280,
@@ -157,10 +160,68 @@ function createWindow(): void {
     },
   });
 
+  win.on('close', (event) => {
+    if (!isQuitting) {
+      event.preventDefault();
+      win.hide();
+    }
+  });
+
   if (isDev) {
     void win.loadURL('http://localhost:5173');
   } else {
     void win.loadFile(path.join(__dirname, '../renderer/index.html'));
+  }
+}
+
+function initTray(): void {
+  try {
+    const iconPath = path.join(__dirname, '../../resources/icon.png');
+    const nativeImage = require('electron').nativeImage;
+    const icon = fs.existsSync(iconPath) ? nativeImage.createFromPath(iconPath) : nativeImage.createEmpty();
+    tray = new Tray(icon);
+    tray.setToolTip('Antidetect Browser');
+
+    const contextMenu = Menu.buildFromTemplate([
+      {
+        label: 'Show App',
+        click: () => {
+          const windows = BrowserWindow.getAllWindows();
+          if (windows.length > 0) {
+            windows[0].show();
+            windows[0].focus();
+          } else {
+            createWindow();
+          }
+        },
+      },
+      { type: 'separator' },
+      {
+        label: 'Quit',
+        click: () => {
+          isQuitting = true;
+          app.quit();
+        },
+      },
+    ]);
+
+    tray.setContextMenu(contextMenu);
+    tray.on('click', () => {
+      const windows = BrowserWindow.getAllWindows();
+      if (windows.length > 0) {
+        const win = windows[0];
+        if (win.isVisible()) {
+          win.hide();
+        } else {
+          win.show();
+          win.focus();
+        }
+      } else {
+        createWindow();
+      }
+    });
+  } catch (err) {
+    console.error('Failed to initialize tray:', err);
   }
 }
 
@@ -248,11 +309,10 @@ app.whenReady().then(() => {
     sp.initScreenProtection({ idleTimeoutMinutes: typeof settings.autoLockMinutes === 'number' ? settings.autoLockMinutes : 15 });
     if (settings.captureProtection === true) sp.setCaptureProtection(true);
   }
-  initAutoUpdater();
+  initTray();
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
-
   bootstrap().catch(async (err) => {
     const errMsg = String(err?.stack || err?.message || err);
     console.error('[antidetect] startup failed', err);
