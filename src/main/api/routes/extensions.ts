@@ -1,9 +1,11 @@
 import { Router } from 'express';
 import { z } from 'zod';
+import * as fs from 'fs';
+import * as path from 'path';
 import * as em from '../../extensions/extensionManager';
 import { installFromWebStore, WebStoreError } from '../../extensions/webstore';
 import { getDb } from '../../db';
-
+import { injectExtensionIntoSecurePreferences } from '../../extensions/securePreferences';
 const router = Router();
 
 const importSchema = z.object({ name: z.string(), path: z.string() });
@@ -83,20 +85,39 @@ router.post('/api/v1/extension/delete', (req, res) => {
 });
 
 const bindSchema = z.object({ user_id: z.string(), extension_ids: z.array(z.string()) });
-router.post('/api/v1/browser-profile/extensions/bind', (req, res) => {
+router.post('/api/v1/browser-profile/extensions/bind', async (req, res) => {
   const parsed = bindSchema.safeParse(req.body);
   if (!parsed.success) {
-    res.json({ code: -1, msg: 'invalid body', data: {} });
+    res.json({ code: -1, msg: parsed.error.message, data: {} });
     return;
   }
-  const db = getDb();
-  const profile = db.prepare('SELECT id FROM profiles WHERE id = ?').get(parsed.data.user_id);
-  if (!profile) {
-    res.json({ code: -1, msg: 'profile not found', data: {} });
-    return;
+  try {
+    const { user_id, extension_ids } = parsed.data;
+    em.bindExtensions(user_id, extension_ids);
+
+    const db = getDb();
+    const profile = db.prepare('SELECT userDataDir FROM profiles WHERE id = ?').get(user_id) as { userDataDir?: string } | undefined;
+    if (profile && profile.userDataDir) {
+      const allExts = em.listExtensions();
+      for (const extId of extension_ids) {
+        const ext = allExts.find((e) => e.id === extId);
+        if (ext && ext.path) {
+          const manifestPath = path.join(ext.path, 'manifest.json');
+          if (fs.existsSync(manifestPath)) {
+            let manifest: unknown = {};
+            try {
+              manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+            } catch {}
+            injectExtensionIntoSecurePreferences(profile.userDataDir, 'Default', extId, ext.path, manifest);
+          }
+        }
+      }
+    }
+
+    res.json({ code: 0, msg: 'success', data: { bound: extension_ids } });
+  } catch (err) {
+    res.json({ code: -1, msg: (err as Error).message, data: {} });
   }
-  em.bindExtensions(parsed.data.user_id, parsed.data.extension_ids);
-  res.json({ code: 0, msg: 'success', data: { count: parsed.data.extension_ids.length } });
 });
 
 router.get('/api/v1/browser-profile/extensions', (req, res) => {
