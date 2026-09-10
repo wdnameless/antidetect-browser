@@ -1262,19 +1262,40 @@ export function listProfiles(
     color: string | null;
   }>;
 
-  const list: ProfileListItem[] = rows.map((r) => ({
-    user_id: r.id,
-    name: r.name,
-    status: r.status,
-    group_id: r.group_id,
-    proxy_type: r.proxy_type,
-    proxy_host: r.proxy_host,
-    proxy_port: r.proxy_port,
-    proxy_country: r.proxy_country,
-    fingerprint_seed: r.fingerprint_seed,
-    platform: r.platform,
-    device_name: r.device_name,
-  }));
+  let isRunningFn: (id: string) => boolean = () => false;
+  let isFirefoxRunningFn: (id: string) => boolean = () => false;
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const chromiumLauncher = require('../launcher/chromium') as { isRunning?: (id: string) => boolean };
+    if (typeof chromiumLauncher.isRunning === 'function') {
+      isRunningFn = chromiumLauncher.isRunning;
+    }
+  } catch {}
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const firefoxLauncher = require('../launcher/firefox') as { isRunning?: (id: string) => boolean };
+    if (typeof firefoxLauncher.isRunning === 'function') {
+      isFirefoxRunningFn = firefoxLauncher.isRunning;
+    }
+  } catch {}
+
+  const list: ProfileListItem[] = rows.map((r) => {
+    const liveRunning = isRunningFn(r.id) || isFirefoxRunningFn(r.id);
+    const status = liveRunning ? 'running' : r.status;
+    return {
+      user_id: r.id,
+      name: r.name,
+      status,
+      group_id: r.group_id,
+      proxy_type: r.proxy_type,
+      proxy_host: r.proxy_host,
+      proxy_port: r.proxy_port,
+      proxy_country: r.proxy_country,
+      fingerprint_seed: r.fingerprint_seed,
+      platform: r.platform,
+      device_name: r.device_name,
+    };
+  });
   return { list, total };
 }
 
