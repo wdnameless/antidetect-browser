@@ -10,7 +10,7 @@ import { createProxy } from '../../../src/main/proxy/proxyManager';
 describe('Proxy Health API Routes', () => {
   let app: Express;
   let server: http.Server;
-  let serverPort: number;
+  let serverPort = 0;
 
   beforeAll(async () => {
     await initDb();
@@ -18,18 +18,21 @@ describe('Proxy Health API Routes', () => {
     app.use(express.json());
     app.use(proxyHealthRouter);
 
-    const { promise, resolve } = Promise.withResolvers<void>();
-    server = app.listen(0, '127.0.0.1', () => {
-      const addr = server.address() as net.AddressInfo;
-      serverPort = addr.port;
-      resolve();
+    await new Promise<void>((resolve) => {
+      server = app.listen(0, '127.0.0.1', () => {
+        const addr = server.address() as net.AddressInfo;
+        serverPort = addr.port;
+        resolve();
+      });
     });
-    await promise;
   });
 
   afterAll(async () => {
     if (server) {
-      const { promise, resolve } = Promise.withResolvers<void>();
+      let resolve: () => void;
+      const promise = new Promise<void>((res) => {
+        resolve = res;
+      });
       server.close(() => resolve());
       await promise;
     }
@@ -47,7 +50,12 @@ describe('Proxy Health API Routes', () => {
     path: string,
     body?: unknown
   ): Promise<{ status: number; body: any }> {
-    const { promise, resolve, reject } = Promise.withResolvers<{ status: number; body: any }>();
+    let resolve: (val: { status: number; body: any }) => void;
+    let reject: (err: any) => void;
+    const promise = new Promise<{ status: number; body: any }>((res, rej) => {
+      resolve = res;
+      reject = rej;
+    });
     const postData = body ? JSON.stringify(body) : undefined;
     const req = http.request(
       {
