@@ -1,10 +1,10 @@
 {
   "bomFormat": "CycloneDX",
   "specVersion": "1.4",
-  "serialNumber": "urn:uuid:1a06357728b",
+  "serialNumber": "urn:uuid:1a096ca797d",
   "version": 1,
   "metadata": {
-    "timestamp": "2026-09-02T18:17:50.475Z",
+    "timestamp": "2026-09-12T18:04:06.909Z",
     "tools": [
       {
         "vendor": "antidetect",
@@ -14,11 +14,25 @@
     ],
     "component": {
       "name": "antidetect-browser",
-      "version": "0.2.31",
+      "version": "0.2.33",
       "type": "application"
     }
   },
   "components": [
+    {
+      "name": "@antidetect/sdk",
+      "version": "unknown",
+      "resolved": "packages/sdk-node",
+      "type": "library",
+      "purl": "pkg:npm/@antidetect/sdk@unknown"
+    },
+    {
+      "name": "@antidetect/sync-server",
+      "version": "unknown",
+      "resolved": "packages/sync-server",
+      "type": "library",
+      "purl": "pkg:npm/@antidetect/sync-server@unknown"
+    },
     {
       "name": "@electron-internal/extract-zip",
       "version": "1.0.5",
@@ -898,6 +912,14 @@
       "integrity": "sha512-r8Tayk8HJnX0FztbZN7oVqGccWgw98T/0neJphO91KkmOzug1KkofZURD4UaD5uH8AqcFLfdPErnBod0u71/qg==",
       "type": "library",
       "purl": "pkg:npm/@types/http-errors@2.0.5"
+    },
+    {
+      "name": "@types/js-yaml",
+      "version": "4.0.9",
+      "resolved": "https://registry.npmjs.org/@types/js-yaml/-/js-yaml-4.0.9.tgz",
+      "integrity": "sha512-k4MGaQl5TGo/iipqb2UDG2UwjXziSWkh0uysQelTlJpX1qGlpUZYm8PnO4DxG1qBomtJUdYJ6qR6xdIah10JLg==",
+      "type": "library",
+      "purl": "pkg:npm/@types/js-yaml@4.0.9"
     },
     {
       "name": "@types/keyv",
@@ -2677,11 +2699,11 @@
     },
     {
       "name": "js-yaml",
-      "version": "4.3.1",
-      "resolved": "https://registry.npmjs.org/js-yaml/-/js-yaml-4.3.1.tgz",
-      "integrity": "sha512-CY6crGq313MX8GkwvB7tzgp99vjQxY1++5y10/BKN/GUfHqWaOGQMNZkBvqSzsZKWk/ijwHlWzzkLulsGHhjWQ==",
+      "version": "4.3.2",
+      "resolved": "https://registry.npmjs.org/js-yaml/-/js-yaml-4.3.2.tgz",
+      "integrity": "sha512-SFNOvSJ+Dgf/9An904Yx+CgSlIPCkIpao4qo51lpee25TIRejdH3rhR4EZMGoNx3/TP3O+wzWuiTFl4sqbltzA==",
       "type": "library",
-      "purl": "pkg:npm/js-yaml@4.3.1"
+      "purl": "pkg:npm/js-yaml@4.3.2"
     },
     {
       "name": "json-buffer",
@@ -3202,6 +3224,18 @@
       "integrity": "sha512-TYOanM3wGwNGsZN2cVTYPArw454xnXj5qmWF1bEoAc4+cU/ol7GVh7odevjp1FNHduHc3KZMcFduxU5Xc6uJRQ==",
       "type": "library",
       "purl": "pkg:npm/p-limit@3.1.0"
+    },
+    {
+      "name": "packages/sdk-node",
+      "version": "1.0.0",
+      "type": "library",
+      "purl": "pkg:npm/packages/sdk-node@1.0.0"
+    },
+    {
+      "name": "packages/sync-server",
+      "version": "1.0.0",
+      "type": "library",
+      "purl": "pkg:npm/packages/sync-server@1.0.0"
     },
     {
       "name": "parseurl",

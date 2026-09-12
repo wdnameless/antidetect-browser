@@ -17,3 +17,4 @@ packages/sdk-node/src/*.d.ts.map
 # Legacy opencode harness dirs (codebase-index MCP data; moved to ~/.omp host mode 'pi')
 .opencode/
 .codebase-index/
+profiles/
