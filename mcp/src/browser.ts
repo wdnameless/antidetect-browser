@@ -1,5 +1,5 @@
 import puppeteer, { Browser, Page, KeyInput } from 'puppeteer-core';
-import { AntidetectClient } from '../../packages/sdk-node/dist/index.js';
+import { AntidetectClient } from '@antidetect/sdk';
 import { deriveMotorSeed } from '../../src/main/motion/seeds';
 import { planGlide } from '../../src/main/motion/trajectory';
 import { planTyping } from '../../src/main/motion/typing';

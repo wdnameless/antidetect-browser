@@ -7,8 +7,12 @@
     "packages/*"
   ],
   "main": "dist/electron/main.js",
+  "engines": {
+    "node": ">=22.12.0"
+  },
   "scripts": {
     "typecheck": "npm run typecheck:main && npm run typecheck:renderer",
+    "pretest": "npm run build:sdk",
     "test": "vitest run",
     "typecheck:main": "tsc -p tsconfig.main.json --noEmit",
     "typecheck:node": "tsc -p tsconfig.main.json --noEmit",
@@ -16,6 +20,7 @@
     "build:main": "tsc -p tsconfig.main.json",
     "build:renderer": "vite build --config src/renderer/vite.config.ts",
     "build": "npm run build:main && npm run build:renderer",
+    "build:sdk": "npm run build --workspace @antidetect/sdk",
     "vite:dev": "vite --config src/renderer/vite.config.ts",
     "electron:dev": "npm run build:main && wait-on http://localhost:5173 && cross-env NODE_ENV=development electron .",
     "dev": "concurrently -k -n vite,electron -c blue,green \"npm run vite:dev\" \"npm run electron:dev\"",

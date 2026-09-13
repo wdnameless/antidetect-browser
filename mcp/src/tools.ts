@@ -2,7 +2,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { isAuthorized, isProhibitedTool } from './auth';
 import { McpAuditLogger } from './audit';
-import { AntidetectClient } from '../../packages/sdk-node/dist/index.js';
+import { AntidetectClient } from '@antidetect/sdk';
 import { BrowserDriver } from './browser';
 
 import { redactSensitiveArgs } from './redaction';
