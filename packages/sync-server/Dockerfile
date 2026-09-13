@@ -1,10 +1,12 @@
 FROM node:22-alpine AS build
 WORKDIR /app
 COPY package.json ./
-RUN npm install --omit=dev --no-audit --no-fund || npm install --no-audit --no-fund
+# Build stage needs devDependencies: tsc type-checks against @types/node and
+# @types/express, which --omit=dev would exclude.
+RUN npm install --no-audit --no-fund
 COPY tsconfig.json ./
 COPY src ./src
-RUN npm install --no-save typescript@5.6.3 --no-audit --no-fund && npx tsc -p tsconfig.json
+RUN npx tsc -p tsconfig.json
 
 FROM node:22-alpine
 WORKDIR /app

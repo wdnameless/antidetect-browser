@@ -21,6 +21,7 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
+    "@antidetect/sdk": "file:../packages/sdk-node",
     "express": "^4.21.0",
     "puppeteer-core": "^25.9.0"
   },
