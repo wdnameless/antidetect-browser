@@ -21,6 +21,7 @@
     "build:renderer": "vite build --config src/renderer/vite.config.ts",
     "build": "npm run build:main && npm run build:renderer",
     "build:sdk": "npm run build --workspace @antidetect/sdk",
+    "icon:generate": "node scripts/generate-app-icon.mjs",
     "vite:dev": "vite --config src/renderer/vite.config.ts",
     "electron:dev": "npm run build:main && wait-on http://localhost:5173 && cross-env NODE_ENV=development electron .",
     "dev": "concurrently -k -n vite,electron -c blue,green \"npm run vite:dev\" \"npm run electron:dev\"",
@@ -50,7 +51,7 @@
     "install-chromium": "node scripts/install-chromium.mjs",
     "ensure-kernel": "node scripts/ensure-kernel.mjs",
     "ensure-chromedriver": "node scripts/ensure-chromedriver.mjs",
-    "predist": "npm run ensure-kernel && npm run ensure-chromedriver",
+    "predist": "npm run icon:generate && npm run ensure-kernel && npm run ensure-chromedriver",
     "dist": "npm run build && electron-builder --win",
     "publish": "npm run build && electron-builder --win --publish always",
     "test:sync-server": "vitest run packages/sync-server",
@@ -110,6 +111,14 @@
     ],
     "extraResources": [
       {
+        "from": "resources/icon.png",
+        "to": "icon.png"
+      },
+      {
+        "from": "resources/tray-icon.png",
+        "to": "tray-icon.png"
+      },
+      {
         "from": "data/chromium/fingerprint-chromium",
         "to": "kernel/fingerprint-chromium",
         "filter": [
@@ -126,6 +135,7 @@
     ],
     "asar": true,
     "win": {
+      "icon": "resources/icon.png",
       "target": [
         {
           "target": "nsis",

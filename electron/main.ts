@@ -148,6 +148,32 @@ async function bootstrap(): Promise<void> {
 let tray: Tray | null = null;
 let isQuitting = false;
 
+/**
+ * Locate the tray icon.
+ * Packaged: electron-builder copies resources/* into resourcesPath.
+ * Dev: __dirname is dist/electron, so the repo's resources/ is two levels up.
+ */
+function resolveTrayIconPath(): string | null {
+  const candidates = [
+    process.resourcesPath ? path.join(process.resourcesPath, 'tray-icon.png') : null,
+    path.join(__dirname, '../../resources/tray-icon.png'),
+  ].filter((p): p is string => p !== null);
+  return candidates.find((p) => fs.existsSync(p)) ?? null;
+}
+
+/** Bring the main window back to the foreground, restoring it if minimized. */
+function showMainWindow(): void {
+  const windows = BrowserWindow.getAllWindows();
+  if (windows.length === 0) {
+    createWindow();
+    return;
+  }
+  const win = windows[0];
+  if (win.isMinimized()) win.restore();
+  win.show();
+  win.focus();
+}
+
 function createWindow(): void {
   const win = new BrowserWindow({
     width: 1280,
@@ -161,7 +187,9 @@ function createWindow(): void {
   });
 
   win.on('close', (event) => {
-    if (!isQuitting) {
+    // Only hide to the tray when the tray actually exists — otherwise closing
+    // the window would strand the app with no way to bring it back.
+    if (!isQuitting && tray) {
       event.preventDefault();
       win.hide();
     }
@@ -175,54 +203,41 @@ function createWindow(): void {
 }
 
 function initTray(): void {
-  try {
-    const iconPath = path.join(__dirname, '../../resources/icon.png');
-    const nativeImage = require('electron').nativeImage;
-    const icon = fs.existsSync(iconPath) ? nativeImage.createFromPath(iconPath) : nativeImage.createEmpty();
-    tray = new Tray(icon);
-    tray.setToolTip('Antidetect Browser');
-
-    const contextMenu = Menu.buildFromTemplate([
-      {
-        label: 'Show App',
-        click: () => {
-          const windows = BrowserWindow.getAllWindows();
-          if (windows.length > 0) {
-            windows[0].show();
-            windows[0].focus();
-          } else {
-            createWindow();
-          }
-        },
-      },
-      { type: 'separator' },
-      {
-        label: 'Quit',
-        click: () => {
-          isQuitting = true;
-          app.quit();
-        },
-      },
-    ]);
-
-    tray.setContextMenu(contextMenu);
-    tray.on('click', () => {
-      const windows = BrowserWindow.getAllWindows();
-      if (windows.length > 0) {
-        const win = windows[0];
-        if (win.isVisible()) {
-          win.hide();
-        } else {
-          win.show();
-          win.focus();
-        }
-      } else {
-        createWindow();
-      }
-    });
-  } catch (err) {
-    console.error('Failed to initialize tray:', err);
+  const iconPath = resolveTrayIconPath();
+  const nativeImage = require('electron').nativeImage;
+  // Without a real bitmap Tray renders nothing at all, so warn loudly rather
+  // than shipping another invisible tray.
+  if (!iconPath) {
+    console.error('[antidetect] tray icon not found; run `npm run icon:generate`');
   }
+  const icon = iconPath ? nativeImage.createFromPath(iconPath) : nativeImage.createEmpty();
+  tray = new Tray(icon);
+  tray.setToolTip('Antidetect Browser');
+
+  const contextMenu = Menu.buildFromTemplate([
+    {
+      label: 'Show App',
+      click: showMainWindow,
+    },
+    { type: 'separator' },
+    {
+      label: 'Quit',
+      click: () => {
+        isQuitting = true;
+        app.quit();
+      },
+    },
+  ]);
+
+  tray.setContextMenu(contextMenu);
+  tray.on('click', () => {
+    const windows = BrowserWindow.getAllWindows();
+    if (windows.length > 0 && windows[0].isVisible() && !windows[0].isMinimized()) {
+      windows[0].hide();
+    } else {
+      showMainWindow();
+    }
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -347,5 +362,7 @@ app.on('before-quit', () => {
 });
 
 app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') app.quit();
+  // With a tray present the app keeps running in the background (Windows
+  // convention); without one it must exit, or it would be unreachable.
+  if (process.platform !== 'darwin' && !tray) app.quit();
 });
