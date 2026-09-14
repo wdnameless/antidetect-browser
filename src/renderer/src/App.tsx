@@ -26,6 +26,8 @@ import { Catalog } from './pages/Catalog';
 import { FlowCanvas } from './pages/FlowCanvas';
 import { Email } from './pages/Email';
 import { WorkspaceSwitcher } from './components/WorkspaceSwitcher';
+import { McpPanel } from './components/McpPanel';
+import { ServicePanel } from './components/ServicePanel';
 import {
   ProfilesIcon,
   FolderIcon,
@@ -156,6 +158,32 @@ export function App() {
   const [runningCount, setRunningCount] = useState<number>(0);
   const [syncConnected, setSyncConnected] = useState<boolean>(false);
   const activeDest = getActiveDestination(page);
+  const [kernelUpdateState, setKernelUpdateState] = useState<{ status: string; info?: { version?: string }; error?: string } | null>(null);
+  const [hasRunUpdateCheck, setHasRunUpdateCheck] = useState<boolean>(false);
+
+  useEffect(() => {
+    const apiObj = window.antidetect as (typeof window.antidetect & {
+      onUpdateStatus?: (cb: (s: { status: string; info?: { version?: string }; error?: string }) => void) => () => void;
+    }) | undefined;
+    const unsub = apiObj?.onUpdateStatus?.((s) => {
+      setHasRunUpdateCheck(true);
+      setKernelUpdateState(s);
+    });
+    return () => unsub?.();
+  }, []);
+
+  const openDocs = (e: React.MouseEvent) => {
+    e.preventDefault();
+    const url = 'https://github.com/wdnameless/antidetect-browser/tree/main/docs';
+    const apiObj = window.antidetect as (typeof window.antidetect & {
+      openExternal?: (u: string) => void;
+    }) | undefined;
+    if (apiObj?.openExternal) {
+      apiObj.openExternal(url);
+    } else {
+      window.open(url, '_blank', 'noopener,noreferrer');
+    }
+  };
 
   const initSession = useCallback((token: string) => {
     setApiKey(token);
@@ -302,6 +330,75 @@ export function App() {
         </div>
 
         <div className="sidebar-footer">
+          <ServicePanel />
+          <McpPanel />
+
+          {!sidebarCollapsed && (
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                padding: 'var(--space-1) 0',
+                fontSize: 'var(--text-xs)',
+                color: 'var(--text-secondary)',
+              }}
+            >
+              <a
+                href="https://github.com/wdnameless/antidetect-browser/tree/main/docs"
+                onClick={openDocs}
+                style={{
+                  color: 'var(--text-secondary)',
+                  textDecoration: 'none',
+                  fontSize: 'var(--text-xs)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 'var(--space-1)',
+                }}
+                title="Documentation"
+              >
+                Docs ↗
+              </a>
+
+              <div
+                style={{
+                  fontSize: 'var(--text-2xs)',
+                  color: 'var(--text-muted)',
+                  letterSpacing: 'var(--tracking-wide)',
+                  textAlign: 'right',
+                }}
+                title={
+                  !hasRunUpdateCheck
+                    ? 'Update check has not run'
+                    : kernelUpdateState?.status === 'update-available'
+                      ? `Update available: ${kernelUpdateState.info?.version ?? 'new'}`
+                      : kernelUpdateState?.status === 'downloading'
+                        ? 'Downloading update...'
+                        : kernelUpdateState?.status === 'downloaded'
+                          ? 'Update downloaded (ready to install)'
+                          : kernelUpdateState?.status === 'error'
+                            ? `Update error: ${kernelUpdateState.error ?? 'failed'}`
+                            : 'Up to date'
+                }
+              >
+                v0.4.0 •{' '}
+                <span style={{ color: !hasRunUpdateCheck ? 'var(--text-muted)' : kernelUpdateState?.status === 'update-available' ? 'var(--text)' : 'var(--text-secondary)' }}>
+                  {!hasRunUpdateCheck
+                    ? 'Not checked'
+                    : kernelUpdateState?.status === 'update-available'
+                      ? 'Update available'
+                      : kernelUpdateState?.status === 'downloading'
+                        ? 'Downloading...'
+                        : kernelUpdateState?.status === 'downloaded'
+                          ? 'Restart to update'
+                          : kernelUpdateState?.status === 'error'
+                            ? 'Check failed'
+                            : 'Up to date'}
+                </span>
+              </div>
+            </div>
+          )}
+
           <button
             type="button"
             className="sidebar-toggle-btn"

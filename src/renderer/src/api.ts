@@ -123,6 +123,26 @@ export function setApiKey(key: string): void {
     localStorage.removeItem('apiKey');
   }
 }
+export function getApiOrigin(): string {
+  return getApiBase();
+}
+
+export function checkHealth(): Promise<ApiEnvelope<{ status: string; version: string }>> {
+  return api.status();
+}
+
+export function getMcpStatus(): Promise<ApiEnvelope<McpStatus>> {
+  return api.mcpStatus();
+}
+
+export function startMcp(): Promise<ApiEnvelope<{ ok: boolean; message?: string; status?: McpStatus }>> {
+  return api.mcpStart();
+}
+
+export function stopMcp(): Promise<ApiEnvelope<{ ok: boolean; message?: string; status?: McpStatus }>> {
+  return api.mcpStop();
+}
+
 
 export async function initApiKey(): Promise<string> {
   if (window.antidetect?.getApiKey) {
@@ -430,6 +450,17 @@ export interface EmailMessageDetail extends EmailMessageSummary {
   body: string;
   cached?: boolean;
 }
+export interface McpStatus {
+  running: boolean;
+  transport: 'http' | 'stdio';
+  httpPort?: number | null;
+  httpUrl?: string | null;
+  toolCount: number;
+  tier1Count: number;
+  tier2Count: number;
+  startedAt: string | null;
+}
+
 
 export const api = {
   status: () => request<{ status: string; version: string }>('/status'),
@@ -1055,4 +1086,11 @@ export const api = {
     `${getApiBase().replace(/^http/, 'ws')}/recorder/${encodeURIComponent(profileId)}${
       apiKey ? `?key=${encodeURIComponent(apiKey)}` : ''
     }`,
+  // ---- MCP service endpoints (ShardX sidebar footer) ----
+  mcpStatus: () =>
+    request<McpStatus>('/api/v1/mcp/status'),
+  mcpStart: () =>
+    request<{ ok: boolean; message?: string; status?: McpStatus }>('/api/v1/mcp/start', { method: 'POST' }),
+  mcpStop: () =>
+    request<{ ok: boolean; message?: string; status?: McpStatus }>('/api/v1/mcp/stop', { method: 'POST' }),
 };
