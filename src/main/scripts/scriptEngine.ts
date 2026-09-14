@@ -144,11 +144,56 @@ const app = {
     get: (key) => cfg.keyValues[key],
     set: (key, value) => { cfg.keyValues[key] = String(value); },
   },
+  callModule: async (name, args) => {
+    if (httpCalls >= cfg.maxHttpCalls) throw new Error('http call budget exceeded (' + cfg.maxHttpCalls + ')');
+    httpCalls++;
+    const r = await api('/api/v1/scripts/' + encodeURIComponent(String(name)) + '/invoke', {
+      method: 'POST',
+      body: { args: args || {} },
+    });
+    if (r.status !== 200 || !r.data || r.data.code !== 0) {
+      const errDetail = (r.data && (r.data.error || r.data.msg)) || ('HTTP ' + r.status);
+      const err = new Error('Module call failed: ' + errDetail);
+      err.code = (r.data && r.data.code) || 'MODULE_CALL_FAILED';
+      throw err;
+    }
+    return r.data.data ? r.data.data.result : undefined;
+  },
   http: {
     fetch: async (url, opts) => {
       if (httpCalls >= cfg.maxHttpCalls) throw new Error('http call budget exceeded (' + cfg.maxHttpCalls + ')');
       httpCalls++;
       return rawRequest(String(url), opts || {});
+    },
+  },
+  // Persona + form filling (parity: form-filling-helper). The sandbox has no CDP
+  // access, so every call is proxied to the authenticated Local API, which performs
+  // the real keystroke-level fill on the running profile.
+  persona: {
+    get: async () => {
+      if (httpCalls >= cfg.maxHttpCalls) throw new Error('http call budget exceeded (' + cfg.maxHttpCalls + ')');
+      httpCalls++;
+      const r = await api('/api/v1/persona?profile_id=' + encodeURIComponent(String(cfg.profileId)), { method: 'GET' });
+      if (r.status !== 200 || !r.data || r.data.code !== 0) {
+        const detail = (r.data && (r.data.msg || r.data.error)) || ('HTTP ' + r.status);
+        throw new Error('Persona fetch failed: ' + detail);
+      }
+      return r.data.data ? (r.data.data.persona || r.data.data) : undefined;
+    },
+    fillForm: async (mapping, opts) => {
+      if (httpCalls >= cfg.maxHttpCalls) throw new Error('http call budget exceeded (' + cfg.maxHttpCalls + ')');
+      httpCalls++;
+      const r = await api('/api/v1/persona/fill', {
+        method: 'POST',
+        body: { profile_id: cfg.profileId, mapping: mapping || {}, clear_first: Boolean(opts && opts.clearFirst) },
+      });
+      if (r.status !== 200 || !r.data || r.data.code !== 0) {
+        const detail = (r.data && (r.data.msg || r.data.error)) || ('HTTP ' + r.status);
+        const err = new Error('Form fill failed: ' + detail);
+        err.code = (r.data && r.data.code) || 'FORM_FILL_FAILED';
+        throw err;
+      }
+      return r.data.data;
     },
   },
   log: (msg) => {
@@ -427,8 +472,6 @@ export function stopAllWorkers(): void {
       // ignore
     }
   }
-  activeRuns.clear();
-  queue.length = 0;
 }
 
 export function activeWorkerCount(): number {
@@ -441,7 +484,7 @@ export function queuedRunCount(): number {
 
 export interface TaskInvocationHandle {
   taskUuid: string;
-  logStream: EventEmitter; // emits 'log' (line: string), 'done' ({ logs: string[] }), 'error' ({ error: string, logs: string[] })
+  logStream: EventEmitter; // emits 'log' (line: string), 'done' ({ result?: unknown; logs: string[] }), 'error' ({ error: string; logs: string[] })
   terminate: () => Promise<void>;
 }
 
@@ -516,10 +559,9 @@ export function invokeScriptTask(opts: InvokeScriptTaskOptions): TaskInvocationH
     });
   }, timeoutMs);
 
-  worker.on('message', (msg: { type: string; message?: string; error?: string; logs?: string[]; keyValues?: Record<string, string> }) => {
+  worker.on('message', (msg: { type: string; message?: string; error?: string; logs?: string[]; keyValues?: Record<string, string>; result?: unknown }) => {
     if (msg.type === 'log') {
       const line = String(msg.message ?? '');
-      capturedLogs.push(line);
       logStream.emit('log', line);
     } else if (msg.type === 'done') {
       if (finished) return;
@@ -527,7 +569,7 @@ export function invokeScriptTask(opts: InvokeScriptTaskOptions): TaskInvocationH
       clearTimeout(timer);
       flushKeyWrites(msg.keyValues);
       const allLogs = Array.isArray(msg.logs) && msg.logs.length > 0 ? msg.logs : capturedLogs;
-      logStream.emit('done', { logs: allLogs });
+      logStream.emit('done', { result: msg.result, logs: allLogs });
     } else if (msg.type === 'error') {
       if (finished) return;
       finished = true;

@@ -2,7 +2,7 @@
   "name": "antidetect-browser",
   "version": "0.2.33",
   "private": true,
-  "description": "Personal antidetect browser with an AdsPower-compatible Local API.",
+  "description": "NullTrace — zero footprint, infinite scale. Personal antidetect browser with an AdsPower-compatible Local API.",
   "workspaces": [
     "packages/*"
   ],
@@ -53,6 +53,9 @@
     "ensure-chromedriver": "node scripts/ensure-chromedriver.mjs",
     "predist": "npm run icon:generate && npm run ensure-kernel && npm run ensure-chromedriver",
     "dist": "npm run build && electron-builder --win",
+    "dist:win": "npm run build && electron-builder --win",
+    "dist:linux": "npm run build && electron-builder --linux",
+    "dist:mac": "npm run build && electron-builder --mac",
     "publish": "npm run build && electron-builder --win --publish always",
     "test:sync-server": "vitest run packages/sync-server",
     "openapi:check": "vitest run tests/unit/sdk/conformance.test.ts"
@@ -99,9 +102,10 @@
     "vitest": "^4.1.11",
     "wait-on": "^8.0.1"
   },
+  "// appId": "com.antidetect.browser is locked for backward compatibility with existing user data and OS sandboxes",
   "build": {
     "appId": "com.antidetect.browser",
-    "productName": "Antidetect Browser",
+    "productName": "NullTrace",
     "directories": {
       "output": "release"
     },
@@ -119,13 +123,6 @@
         "to": "tray-icon.png"
       },
       {
-        "from": "data/chromium/fingerprint-chromium",
-        "to": "kernel/fingerprint-chromium",
-        "filter": [
-          "**/*"
-        ]
-      },
-      {
         "from": "data/chromedriver",
         "to": "chromedriver",
         "filter": [
@@ -138,17 +135,40 @@
       "icon": "resources/icon.png",
       "target": [
         {
-          "target": "nsis",
+          "target": "portable",
           "arch": [
             "x64"
           ]
         }
-      ]
+      ],
+      "artifactName": "NullTrace-${version}-portable-win-x64.${ext}"
     },
-    "nsis": {
-      "oneClick": false,
-      "allowToChangeInstallationDirectory": true,
-      "createDesktopShortcut": true
+    "linux": {
+      "icon": "resources/icon.png",
+      "category": "Network",
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "artifactName": "NullTrace-${version}-portable-linux-x64.${ext}"
+    },
+    "mac": {
+      "icon": "resources/icon.png",
+      "category": "public.app-category.developer-tools",
+      "identity": null,
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64"
+          ]
+        }
+      ],
+      "artifactName": "NullTrace-${version}-portable-mac-arm64.${ext}"
     },
     "publish": {
       "provider": "github",
@@ -156,6 +176,6 @@
       "repo": "antidetect-browser",
       "private": false
     },
-    "artifactName": "AntidetectBrowser-Setup-${version}.${ext}"
+    "artifactName": "NullTrace-${version}-portable-${os}-${arch}.${ext}"
   }
 }

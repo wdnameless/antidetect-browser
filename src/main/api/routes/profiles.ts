@@ -37,7 +37,7 @@ router.get('/api/v1/profiles/export-csv', (_req: Request, res: Response) => {
   res.setHeader('Content-Type', 'text/csv; charset=utf-8');
   res.setHeader(
     'Content-Disposition',
-    `attachment; filename="antidetect-profiles-${new Date().toISOString().slice(0, 10)}.csv"`
+    `attachment; filename="nulltrace-profiles-${new Date().toISOString().slice(0, 10)}.csv"`
   );
   res.send(csv);
 });

@@ -7,11 +7,20 @@ import { getApiKey, API_HOST, API_PORT, DATA_DIR } from './config';
 import { seedDevices } from './devices/deviceManager';
 import { recoverStaleRunning, purgeExpiredTrash, adoptOrphanedProfileDirs } from './profiles/profileManager';
 import { startupPurgeSweep, shutdownCleanup } from './profiles/temporaryRegistry';
-import { stopAll } from './launcher/chromium';
+import { stopAll, startProfile, stopProfile, isRunning } from './launcher/chromium';
 import { stopAllSessions } from './syncer/actionSyncer';
 import { startScheduler, stopScheduler, onProfileStatusChanged } from './scripts/triggerScheduler';
 import { stopAllWorkers } from './scripts/scriptEngine';
-import { onProfileStatusChange } from './profiles/profileManager';
+import { getTaskQueueCoordinator } from './scripts/taskQueue';
+import { getTaskGroup } from './scripts/taskGroups';
+import { onProfileStatusChange, getProfile, listProfiles, resolveLaunchConfig } from './profiles/profileManager';
+import {
+  getTelegramBotInstance,
+  resetTelegramBotInstance,
+  notifyProfileStarted,
+  notifyProfileStopped,
+  notifyTaskGroupFinished,
+} from './telegram/bot';
 import { logger, initLogger, flushLogs } from './util/logger';
 
 // ---------------------------------------------------------------------------
@@ -72,7 +81,7 @@ export function isProcessOurApp(
 
       const normalized = (cmdLine || '').toLowerCase();
 
-      // Packaged app
+      // KEEP: Instance-lock executable name match for single-instance enforcement.
       if (normalized.includes('antidetect browser.exe') || normalized.includes('antidetect browser')) {
         return true;
       }
@@ -81,10 +90,10 @@ export function isProcessOurApp(
         return true;
       }
       // Node running our service or entry point
+      // KEEP: Instance-lock process check for antidetect node/electron instances.
       if (
         normalized.includes('node') &&
         (normalized.includes('antidetect') ||
-          normalized.includes('src/main') ||
           normalized.includes('src\\main') ||
           normalized.includes('dist/electron') ||
           normalized.includes('dist\\electron') ||
@@ -104,6 +113,7 @@ export function isProcessOurApp(
           stdio: ['pipe', 'pipe', 'ignore']
         }).toLowerCase();
         if (!args.trim()) return false;
+        // KEEP: POSIX instance-lock process check for antidetect.
         if (args.includes('antidetect') || args.includes('electron')) return true;
         if (args.includes('node') && (args.includes('main') || args.includes('service'))) return true;
       } catch {
@@ -211,6 +221,11 @@ export async function shutdown(reason: string, code = 0): Promise<void> {
     // ignore
   }
   try {
+    resetTelegramBotInstance();
+  } catch {
+    // ignore
+  }
+  try {
     flushDb();
     closeDb();
   } catch {
@@ -223,6 +238,80 @@ export async function shutdown(reason: string, code = 0): Promise<void> {
 
 process.on('SIGINT', () => shutdown('SIGINT'));
 process.on('SIGTERM', () => shutdown('SIGTERM'));
+
+// ---------------------------------------------------------------------------
+// Telegram bot wiring (umbrella 2.8): construct the singleton, bind command
+// handlers, subscribe to profile status changes and task-group completion.
+// All helpers no-op when the bot is disabled (no token / enabled flag).
+// ---------------------------------------------------------------------------
+const PROFILE_LIST_CAP = 20;
+
+/** Wire the telegram singleton, command handlers and event hooks (exported for integration tests). */
+export function wireTelegramBot(): void {
+  const bot = getTelegramBotInstance();
+
+  bot.setCommandHandlers({
+    start: async (id) => {
+      if (!id) return 'Usage: /start <profile id>';
+      try {
+        const cfg = resolveLaunchConfig(id);
+        if (cfg.browserType === 'firefox') {
+          return 'This profile uses Firefox (Camoufox) — start it from the app, not via Telegram.';
+        }
+        const result = await startProfile(cfg);
+        return result && result.pid ? `Profile ${id} started (pid ${result.pid}).` : `Profile ${id} start failed.`;
+      } catch (err) {
+        return `Profile ${id} start failed: ${err instanceof Error ? err.message : String(err)}`;
+      }
+    },
+    stop: async (id) => {
+      if (!id) return 'Usage: /stop <profile id>';
+      try {
+        await stopProfile(id);
+        return `Profile ${id} stopped.`;
+      } catch (err) {
+        return `Profile ${id} stop failed: ${err instanceof Error ? err.message : String(err)}`;
+      }
+    },
+    status: async () => {
+      // The handler contract passes no id: report live + stored state globally.
+      const page = listProfiles(1, PROFILE_LIST_CAP);
+      const running = page.list.filter((p) => isRunning(p.user_id));
+      const storedRunning = page.list.filter((p) => !isRunning(p.user_id) && p.status === 'running');
+      const closed = page.list.length - running.length - storedRunning.length;
+      let text = `Profiles: ${page.total} total\nRunning: ${running.length}\nClosed: ${closed}`;
+      if (storedRunning.length > 0) {
+        text += `\nStale "running" ${storedRunning.length} (crash recovery will close them)`;
+      }
+      return text;
+    },
+    list: async () => {
+      const page = listProfiles(1, PROFILE_LIST_CAP);
+      const rows = page.list.map((p) => `• ${p.name || p.user_id} — ${isRunning(p.user_id) ? 'running' : 'closed'}`);
+      const omitted = page.total - rows.length;
+      let text = rows.length ? rows.join('\n') : 'No profiles.';
+      if (omitted > 0) text += `\n… and ${omitted} more omitted.`;
+      return text;
+    },
+  });
+
+  // Profile status notifications (second subscription beside the scheduler's).
+  onProfileStatusChange((profileId, status) => {
+    const name = getProfile(profileId)?.name ?? undefined;
+    if (status === 'running') {
+      notifyProfileStarted(profileId, name);
+    } else if (status === 'closed' || status === 'error') {
+      notifyProfileStopped(profileId, name);
+    }
+  });
+
+  // Task-group completion notifications: the coordinator's 'group-finished'
+  // event is fired from its tick; nobody else subscribes today.
+  getTaskQueueCoordinator().on('group-finished', (groupId, finalStatus) => {
+    const group = typeof groupId === 'string' || typeof groupId === 'number' ? getTaskGroup(String(groupId)) : undefined;
+    notifyTaskGroupFinished(groupId, String(finalStatus), group?.name);
+  });
+}
 
 export async function startService(): Promise<void> {
   initLogger();
@@ -272,6 +361,9 @@ export async function startService(): Promise<void> {
   // Script triggers (Sprint 4.3): scheduler tick + event hooks on status changes.
   startScheduler();
   onProfileStatusChange(onProfileStatusChanged);
+
+  // Telegram bot (umbrella 2.8): construct singleton, bind commands and hooks.
+  wireTelegramBot();
 
   await startApi();
   logger.info('service ready', { apiKey: getApiKey() });

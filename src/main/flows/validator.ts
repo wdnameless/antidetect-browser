@@ -1,3 +1,4 @@
+import { getScript } from '../scripts/scriptEngine';
 import { FlowDocument, FlowValidationError, FlowNode, FlowEdge, FlowNodeSchema } from './types';
 
 /**
@@ -207,6 +208,70 @@ export function validateFlow(flow: FlowDocument): { valid: boolean; errors: Flow
         errors.push({
           code: 'INVALID_LOOP_GUARD',
           message: `Loop node '${node.id}' must have maxIterations > 0 to guard against infinite cycles`,
+          nodeId: node.id,
+        });
+      }
+    }
+  }
+
+  // 5b. Module node validation + fill_form + key binding validation
+  for (const node of flow.nodes) {
+    if (node.type === 'module') {
+      if (!node.moduleId) {
+        errors.push({
+          code: 'INVALID_MODULE_NODE',
+          message: `Module node '${node.id}' is missing moduleId`,
+          nodeId: node.id,
+        });
+      } else {
+        try {
+          const script = getScript(node.moduleId);
+          if (!script) {
+            errors.push({
+              code: 'MODULE_NOT_FOUND',
+              message: `Module node '${node.id}' references non-existent script '${node.moduleId}'`,
+              nodeId: node.id,
+            });
+          }
+        } catch {
+          // If DB is not available during pure unit testing, ignore or skip unless getScript succeeds/fails cleanly
+        }
+      }
+    }
+
+    if (node.type === 'fill_form') {
+      const fields = Object.values(node.mapping);
+      // Mapping values must come from known key names so a typo can never
+      // silently fill nothing.
+      const known = [
+        'givenName', 'familyName', 'fullName', 'address', 'city', 'region',
+        'postcode', 'country', 'phone', 'email', 'dateOfBirth',
+        'card.number', 'card.expiry', 'card.cvv',
+      ];
+      for (const f of fields) {
+        if (!known.includes(f)) {
+          errors.push({
+            code: 'INVALID_FILL_MAPPING',
+            message: `Fill node '${node.id}' maps an unknown persona field '${f}'`,
+            nodeId: node.id,
+          });
+        }
+      }
+      if (Object.keys(node.mapping).length === 0) {
+        errors.push({
+          code: 'EMPTY_FILL_MAPPING',
+          message: `Fill node '${node.id}' has an empty field mapping`,
+          nodeId: node.id,
+        });
+      }
+    }
+
+    if (node.type === 'key_read' || node.type === 'key_write') {
+      // Key names follow the keyStore convention (no slash, no spaces).
+      if (!/^[a-zA-Z0-9_.-]{1,128}$/.test(node.key)) {
+        errors.push({
+          code: 'INVALID_KEY_NAME',
+          message: `Key node '${node.id}' has invalid key name '${node.key}' (expected [a-zA-Z0-9_.-]{1,128})`,
           nodeId: node.id,
         });
       }

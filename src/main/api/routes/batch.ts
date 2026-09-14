@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import * as pm from '../../profiles/profileManager';
 import { getDb } from '../../db';
+import { readXlsx, InvalidXlsxError } from '../../io/xlsx';
 
 const router = Router();
 
@@ -135,6 +136,69 @@ router.post('/api/v1/browser-profile/import', (req, res) => {
     res.json({ code: -1, msg: 'provide profiles[] or csv', data: {} });
     return;
   }
+  try {
+    const ids: string[] = [];
+    for (const row of rows) {
+      const name = typeof row.name === 'string' && row.name ? row.name : undefined;
+      const timezone = typeof row.timezone === 'string' && row.timezone ? row.timezone : undefined;
+      let proxy: pm.ProxyInput | undefined;
+      if (row.proxy_host && row.proxy_type) {
+        proxy = {
+          type: String(row.proxy_type) as pm.ProxyType,
+          host: String(row.proxy_host),
+          port: Number(row.proxy_port ?? 0),
+          username: row.proxy_user ? String(row.proxy_user) : undefined,
+          password: row.proxy_pass ? String(row.proxy_pass) : undefined,
+        };
+      }
+      const id = pm.createProfile({ name, timezone, proxy });
+      ids.push(id);
+    }
+    res.json({ code: 0, msg: 'success', data: { user_ids: ids, count: ids.length } });
+  } catch (err) {
+    res.json({ code: -1, msg: (err as Error).message, data: {} });
+  }
+});
+
+const importXlsxSchema = z.object({
+  base64: z.string().optional(),
+  profiles: z.array(z.record(z.unknown())).optional(),
+});
+router.post('/api/v1/browser-profile/import-xlsx', (req, res) => {
+  const parsed = importXlsxSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.json({ code: -1, msg: 'invalid body', data: {} });
+    return;
+  }
+  let rows: Array<Record<string, unknown>> = [];
+  if (parsed.data.profiles) {
+    rows = parsed.data.profiles;
+  } else if (parsed.data.base64) {
+    try {
+      const buf = Buffer.from(parsed.data.base64, 'base64');
+      const rawTable = readXlsx(buf);
+      if (rawTable.length > 1) {
+        const header = rawTable[0].map((h) => h.trim());
+        for (let i = 1; i < rawTable.length; i++) {
+          const rowData = rawTable[i];
+          const rowObj: Record<string, string> = {};
+          for (let c = 0; c < header.length; c++) {
+            if (header[c]) {
+              rowObj[header[c]] = rowData[c] ?? '';
+            }
+          }
+          rows.push(rowObj);
+        }
+      }
+    } catch (err) {
+      res.json({ code: -1, msg: (err as Error).message, data: {} });
+      return;
+    }
+  } else {
+    res.json({ code: -1, msg: 'provide profiles[] or base64', data: {} });
+    return;
+  }
+
   try {
     const ids: string[] = [];
     for (const row of rows) {

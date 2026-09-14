@@ -178,7 +178,7 @@ function createWindow(): void {
   const win = new BrowserWindow({
     width: 1280,
     height: 800,
-    title: 'Antidetect Browser',
+    title: 'NullTrace',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -212,7 +212,7 @@ function initTray(): void {
   }
   const icon = iconPath ? nativeImage.createFromPath(iconPath) : nativeImage.createEmpty();
   tray = new Tray(icon);
-  tray.setToolTip('Antidetect Browser');
+  tray.setToolTip('NullTrace');
 
   const contextMenu = Menu.buildFromTemplate([
     {

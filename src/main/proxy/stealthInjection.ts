@@ -1,13 +1,16 @@
 import * as fs from 'fs';
 import { deriveHardwareVector } from '../fingerprints/derivation';
+import { resolveFontConfig } from '../fingerprints/fonts';
 import * as path from 'path';
 import {
   deriveSubSeeds,
   getSyntheticVoicePool,
   getSyntheticMediaDevices,
+  resolveSensorConfig,
+  SensorProfile,
   SubSeeds,
-  SyntheticVoice,
   SyntheticMediaDevice,
+  SyntheticVoice,
 } from './stealthNoise';
 import { signStealthExtension } from '../security/extensionVerifier';
 import type { KeyPairPem } from '../security/signing';
@@ -351,7 +354,8 @@ export function buildStealthScript(opts: StealthOptions): string {
   const hwVector = opts.logicalPlatform === 'windows' ? deriveHardwareVector(masterSeed) : null;
   const webgpuCfg = resolveWebGpuConfig(opts);
   const webauthnPlatformAuth = resolveWebAuthnPlatformAuthenticator(opts);
-
+  const fontCfg = resolveFontConfig(opts);
+  const sensorCfg = resolveSensorConfig(opts);
   const cfg = {
     mobile: opts.mobile,
     logicalPlatform: opts.logicalPlatform,
@@ -375,11 +379,12 @@ export function buildStealthScript(opts: StealthOptions): string {
     webglRenderer: opts.webglRenderer ?? (hwVector ? hwVector.gpuRenderer : 'ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 Direct3D11 vs_5_0 ps_5_0, D3D11)'),
     webgpu: webgpuCfg,
     webauthnPlatformAuth,
+    fonts: fontCfg,
+    sensors: sensorCfg,
     seeds: subSeeds,
     voices,
     mediaDevices,
   };
-
   return `(() => {
   const CFG = ${JSON.stringify(cfg)};
   const isMobile = CFG.mobile;
@@ -618,11 +623,238 @@ export function buildStealthScript(opts: StealthOptions): string {
     }
     if (typeof Screen !== 'undefined') {
       // TODO(engine-parity): Screen.prototype.orientation
-      hookGetter(Screen.prototype, 'orientation', function () { return { type: 'portrait-primary', angle: 0, onchange: null }; });
+      // TODO(engine-parity: sensors)
+      const orient = (CFG.sensors && CFG.sensors.orientation)
+        ? { type: CFG.sensors.orientation.type, angle: CFG.sensors.orientation.angle, onchange: null }
+        : { type: 'portrait-primary', angle: 0, onchange: null };
+      hookGetter(Screen.prototype, 'orientation', function () { return orient; });
     }
     if (typeof Navigator !== 'undefined') {
       // TODO(engine-parity): Navigator.prototype.connection
       hookGetter(Navigator.prototype, 'connection', function () { return { effectiveType: '4g', rtt: 50, downlink: 10, saveData: false, onchange: null }; });
+    }
+
+    // --- Mobile Motion & Orientation Sensors ---
+    if (CFG.sensors) {
+      // TODO(engine-parity: sensors)
+      const sensorProfile = CFG.sensors;
+      const g = sensorProfile.gravity;
+      const jitterAmp = sensorProfile.jitterAmplitude || 0.05;
+
+      // Periodic coherent sensor reading generator
+      let readingStep = 0;
+      const getReadings = function() {
+        readingStep++;
+        const jitter = Math.sin(readingStep) * jitterAmp;
+        return {
+          accel: { x: jitter * 0.1, y: jitter * 0.1, z: jitter * 0.1 },
+          accelGravity: { x: g.x + jitter, y: g.y + jitter, z: g.z + jitter },
+          rotRate: { alpha: jitter * 0.5, beta: jitter * 0.5, gamma: jitter * 0.5 },
+          orientation: {
+            alpha: (sensorProfile.orientation.angle + jitter * 2) % 360,
+            beta: (g.y * 5 + jitter * 2),
+            gamma: (g.x * 5 + jitter * 2),
+            absolute: true,
+          },
+        };
+      };
+
+      // DeviceMotionEvent & DeviceOrientationEvent constructors and permission
+      // TODO(engine-parity: sensors)
+      if (typeof DeviceMotionEvent !== 'undefined') {
+        if (typeof DeviceMotionEvent.requestPermission !== 'function') {
+          try {
+            DeviceMotionEvent.requestPermission = makeNative(function requestPermission() {
+              return Promise.resolve('granted');
+            }, 'requestPermission', 0);
+          } catch {}
+        }
+      }
+
+      // TODO(engine-parity: sensors)
+      if (typeof DeviceOrientationEvent !== 'undefined') {
+        if (typeof DeviceOrientationEvent.requestPermission !== 'function') {
+          try {
+            DeviceOrientationEvent.requestPermission = makeNative(function requestPermission() {
+              return Promise.resolve('granted');
+            }, 'requestPermission', 0);
+          } catch {}
+        }
+      }
+
+      // Periodic event delivery for listeners
+      // TODO(engine-parity: sensors)
+      if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+        const motionListeners = [];
+        const orientListeners = [];
+
+        const origAddEventListener = EventTarget.prototype.addEventListener;
+        EventTarget.prototype.addEventListener = makeNative(function(type, listener, options) {
+          if (this === window || this === globalThis) {
+            if (type === 'devicemotion' && typeof listener === 'function') {
+              motionListeners.push(listener);
+            } else if (type === 'deviceorientation' && typeof listener === 'function') {
+              orientListeners.push(listener);
+            }
+          }
+          return origAddEventListener.call(this, type, listener, options);
+        }, 'addEventListener', 2);
+
+        setInterval(function() {
+          if (motionListeners.length === 0 && orientListeners.length === 0) return;
+          const readings = getReadings();
+          if (motionListeners.length > 0) {
+            const ev = {
+              acceleration: readings.accel,
+              accelerationIncludingGravity: readings.accelGravity,
+              rotationRate: readings.rotRate,
+              interval: 16,
+              type: 'devicemotion',
+            };
+            for (let i = 0; i < motionListeners.length; i++) {
+              try { motionListeners[i].call(window, ev); } catch {}
+            }
+          }
+          if (orientListeners.length > 0) {
+            const ev = {
+              alpha: readings.orientation.alpha,
+              beta: readings.orientation.beta,
+              gamma: readings.orientation.gamma,
+              absolute: readings.orientation.absolute,
+              type: 'deviceorientation',
+            };
+            for (let i = 0; i < orientListeners.length; i++) {
+              try { orientListeners[i].call(window, ev); } catch {}
+            }
+          }
+        }, 100);
+      }
+
+      // Generic Sensor API family: Accelerometer, Gyroscope, Magnetometer, LinearAccelerationSensor, GravitySensor
+      // TODO(engine-parity: sensors)
+      const createSensorClass = function(name, readingExtractor) {
+        const SensorBase = function(options) {
+          this.activated = false;
+          this.hasReading = false;
+          this.timestamp = null;
+          this._interval = (options && options.frequency) ? (1000 / options.frequency) : 60;
+          this._timer = null;
+          this.onreading = null;
+          this.onerror = null;
+          this.onactivate = null;
+          this._listeners = { reading: [], error: [], activate: [] };
+        };
+
+        SensorBase.prototype.addEventListener = makeNative(function(type, listener) {
+          if (this._listeners && this._listeners[type] && typeof listener === 'function') {
+            this._listeners[type].push(listener);
+          }
+        }, 'addEventListener', 2);
+
+        SensorBase.prototype.removeEventListener = makeNative(function(type, listener) {
+          if (this._listeners && this._listeners[type]) {
+            const idx = this._listeners[type].indexOf(listener);
+            if (idx >= 0) this._listeners[type].splice(idx, 1);
+          }
+        }, 'removeEventListener', 2);
+
+        SensorBase.prototype.start = makeNative(function() {
+          if (this.activated) return;
+          this.activated = true;
+          if (typeof this.onactivate === 'function') {
+            try { this.onactivate(); } catch {}
+          }
+          if (this._listeners && this._listeners.activate) {
+            for (let i = 0; i < this._listeners.activate.length; i++) {
+              try { this._listeners.activate[i].call(this); } catch {}
+            }
+          }
+          const self = this;
+          this._timer = setInterval(function() {
+            if (!self.activated) return;
+            const readings = getReadings();
+            readingExtractor.call(self, readings);
+            self.hasReading = true;
+            self.timestamp = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+            if (typeof self.onreading === 'function') {
+              try { self.onreading(); } catch {}
+            }
+            if (self._listeners && self._listeners.reading) {
+              for (let i = 0; i < self._listeners.reading.length; i++) {
+                try { self._listeners.reading[i].call(self); } catch {}
+              }
+            }
+          }, self._interval);
+        }, 'start', 0);
+
+        SensorBase.prototype.stop = makeNative(function() {
+          this.activated = false;
+          if (this._timer) {
+            clearInterval(this._timer);
+            this._timer = null;
+          }
+        }, 'stop', 0);
+
+        return makeNative(SensorBase, name, 0);
+      };
+
+      // TODO(engine-parity: sensors)
+      if (typeof globalThis.Accelerometer === 'undefined') {
+        globalThis.Accelerometer = createSensorClass('Accelerometer', function(r) {
+          this.x = r.accelGravity.x;
+          this.y = r.accelGravity.y;
+          this.z = r.accelGravity.z;
+        });
+      }
+
+      // TODO(engine-parity: sensors)
+      if (typeof globalThis.GravitySensor === 'undefined') {
+        globalThis.GravitySensor = createSensorClass('GravitySensor', function(r) {
+          this.x = r.accelGravity.x;
+          this.y = r.accelGravity.y;
+          this.z = r.accelGravity.z;
+        });
+      }
+
+      // TODO(engine-parity: sensors)
+      if (typeof globalThis.LinearAccelerationSensor === 'undefined') {
+        globalThis.LinearAccelerationSensor = createSensorClass('LinearAccelerationSensor', function(r) {
+          this.x = r.accel.x;
+          this.y = r.accel.y;
+          this.z = r.accel.z;
+        });
+      }
+
+      // TODO(engine-parity: sensors)
+      if (typeof globalThis.Gyroscope === 'undefined') {
+        globalThis.Gyroscope = createSensorClass('Gyroscope', function(r) {
+          this.x = r.rotRate.beta;
+          this.y = r.rotRate.gamma;
+          this.z = r.rotRate.alpha;
+        });
+      }
+
+      // TODO(engine-parity: sensors)
+      if (typeof globalThis.Magnetometer === 'undefined') {
+        globalThis.Magnetometer = createSensorClass('Magnetometer', function() {
+          this.x = 20.0;
+          this.y = -10.0;
+          this.z = 45.0;
+        });
+      }
+
+      // navigator.permissions.query consistent with sensor constructors
+      // TODO(engine-parity: sensors)
+      if (typeof navigator !== 'undefined' && navigator.permissions && typeof navigator.permissions.query === 'function') {
+        const origPermQuery = navigator.permissions.query;
+        const sensorNames = { accelerometer: true, gyroscope: true, magnetometer: true };
+        navigator.permissions.query = makeNative(function(desc) {
+          if (desc && sensorNames[desc.name]) {
+            return Promise.resolve({ state: 'granted', onchange: null });
+          }
+          return origPermQuery.call(this, desc);
+        }, 'query', 1);
+      }
     }
   }
 
@@ -1070,6 +1302,204 @@ export function buildStealthScript(opts: StealthOptions): string {
     hookMethod(PublicKeyCredential, 'isUserVerifyingPlatformAuthenticatorAvailable', function isUserVerifyingPlatformAuthenticatorAvailable() {
       return Promise.resolve(isAuthAvailable);
     });
+  }
+
+  // --- Font Pinning & Enumeration Cloaking ---
+  // TODO(engine-parity: fonts): document.fonts.check and FontFaceSet.prototype.check
+  if (CFG.fonts && CFG.fonts.inventory) {
+    const fontInventory = CFG.fonts.inventory;
+    const hiddenHostFonts = CFG.fonts.hiddenHostFonts || [];
+    const fallbackFace = CFG.fonts.fallbackFace || 'Arial';
+    const inventorySet = new Set(fontInventory.map((f) => f.toLowerCase().trim()));
+    const hiddenSet = new Set(hiddenHostFonts.map((f) => f.toLowerCase().trim()));
+
+    function normalizeFontFamily(fontStr) {
+      if (!fontStr || typeof fontStr !== 'string') return [];
+      // Remove quotes and split by comma
+      return fontStr
+        .split(',')
+        .map((part) => {
+          const trimmed = part.trim();
+          // extract font name by removing size, style, or outer quotes
+          const unquoted = trimmed.replace(/^["']|["']$/g, '').trim();
+          // match just family if a shorthand syntax like '12px "Font Name"' was passed
+          const m = unquoted.match(/(?:(?:xx-small|x-small|small|medium|large|x-large|xx-large|smaller|larger|[0-9.]+(?:px|pt|em|rem|%))\\s+)+(.+)$/i);
+          return (m ? m[1].replace(/^["']|["']$/g, '').trim() : unquoted).toLowerCase();
+        })
+        .filter(Boolean);
+    }
+
+    function isFontDeclared(fontName) {
+      const normalized = (fontName || '').replace(/^["']|["']$/g, '').trim().toLowerCase();
+      if (hiddenSet.has(normalized)) return false;
+      return inventorySet.has(normalized);
+    }
+
+    // Hook FontFaceSet.prototype.check and document.fonts.check
+    if (typeof FontFaceSet !== 'undefined' && FontFaceSet.prototype && FontFaceSet.prototype.check) {
+      const origCheck = FontFaceSet.prototype.check;
+      hookMethod(FontFaceSet.prototype, 'check', function check(font, text) {
+        const families = normalizeFontFamily(font);
+        for (const fam of families) {
+          if (hiddenSet.has(fam)) return false;
+          if (inventorySet.has(fam)) return true;
+        }
+        try {
+          return origCheck.call(this, font, text);
+        } catch {
+          return false;
+        }
+      });
+    }
+
+    // TODO(engine-parity: fonts): CanvasRenderingContext2D.prototype.measureText
+    // Real presence detection works by measuring the same probe string twice — once with
+    // the candidate family first, once with a known fallback — and comparing widths. A
+    // family the profile declares must behave like a font that machine actually has, i.e.
+    // it must produce a width distinct from the plain fallback. A font we must hide has to
+    // drop out of the chain so the next candidate (or the fallback) answers instead.
+    if (typeof CanvasRenderingContext2D !== 'undefined' && CanvasRenderingContext2D.prototype.measureText) {
+      const origMeasureText = CanvasRenderingContext2D.prototype.measureText;
+      hookMethod(CanvasRenderingContext2D.prototype, 'measureText', function measureText(text) {
+        const currentFont = this.font || '';
+        const families = normalizeFontFamily(currentFont);
+        let hasHidden = false;
+        let hasDeclared = false;
+        for (const fam of families) {
+          if (hiddenSet.has(fam)) {
+            hasHidden = true;
+            break;
+          }
+          if (inventorySet.has(fam)) {
+            hasDeclared = true;
+          }
+        }
+
+        // Strip a hidden family out of the font shorthand and let the next candidate answer.
+        if (hasHidden) {
+          const filtered = currentFont
+            .split(',')
+            .filter(function (part) {
+              const name = part.trim().replace(/^["']|["']$/g, '').trim();
+              const m = name.match(/(?:(?:xx-small|x-small|small|medium|large|x-large|xx-large|smaller|larger|[0-9.]+(?:px|pt|em|rem|%))\\s+)+(.+)$/i);
+              const family = (m ? m[1] : name).replace(/^["']|["']$/g, '').trim().toLowerCase();
+              return !hiddenSet.has(family);
+            })
+            .join(', ');
+          const prevFont = this.font;
+          this.font = filtered;
+          try {
+            return origMeasureText.call(this, text);
+          } finally {
+            this.font = prevFont;
+          }
+        }
+
+        // Declared family: when the host lacks it, the browser falls back and the probe
+        // would report "absent". Answer with the declared-but-substituted face so a page
+        // sees the same result as on the claimed device.
+        if (hasDeclared) {
+          const measured = origMeasureText.call(this, text);
+          // Measure the chain with declared families removed: if that equals the raw
+          // measurement, the declared family(ies) contributed nothing on this host, i.e.
+          // the font is absent and the probe would report "absent".
+          const declaredStripped = currentFont
+            .split(',')
+            .filter(function (part) {
+              const name = part.trim().replace(/^["']|["']$/g, '').trim();
+              const m = name.match(/(?:(?:xx-small|x-small|small|medium|large|x-large|xx-large|smaller|larger|[0-9.]+(?:px|pt|em|rem|%))\\s+)+(.+)$/i);
+              const family = (m ? m[1] : name).replace(/^["']|["']$/g, '').trim().toLowerCase();
+              return !inventorySet.has(family) && !hiddenSet.has(family);
+            })
+            .join(', ');
+          const prevFont = this.font;
+          this.font = declaredStripped || "'" + fallbackFace + "'";
+          let strippedMeasurement;
+          try {
+            strippedMeasurement = origMeasureText.call(this, text);
+          } finally {
+            this.font = prevFont;
+          }
+          // If the declared family resolved to nothing new, it is host-absent: report the
+          // substitute's metrics instead of the fallback's.
+          if (strippedMeasurement.width === measured.width) {
+            const prev2 = this.font;
+            this.font = "'" + fallbackFace + "'";
+            try {
+              return origMeasureText.call(this, text);
+            } finally {
+              this.font = prev2;
+            }
+          }
+          return measured;
+        }
+
+        return origMeasureText.call(this, text);
+      });
+    }
+
+    // TODO(engine-parity: fonts): probe elements offsetWidth / offsetHeight
+    if (typeof HTMLElement !== 'undefined') {
+      const origOffsetWidthDesc = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'offsetWidth');
+      const origOffsetHeightDesc = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'offsetHeight');
+      if (origOffsetWidthDesc && origOffsetWidthDesc.get) {
+        const origGetW = origOffsetWidthDesc.get;
+        hookGetter(HTMLElement.prototype, 'offsetWidth', function get() {
+          const style = this.style ? this.style.fontFamily : '';
+          if (style) {
+            const fams = normalizeFontFamily(style);
+            for (const fam of fams) {
+              if (hiddenSet.has(fam)) {
+                // Masked host font: return 0 or default fallback metric to prevent detection
+                const prevFam = this.style.fontFamily;
+                this.style.fontFamily = fallbackFace;
+                try {
+                  return origGetW.call(this);
+                } finally {
+                  this.style.fontFamily = prevFam;
+                }
+              }
+            }
+          }
+          return origGetW.call(this);
+        });
+      }
+      if (origOffsetHeightDesc && origOffsetHeightDesc.get) {
+        const origGetH = origOffsetHeightDesc.get;
+        hookGetter(HTMLElement.prototype, 'offsetHeight', function get() {
+          const style = this.style ? this.style.fontFamily : '';
+          if (style) {
+            const fams = normalizeFontFamily(style);
+            for (const fam of fams) {
+              if (hiddenSet.has(fam)) {
+                const prevFam = this.style.fontFamily;
+                this.style.fontFamily = fallbackFace;
+                try {
+                  return origGetH.call(this);
+                } finally {
+                  this.style.fontFamily = prevFam;
+                }
+              }
+            }
+          }
+          return origGetH.call(this);
+        });
+      }
+    }
+
+    // TODO(engine-parity: fonts): window.queryLocalFonts
+    // Stock Chrome exposes Local Font Access through window.queryLocalFonts() and has
+    // NO navigator.fonts object. Defining one would itself be a detectable tell, so we
+    // only neutralise the real surface: present, but rejecting until permission is given.
+    if (typeof window !== 'undefined') {
+      const rejectLocalFonts = function queryLocalFonts() {
+        const err = new DOMException('Permission denied', 'NotAllowedError');
+        return Promise.reject(err);
+      };
+      if (window.queryLocalFonts) {
+        hookMethod(window, 'queryLocalFonts', rejectLocalFonts);
+      }
+    }
   }
 })();`;
 }

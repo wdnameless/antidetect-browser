@@ -7,6 +7,153 @@ import { SyncSettings } from './SyncSettings';
 import { LicenseSettings } from './LicenseSettings';
 import { SecuritySettings } from './SecuritySettings';
 
+function TelegramSettings() {
+  const { t } = useI18n();
+  const [enabled, setEnabled] = useState(false);
+  const [hasToken, setHasToken] = useState(false);
+  const [tokenInput, setTokenInput] = useState('');
+  const [chatIdsInput, setChatIdsInput] = useState('');
+  const [tokenVisible, setTokenVisible] = useState(false);
+  const [tokenCopied, setTokenCopied] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [saveMsg, setSaveMsg] = useState('');
+
+  useEffect(() => {
+    setBusy(true);
+    fetch('/api/v1/settings/telegram')
+      .then((r) => r.json())
+      .then((res) => {
+        if (res.code === 0 && res.data) {
+          setEnabled(Boolean(res.data.enabled));
+          setHasToken(Boolean(res.data.has_token));
+          if (Array.isArray(res.data.chatIds)) {
+            setChatIdsInput(res.data.chatIds.join(', '));
+          }
+        }
+      })
+      .catch(() => undefined)
+      .finally(() => setBusy(false));
+  }, []);
+
+  const onSave = async () => {
+    setBusy(true);
+    setSaveMsg('');
+    try {
+      const chatIds = chatIdsInput
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean);
+
+      const body: { enabled: boolean; chatIds: string[]; token?: string } = {
+        enabled,
+        chatIds,
+      };
+      if (tokenInput.trim().length > 0) {
+        body.token = tokenInput.trim();
+      }
+
+      const res = await fetch('/api/v1/settings/telegram', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      }).then((r) => r.json());
+
+      if (res.code === 0 && res.data) {
+        setHasToken(Boolean(res.data.has_token));
+        setTokenInput('');
+        setSaveMsg('Settings saved successfully');
+        setTimeout(() => setSaveMsg(''), 3000);
+      } else {
+        setSaveMsg(res.msg || 'Save failed');
+      }
+    } catch (e) {
+      setSaveMsg((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const copyToken = () => {
+    if (!tokenInput) return;
+    void navigator.clipboard.writeText(tokenInput).then(() => {
+      setTokenCopied(true);
+      setTimeout(() => setTokenCopied(false), 1500);
+    });
+  };
+
+  return (
+    <div className="panel">
+      <div className="panel-header">{t('Telegram Bot Settings')}</div>
+      <p className="hint">
+        {t('Configure Telegram bot for profile events and automation notifications.')}
+      </p>
+
+      <div className="setting-row">
+        <span className="setting-label">{t('Enable Telegram Bot')}</span>
+        <input
+          type="checkbox"
+          checked={enabled}
+          onChange={(e) => setEnabled(e.target.checked)}
+          disabled={busy}
+        />
+      </div>
+
+      <div className="setting-row">
+        <span className="setting-label">{t('Bot Token')}</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flex: 1, maxWidth: 400 }}>
+          <input
+            type={tokenVisible ? 'text' : 'password'}
+            value={tokenInput}
+            onChange={(e) => setTokenInput(e.target.value)}
+            placeholder={hasToken ? t('Token is set and securely stored.') : t('Enter bot token')}
+            disabled={busy}
+            style={{ flex: 1 }}
+          />
+          <button
+            type="button"
+            className="btn-icon"
+            onClick={() => setTokenVisible((v) => !v)}
+            title={tokenVisible ? t('Hide') : t('Show')}
+          >
+            {tokenVisible ? '🙈' : '👁'}
+          </button>
+          <button
+            type="button"
+            className="btn-icon"
+            onClick={copyToken}
+            disabled={!tokenInput}
+            title={t('Copy')}
+          >
+            {tokenCopied ? <CheckIcon size={13} style={{ color: 'var(--text)' }} /> : <CopyIcon size={13} />}
+          </button>
+        </div>
+      </div>
+      <p className="hint" style={{ marginTop: 2, marginBottom: 12 }}>
+        {hasToken ? t('Token is set and securely stored.') : t('Token not configured.')}
+      </p>
+
+      <div className="setting-row">
+        <span className="setting-label">{t('Chat IDs (comma-separated)')}</span>
+        <input
+          type="text"
+          value={chatIdsInput}
+          onChange={(e) => setChatIdsInput(e.target.value)}
+          placeholder={t('e.g. 12345678, -100123456789')}
+          disabled={busy}
+          style={{ maxWidth: 400, flex: 1 }}
+        />
+      </div>
+
+      <div style={{ marginTop: 16, display: 'flex', alignItems: 'center', gap: 12 }}>
+        <button className="btn primary" onClick={onSave} disabled={busy}>
+          {busy ? t('Saving…') : t('Save Telegram Settings')}
+        </button>
+        {saveMsg && <span className="hint" style={{ color: 'var(--text-secondary)' }}>{saveMsg}</span>}
+      </div>
+    </div>
+  );
+}
+
 function formatBytes(n: number): string {
   if (!Number.isFinite(n) || n <= 0) return '—';
   const units = ['B', 'KB', 'MB', 'GB'];
@@ -19,7 +166,7 @@ function formatBytes(n: number): string {
   return `${v.toFixed(v >= 100 ? 0 : 1)} ${units[i]}`;
 }
 
-type Section = 'general' | 'api' | 'data' | 'security' | 'updates' | 'diagnostics' | 'sync' | 'license';
+type Section = 'general' | 'api' | 'data' | 'security' | 'telegram' | 'updates' | 'diagnostics' | 'sync' | 'license';
 
 export function Settings() {
   const { t, lang, setLang } = useI18n();
@@ -191,6 +338,7 @@ export function Settings() {
     { key: 'api', label: t('Automation API') },
     { key: 'data', label: t('Data Folder') },
     { key: 'security', label: t('Security') },
+    { key: 'telegram', label: t('Telegram Notifications') },
     { key: 'sync', label: t('Sync') },
     { key: 'license', label: t('License') },
     { key: 'updates', label: t('Updates') },
@@ -300,6 +448,7 @@ export function Settings() {
           ) : null}
 
           {section === 'security' && <SecuritySettings />}
+          {section === 'telegram' && <TelegramSettings />}
 
           {section === 'data' && dataApiAvailable ? (
             <div className="panel">

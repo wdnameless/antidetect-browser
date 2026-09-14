@@ -3,6 +3,46 @@ import {
   ValidationResult,
   CoherenceViolation,
 } from './types';
+export const FORBIDDEN_FONTS_BY_PLATFORM: Record<string, string[]> = {
+  macos: [
+    'Segoe UI',
+    'Segoe UI Semibold',
+    'Segoe UI Bold',
+    'Calibri',
+    'Cambria',
+    'Consolas',
+    'MS Gothic',
+    'Yu Gothic',
+    'Malgun Gothic',
+  ],
+  windows: [
+    'SF Pro',
+    'SF Pro Text',
+    'SF Pro Display',
+    'Helvetica Neue',
+    'Menlo',
+    'Monaco',
+    'Apple Color Emoji',
+    'PingFang SC',
+  ],
+  linux: [
+    'Segoe UI',
+    'SF Pro',
+    'Calibri',
+    'Helvetica Neue',
+    'Apple Color Emoji',
+  ],
+  android: [
+    'Segoe UI',
+    'SF Pro',
+    'Helvetica Neue',
+  ],
+  ios: [
+    'Segoe UI',
+    'Calibri',
+    'Consolas',
+  ],
+};
 
 /**
  * Known WebGL vendor prefixes and keywords.

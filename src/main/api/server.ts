@@ -9,6 +9,7 @@ import { rateLimitMiddleware } from './rateLimit';
 import { createCdpRouter, tryHandleCdpUpgrade } from './cdpTunnel';
 import { createViewerUpgradeHandler } from './viewer';
 import { createMotionUpgradeHandler } from './motionBridge';
+import { createRecorderUpgradeHandler } from '../recorder/bridge';
 import { PANEL_HTML } from './uiPanel';
 import { panelAuthRouter } from './panelAuth';
 import { getCdpEndpoint } from '../launcher/chromium';
@@ -17,6 +18,7 @@ import browserRoutes from './routes/browser';
 import proxyRoutes from './routes/proxy';
 import proxyHealthRoutes from './routes/proxyHealth';
 import deviceRoutes from './routes/device';
+import emailRoutes from './routes/email';
 import cookiesRoutes from './routes/cookies';
 import extensionsRoutes from './routes/extensions';
 import batchRoutes from './routes/batch';
@@ -61,8 +63,7 @@ function logRequest(req: Request, res: Response, ms: number): void {
     // logging must never break the API
   }
 }
-
-export function startApi(): Promise<void> {
+export function createApp(): Express {
   const app: Express = express();
   app.use(express.json());
 
@@ -95,11 +96,91 @@ export function startApi(): Promise<void> {
     res.json({ code: 0, msg: 'success', data: { status: 'ok', version: '0.0.1' } });
   });
 
-  // Web panel (public assets; API calls inside carry the key themselves)
+  const rendererDir = [
+    path.resolve(process.cwd(), 'dist/renderer'),
+    path.resolve(__dirname, '../../../dist/renderer'),
+    path.resolve(__dirname, '../../dist/renderer'),
+    path.resolve(__dirname, '../renderer'),
+  ].find((p) => fs.existsSync(p)) || path.resolve(process.cwd(), 'dist/renderer');
+
+  const brandFaviconPath = [
+    path.resolve(process.cwd(), 'assets/brand/favicon.ico'),
+    path.resolve(__dirname, '../../../assets/brand/favicon.ico'),
+  ].find((p) => fs.existsSync(p));
+
+  // Favicon (unauthenticated)
+  app.get('/favicon.ico', (_req, res) => {
+    if (brandFaviconPath && fs.existsSync(brandFaviconPath)) {
+      res.sendFile(brandFaviconPath);
+      return;
+    }
+    const distFavicon = path.join(rendererDir, 'favicon.ico');
+    if (fs.existsSync(distFavicon)) {
+      res.sendFile(distFavicon);
+      return;
+    }
+    res.status(204).end();
+  });
+
+  // Web panel (legacy /ui html)
   app.get('/ui', (_req, res) => {
     res.type('html').send(PANEL_HTML);
   });
 
+  // Static assets from built renderer (unauthenticated)
+  if (fs.existsSync(rendererDir)) {
+    app.use(express.static(rendererDir, { index: false }));
+  } else {
+    console.warn('[antidetect] Web renderer build not found at dist/renderer. Static UI will not be served.');
+  }
+
+  // SPA route fallback: serve index.html before authMiddleware for non-API/non-UI GET requests
+  const isApiOrInternalPath = (urlPath: string): boolean => {
+    return (
+      urlPath.startsWith('/api/') ||
+      urlPath.startsWith('/api') ||
+      urlPath.startsWith('/ui/') ||
+      urlPath.startsWith('/ui') ||
+      urlPath.startsWith('/cdp') ||
+      urlPath.startsWith('/browser') ||
+      urlPath.startsWith('/status') ||
+      urlPath.startsWith('/motion') ||
+      urlPath.startsWith('/recorder') ||
+      urlPath.startsWith('/fingerprint') ||
+      urlPath.startsWith('/proxy') ||
+      urlPath.startsWith('/profiles') ||
+      urlPath.startsWith('/groups') ||
+      urlPath.startsWith('/task-queue') ||
+      urlPath.startsWith('/task-groups') ||
+      urlPath.startsWith('/flows') ||
+      urlPath.startsWith('/catalog') ||
+      urlPath.startsWith('/preflight') ||
+      urlPath.startsWith('/cookie-robot') ||
+      urlPath.startsWith('/settings') ||
+      urlPath.startsWith('/trash') ||
+      urlPath.startsWith('/scripts') ||
+      urlPath.startsWith('/teams') ||
+      urlPath.startsWith('/cloud-sync')
+    );
+  };
+
+  app.use((req: Request, res: Response, next: NextFunction) => {
+    if (req.method !== 'GET' && req.method !== 'HEAD') {
+      next();
+      return;
+    }
+    const p = req.path || '';
+    if (isApiOrInternalPath(p)) {
+      next();
+      return;
+    }
+    const indexPath = path.join(rendererDir, 'index.html');
+    if (fs.existsSync(indexPath)) {
+      res.sendFile(indexPath);
+      return;
+    }
+    next();
+  });
   // Panel login (username/password -> session token). Public routes with
   // their own brute-force protection.
   app.use(panelAuthRouter);
@@ -115,6 +196,7 @@ export function startApi(): Promise<void> {
   app.use(proxyRoutes);
   app.use(proxyHealthRoutes);
   app.use(deviceRoutes);
+  app.use('/api/v1/email', emailRoutes);
   app.use(cookiesRoutes);
   app.use(extensionsRoutes);
   app.use(batchRoutes);
@@ -151,11 +233,16 @@ app.use(motionRouter);
     console.error('[antidetect] API error:', err);
     res.status(500).json({ code: -1, msg: err?.message ?? 'internal error', data: {} });
   });
+  return app;
+}
 
+export function startApi(): Promise<void> {
+  const app = createApp();
   const server = http.createServer(app);
   // Single upgrade dispatcher: CDP tunnel and remote viewer share the port.
   const viewerUpgrade = createViewerUpgradeHandler(getApiKey);
   const motionUpgrade = createMotionUpgradeHandler(getApiKey);
+  const recorderUpgrade = createRecorderUpgradeHandler(getApiKey);
   server.on('upgrade', (req, socket, head) => {
     const url = req.url || '';
     if (url.startsWith('/cdp-view/')) {
@@ -164,6 +251,11 @@ app.use(motionRouter);
     }
     if (url.startsWith('/motion/')) {
       if (motionUpgrade(req, socket, head)) return;
+      socket.destroy();
+      return;
+    }
+    if (url.startsWith('/recorder/')) {
+      if (recorderUpgrade(req, socket, head)) return;
       socket.destroy();
       return;
     }

@@ -5,12 +5,13 @@ import {
   FlowDocument,
   FlowNodeType,
   FlowValidationError,
-  FlowNodeSchema,
   CanvasNodeState,
   CanvasEdgeState,
 } from '../../../main/flows/types';
-import { validateFlow } from '../../../main/flows/validator';
-import { getApiBase } from '../api';
+import { validateFlow } from '../flowValidator';
+import { getApiBase, api } from '../api';
+import { mapCapturedAction, CaptureRecord, TypingCoalescer } from '../../../main/recorder/actionMap';
+import { useI18n } from '../i18n';
 import {
   parseSseLine,
   extractScreenshotRef,
@@ -18,7 +19,11 @@ import {
   reduceLogLines,
   shouldAutoScroll,
   SseLogEntry,
+  FleetRunState,
+  FleetRunEvent,
+  reduceFleetRunState,
 } from '../flowLiveRun';
+import { FleetPanel, LogLineList } from '../components/FleetPanel';
 
 export type { CanvasNodeState, CanvasEdgeState };
 export interface NodePaletteItem {
@@ -148,6 +153,17 @@ const INITIAL_EDGES: CanvasEdgeState[] = [
   { id: 'e2', source: 'node-click', target: 'node-check', branch: 'default' },
 ];
 
+const pickerButtonStyle: React.CSSProperties = {
+  background: '#141416',
+  border: '1px solid rgba(255,255,255,0.1)',
+  color: '#e4e4e7',
+  fontSize: 12,
+  padding: '6px 10px',
+  borderRadius: 6,
+  cursor: 'pointer',
+  textAlign: 'left',
+};
+
 export function FlowCanvas() {
   const [nodes, setNodes] = useState<CanvasNodeState[]>(INITIAL_NODES);
   const [edges, setEdges] = useState<CanvasEdgeState[]>(INITIAL_EDGES);
@@ -169,8 +185,63 @@ export function FlowCanvas() {
   const [nodeTimings, setNodeTimings] = useState<Record<string, number>>({});
   const [isScrolledUp, setIsScrolledUp] = useState<boolean>(false);
 
+  // Fleet run view: multi-profile run scope + per-profile progress/logs.
+  const [selectedProfileIds, setSelectedProfileIds] = useState<string[]>([]);
+  const [concurrency, setConcurrency] = useState<number>(1);
+  const [showFleetPanel, setShowFleetPanel] = useState<boolean>(false);
+  const [selectedFleetTaskUuid, setSelectedFleetTaskUuid] = useState<string | null>(null);
+  const [fleetState, setFleetState] = useState<FleetRunState | null>(null);
+  // Dispatch folds through the pure reducer; resetting re-seeds from `null`,
+  // which the reducer treats as a fresh run (see reduceFleetRunState).
+  const dispatchFleet = useCallback(
+    (ev: FleetRunEvent) => setFleetState(prev => reduceFleetRunState(prev, ev)),
+    []
+  );
+  const resetFleetRun = useCallback(() => setFleetState(null), []);
+  const [fleetRunError, setFleetRunError] = useState<string | null>(null);
+
+  // Display names for fleet rows (profile_id -> human name, fallback id).
+  const profileNames = useMemo(() => {
+    const map: Record<string, string> = {};
+    for (const p of profiles) {
+      if (p.name) map[p.user_id] = p.name;
+    }
+    return map;
+  }, [profiles]);
+
+  // Flow recorder state (Wave 2b)
+  const [isRecording, setIsRecording] = useState<boolean>(false);
+  const [recorderHuman, setRecorderHuman] = useState<boolean>(false);
+  const [recorderError, setRecorderError] = useState<string | null>(null);
+  const recorderSocketRef = useRef<WebSocket | null>(null);
+  const recorderCoalescerRef = useRef<TypingCoalescer | null>(null);
+  const recorderNowRef = useRef<number>(0);
+  // Element action picker (independent of recording)
+  const [pickerOpen, setPickerOpen] = useState<boolean>(false);
+  const [pickerElement, setPickerElement] = useState<{ selector: string | null; tag?: string; id?: string | null } | null>(null);
+  const pickerSocketRef = useRef<WebSocket | null>(null);
+
+  const { t } = useI18n();
+
   const logsContainerRef = useRef<HTMLDivElement>(null);
   const eventSourceRef = useRef<EventSource | null>(null);
+  const fleetEventSourcesRef = useRef<Map<string, EventSource>>(new Map());
+  const stoppedFleetRef = useRef<boolean>(false);
+
+  // Clean up recorder + picker sockets on unmount
+  useEffect(() => {
+    return () => {
+      if (recorderSocketRef.current) {
+        recorderSocketRef.current.close();
+        recorderSocketRef.current = null;
+      }
+      if (pickerSocketRef.current) {
+        pickerSocketRef.current.close();
+        pickerSocketRef.current = null;
+      }
+      setIsRecording(false);
+    };
+  }, []);
 
   // Load profiles for run picker
   useEffect(() => {
@@ -352,6 +423,170 @@ export function FlowCanvas() {
     }
   };
 
+  // ------------------------------------------------------------------
+  // Fleet run view: N task streams folded through reduceFleetRunState.
+  // ------------------------------------------------------------------
+
+  // Stream one task's logs into the fleet reducer. Reuses the canonical
+  // SSE parsing (parseSseLine) — same contract as the single-profile run.
+  const fleetConnectTaskLogs = useCallback(
+    (taskUuid: string) => {
+      const existing = fleetEventSourcesRef.current.get(taskUuid);
+      if (existing) existing.close();
+      const sseUrl = `${getApiBase()}/api/tasks/${encodeURIComponent(taskUuid)}/logs?stream=true`;
+      const es = new EventSource(sseUrl);
+      fleetEventSourcesRef.current.set(taskUuid, es);
+
+      const close = () => {
+        es.close();
+        fleetEventSourcesRef.current.delete(taskUuid);
+      };
+
+      es.onmessage = (e) => {
+        try {
+          dispatchFleet({ kind: 'payload', taskUuid, payload: String(e.data) });
+          if (!selectedFleetTaskUuid) setSelectedFleetTaskUuid(taskUuid);
+        } catch {
+          // ignore parse error — reducer drops unknown payloads
+        }
+      };
+      es.onerror = () => {
+        close();
+        // Marking the affected profile terminal keeps the run from hanging
+        // forever on a dropped stream; other streams keep updating.
+        dispatchFleet({ kind: 'payload', taskUuid, payload: JSON.stringify({ event: 'end', status: 'error', error: 'log stream closed' }) });
+      };
+    },
+    [selectedFleetTaskUuid]
+  );
+
+  // Stop the whole fleet run through the existing task-group stop endpoint.
+  // The backend marks waiting tasks 'stop' and terminates running workers;
+  // locally we flip queued/working rows to stopped so queued profiles never
+  // start afterwards (the reducer's sticky stopped status also guards them
+  // against late payloads arriving after this point).
+  const handleStopFleetRun = useCallback(async () => {
+    if (!activeTaskGroupId) return;
+    stoppedFleetRef.current = true;
+    dispatchFleet({ kind: 'stopAll' });
+    for (const es of fleetEventSourcesRef.current.values()) es.close();
+    fleetEventSourcesRef.current.clear();
+    try {
+      await api.taskGroupStop(activeTaskGroupId);
+    } catch {
+      // Backend stop is best-effort from the UI's perspective: local state
+      // already reflects a stopped run.
+    }
+  }, [activeTaskGroupId]);
+
+  // Close all fleet streams on unmount.
+  useEffect(() => {
+    return () => {
+      for (const es of fleetEventSourcesRef.current.values()) es.close();
+      fleetEventSourcesRef.current.clear();
+    };
+  }, []);
+
+  // Fleet run handler: multi-profile run scope with a concurrency limit.
+  const handleRunFleet = async () => {
+    if (isRunning) return;
+    if (fleetState?.profiles.some(p => p.status === 'queued' || p.status === 'working')) return;
+
+    const targetProfiles =
+      selectedProfileIds.length > 0
+        ? selectedProfileIds
+        : [selectedProfileId || profiles[0]?.user_id || 'default'];
+
+    setFleetRunError(null);
+    setShowLiveRun(true);
+    setShowFleetPanel(true);
+    setSelectedFleetTaskUuid(null);
+    setIsRunning(true);
+    setRunStatus('running');
+    setRunLogs([]);
+    setNodeTimings({});
+    setIsScrolledUp(false);
+    // Fresh run: drop the previous run's fleet state entirely.
+    resetFleetRun();
+    stoppedFleetRef.current = false;
+
+    const flowPayload = {
+      name: flowName,
+      nodes: nodes.map(n => ({
+        ...n.config,
+        id: n.id,
+        type: n.type,
+        name: n.name,
+        timeoutMs: n.timeoutMs,
+        retryCount: n.retryCount,
+      })),
+      edges,
+      entryNodeId,
+    };
+
+    try {
+      // 1. Create or save the flow document (same as the single-profile path).
+      const saveRes = await fetch(`${getApiBase()}/api/flows`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(flowPayload),
+      });
+      let flowId = 'canvas-flow';
+      if (saveRes.ok) {
+        const saveJson = await saveRes.json();
+        flowId = saveJson?.data?.id || saveJson?.id || flowId;
+      }
+
+      // 2. Trigger the run with the chosen profile set + concurrency.
+      const runRes = await fetch(`${getApiBase()}/api/flows/${encodeURIComponent(flowId)}/run`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          profile_ids: targetProfiles,
+          concurrency,
+        }),
+      });
+      if (!runRes.ok) {
+        const errJson = await runRes.json().catch(() => ({}));
+        throw new Error(errJson?.msg || errJson?.error || `Run failed with HTTP ${runRes.status}`);
+      }
+      const runJson = await runRes.json();
+      const taskGroupId = runJson?.data?.taskGroupId || runJson?.taskGroupId;
+      setActiveTaskGroupId(taskGroupId);
+
+      // 3. Fetch the group's tasks to init each per-profile row (in backend
+      // dispatch order) and open one SSE stream per task.
+      const groupRes = await api.taskGroupTasks(taskGroupId);
+      const tasks = groupRes.data?.list ?? [];
+      const cap = runJson?.data?.group?.active_session_cap ?? concurrency;
+      const flowNodeCount = nodes.length;
+      for (const es of fleetEventSourcesRef.current.values()) es.close();
+      fleetEventSourcesRef.current.clear();
+      tasks.forEach((task, idx) => {
+        dispatchFleet({
+          kind: 'init',
+          taskUuid: task.uuid,
+          profileId: task.profile_id,
+          totalNodes: flowNodeCount,
+          activeSessionCap: cap,
+          slotIndex: idx,
+          snapshotStatus: task.status,
+        });
+      });
+      // Select the first profile's log stream by default.
+      if (tasks[0]?.uuid && !selectedFleetTaskUuid) setSelectedFleetTaskUuid(tasks[0].uuid);
+      for (const task of tasks) {
+        if (stoppedFleetRef.current) break;
+        fleetConnectTaskLogs(task.uuid);
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setFleetRunError(msg);
+      setRunStatus('error');
+      setIsRunning(false);
+    }
+  };
+
   // Dragging state for nodes
   const [draggingNodeId, setDraggingNodeId] = useState<string | null>(null);
   const [dragOffset, setDragOffset] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
@@ -519,6 +754,215 @@ export function FlowCanvas() {
     setSelectedNodeId(id);
     setSelectedEdgeId(null);
     if (nodes.length === 0) setEntryNodeId(id);
+  };
+
+  // ------------------------------------------------------------------
+  // Flow recorder (Wave 2b): capture -> node through the SAME addNode path
+  // ------------------------------------------------------------------
+
+  // Append a recorded (or picker-chosen) node exactly like a hand-made one.
+  const appendMappedNode = useCallback((flowNode: FlowNode) => {
+    const node = flowNode as FlowNode & { id: string };
+    const nodeType = node.type as FlowNodeType;
+    const paletteItem = NODE_PALETTE.find(p => p.type === nodeType);
+    setNodes(prev => {
+      // The flow node already carries the palette-shaped config; split it
+      // back into CanvasNodeState (id/type/name live outside config).
+      const config = { ...(node as unknown as Record<string, unknown>) };
+      delete config.id;
+      delete config.type;
+      delete config.name;
+      const currentMaxX = prev.reduce((max, n) => Math.max(max, n.x), 40);
+      const canvasNode: CanvasNodeState = {
+        id: node.id,
+        type: nodeType,
+        name: node.name || paletteItem?.label || nodeType,
+        x: currentMaxX + 220,
+        y: 120 + ((prev.length % 3) * 60),
+        config,
+      };
+      return [...prev, canvasNode];
+    });
+    setSelectedNodeId(node.id);
+    setSelectedEdgeId(null);
+    setEntryNodeId(prev => (prev ? prev : node.id));
+  }, []);
+
+  // Close any open recorder/picker socket (drops its in-page listeners).
+  const disposeRecorderSocket = useCallback(() => {
+    if (recorderSocketRef.current) {
+      recorderSocketRef.current.close();
+      recorderSocketRef.current = null;
+    }
+  }, []);
+
+  const handleRecorderEvent = useCallback(
+    (ev: MessageEvent) => {
+      let frame: { type?: string; message?: string; record?: CaptureRecord; pick?: { selector: string | null; tag?: string; id?: string | null } };
+      try {
+        frame = JSON.parse(String(ev.data)) as { type?: string; message?: string; record?: CaptureRecord; pick?: { selector: string | null; tag?: string; id?: string | null } };
+      } catch {
+        return;
+      }
+      if (frame.type === 'record' && frame.record) {
+        if (!recorderCoalescerRef.current) return;
+        const now = ++recorderNowRef.current;
+        const burst = recorderCoalescerRef.current.push(frame.record, now);
+        for (const rec of burst) {
+          const node = mapCapturedAction(rec, { human: recorderHuman });
+          if (node) appendMappedNode(node);
+        }
+        return;
+      }
+      if (frame.type === 'picked' && frame.pick) {
+        setPickerElement(frame.pick);
+        setPickerOpen(true);
+        // Picker served its purpose: flip back to inert so browsing is not captured.
+        if (recorderSocketRef.current && recorderSocketRef.current.readyState === WebSocket.OPEN) {
+          recorderSocketRef.current.send(JSON.stringify({ type: 'mode', mode: 'off' }));
+        }
+      }
+      if (frame.type === 'recording_started') setRecorderError(null);
+      if (frame.type === 'recording_stopped') {
+        if (recorderCoalescerRef.current) {
+          for (const rec of recorderCoalescerRef.current.flush()) {
+            const node = mapCapturedAction(rec, { human: recorderHuman });
+            if (node) appendMappedNode(node);
+          }
+        }
+      }
+      if (frame.type === 'error' && typeof frame.message === 'string') {
+        setRecorderError(frame.message);
+        setIsRecording(false);
+      }
+    },
+    [appendMappedNode, recorderHuman]
+  );
+
+  /** Open the recorder bridge WS for a profile (used by both surfaces). */
+  const openRecorderSocket = useCallback(
+    (profileId: string, onEvent: (ev: MessageEvent) => void, onOpen: (ws: WebSocket) => void) => {
+      try {
+        const ws = new WebSocket(api.recorderWsUrl(profileId));
+        ws.onmessage = onEvent;
+        ws.onopen = () => onOpen(ws);
+        ws.onerror = () => setRecorderError(t('Recorder connection failed'));
+        return ws;
+      } catch (err) {
+        setRecorderError(t('Recorder connection failed'));
+        return null;
+      }
+    },
+    [t]
+  );
+
+  const handleStartRecording = () => {
+    if (isRecording) return;
+    const profileId = selectedProfileId || profiles[0]?.user_id;
+    if (!profileId) return;
+    disposeRecorderSocket();
+    recorderCoalescerRef.current = new TypingCoalescer(250);
+    recorderNowRef.current = 0;
+    const ws = openRecorderSocket(
+      profileId,
+      handleRecorderEvent,
+      (socket) => {
+        socket.send(JSON.stringify({ type: 'start', human: recorderHuman }));
+        setIsRecording(true);
+      }
+    );
+    recorderSocketRef.current = ws;
+  };
+
+  const handleStopRecording = () => {
+    if (recorderSocketRef.current && recorderSocketRef.current.readyState === WebSocket.OPEN) {
+      recorderSocketRef.current.send(JSON.stringify({ type: 'stop' }));
+      // Flush any pending burst locally as well, so a burst interrupted by
+      // stop is still materialised as ONE node.
+      if (recorderCoalescerRef.current) {
+        for (const rec of recorderCoalescerRef.current.flush()) {
+          const node = mapCapturedAction(rec, { human: recorderHuman });
+          if (node) appendMappedNode(node);
+        }
+      }
+    }
+    disposeRecorderSocket();
+    setIsRecording(false);
+    recorderCoalescerRef.current = null;
+  };
+
+  // Element action picker (independent of recording)
+  const openPicker = () => {
+    if (isRecording) return; // the bridge is single-session — one surface at a time
+    const profileId = selectedProfileId || profiles[0]?.user_id;
+    if (!profileId) return;
+    if (pickerElement) setPickerElement(null);
+    pickerSocketRef.current?.close();
+    const ws = openRecorderSocket(
+      profileId,
+      (ev) => {
+        let frame: { type?: string; pick?: { selector: string | null; tag?: string; id?: string | null } };
+        try {
+          frame = JSON.parse(String(ev.data)) as { type?: string; pick?: { selector: string | null; tag?: string; id?: string | null } };
+        } catch {
+          return;
+        }
+        if (frame.type === 'picked' && frame.pick) {
+          setPickerElement(frame.pick);
+          setPickerOpen(true);
+        }
+      },
+      (socket) => {
+        socket.send(JSON.stringify({ type: 'mode', mode: 'picker' }));
+        setPickerOpen(true);
+      }
+    );
+    pickerSocketRef.current = ws;
+  };
+
+  const closePicker = () => {
+    if (pickerSocketRef.current) {
+      pickerSocketRef.current.close();
+      pickerSocketRef.current = null;
+    }
+    setPickerOpen(false);
+    setPickerElement(null);
+  };
+
+  const handlePickedAction = (action: 'click' | 'human_click' | 'type' | 'human_type' | 'wait' | 'extract') => {
+    if (!pickerElement?.selector) return;
+    const selector = pickerElement.selector;
+    const record: CaptureRecord = { kind: 'click', selector };
+    let node: FlowNode | null = null;
+    switch (action) {
+      case 'human_click':
+        node = mapCapturedAction({ kind: 'click', selector }, { human: true });
+        break;
+      case 'type':
+        node = mapCapturedAction({ kind: 'type', selector, text: '' }, {});
+        break;
+      case 'human_type':
+        node = mapCapturedAction({ kind: 'type', selector, text: '' }, { human: true });
+        break;
+      case 'wait':
+        node = mapCapturedAction({ kind: 'wait', selector, waitType: 'selector' });
+        break;
+      case 'extract':
+        node = {
+          type: 'extract',
+          id: `node-extract-${Date.now().toString().slice(-4)}`,
+          name: 'Extract Data',
+          selector,
+          variable: 'value',
+        };
+        break;
+      case 'click':
+      default:
+        node = mapCapturedAction(record, {});
+        break;
+    }
+    if (node) appendMappedNode(node);
+    closePicker();
   };
 
   // Node Dragging Start
@@ -868,6 +1312,170 @@ export function FlowCanvas() {
               ))}
             </select>
           )}
+          {/* Multi-profile fleet scope: optional extra profiles + concurrency.
+              Leaving the multi-select empty defaults the fleet run to the
+              single-profile behaviour (one profile, concurrency 1). */}
+          {profiles.length > 0 && (
+            <select
+              multiple
+              size={1}
+              data-testid="fleet-profile-multi-select"
+              value={selectedProfileIds}
+              onChange={e => {
+                const picked = Array.from(e.target.selectedOptions).map(o => o.value);
+                setSelectedProfileIds(picked);
+              }}
+              title={t('Select profiles for a fleet run')}
+              style={{
+                background: '#18181b',
+                color: '#e4e4e7',
+                border: '1px solid rgba(255,255,255,0.12)',
+                borderRadius: 4,
+                fontSize: 11,
+                padding: '2px 4px',
+                outline: 'none',
+                minWidth: 24,
+                maxWidth: 160,
+              }}
+            >
+              {profiles.map(p => (
+                <option key={p.user_id} value={p.user_id}>
+                  {p.name || p.user_id}
+                </option>
+              ))}
+            </select>
+          )}
+          <label
+            data-testid="concurrency-label"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 4,
+              fontSize: 10,
+              color: '#a1a1aa',
+            }}
+          >
+            {t('Concurrency')}
+            <input
+              type="number"
+              min={1}
+              max={5}
+              data-testid="fleet-concurrency-input"
+              value={concurrency}
+              onChange={e => setConcurrency(Math.max(1, parseInt(e.target.value, 10) || 1))}
+              style={{
+                width: 42,
+                background: '#18181b',
+                color: '#e4e4e7',
+                border: '1px solid rgba(255,255,255,0.12)',
+                borderRadius: 4,
+                fontSize: 11,
+                padding: '2px 4px',
+                outline: 'none',
+              }}
+            />
+          </label>
+          {/* Flow recorder controls (Wave 2b) */}
+          <label
+            data-testid="recorder-human-toggle"
+            title={t('Human input')}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 4,
+              fontSize: 10,
+              color: recorderHuman ? '#fbbf24' : '#71717a',
+              cursor: 'pointer',
+            }}
+          >
+            <input
+              type="checkbox"
+              checked={recorderHuman}
+              onChange={e => setRecorderHuman(e.target.checked)}
+              style={{ cursor: 'pointer' }}
+            />
+            Human
+          </label>
+          {isRecording ? (
+            <button
+              data-testid="btn-stop-recording"
+              onClick={handleStopRecording}
+              style={{
+                background: '#ef4444',
+                color: '#fff',
+                fontWeight: 700,
+                border: 'none',
+                fontSize: 11,
+                padding: '4px 10px',
+                borderRadius: 4,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 4,
+              }}
+            >
+              <span
+                data-testid="recording-indicator"
+                style={{
+                  width: 8,
+                  height: 8,
+                  borderRadius: '50%',
+                  background: '#fff',
+                  boxShadow: '0 0 6px #fff',
+                }}
+              />
+              {t('Stop Recording')}
+            </button>
+          ) : (
+            <button
+              data-testid="btn-start-recording"
+              onClick={handleStartRecording}
+              style={{
+                background: 'rgba(239, 68, 68, 0.15)',
+                border: '1px solid rgba(239, 68, 68, 0.35)',
+                color: '#fca5a5',
+                fontWeight: 700,
+                fontSize: 11,
+                padding: '4px 10px',
+                borderRadius: 4,
+                cursor: 'pointer',
+              }}
+            >
+              ● {t('Record actions')}
+            </button>
+          )}
+          <button
+            data-testid="btn-element-picker"
+            onClick={openPicker}
+            disabled={isRecording}
+            title={t('Pick element')}
+            style={{
+              background: pickerOpen ? 'rgba(59, 130, 246, 0.2)' : 'rgba(255,255,255,0.08)',
+              border: pickerOpen ? '1px solid rgba(59, 130, 246, 0.4)' : 'none',
+              color: pickerOpen ? '#60a5fa' : '#d4d4d8',
+              fontSize: 11,
+              padding: '4px 8px',
+              borderRadius: 4,
+              cursor: isRecording ? 'not-allowed' : 'pointer',
+              opacity: isRecording ? 0.5 : 1,
+            }}
+          >
+            {t('Pick element')}
+          </button>
+          {recorderError && (
+            <span
+              data-testid="recorder-error"
+              style={{
+                fontSize: 10,
+                color: '#ef4444',
+                background: 'rgba(239, 68, 68, 0.12)',
+                padding: '2px 8px',
+                borderRadius: 4,
+              }}
+            >
+              {recorderError}
+            </span>
+          )}
           <button
             data-testid="btn-run-flow"
             onClick={handleRunFlow}
@@ -887,6 +1495,36 @@ export function FlowCanvas() {
             }}
           >
             {isRunning ? 'Running...' : '▶ Run Flow'}
+          </button>
+          <button
+            data-testid="btn-run-fleet"
+            onClick={handleRunFleet}
+            disabled={isRunning || (fleetState?.profiles.some(p => p.status === 'queued' || p.status === 'working') ?? false)}
+            title={t('Run Fleet')}
+            style={{
+              background:
+                isRunning || (fleetState?.profiles.some(p => p.status === 'queued' || p.status === 'working') ?? false)
+                  ? '#3f3f46'
+                  : 'rgba(99, 102, 241, 0.25)',
+              color:
+                isRunning || (fleetState?.profiles.some(p => p.status === 'queued' || p.status === 'working') ?? false)
+                  ? '#71717a'
+                  : '#e4e4e7',
+              fontWeight: 700,
+              border: '1px solid rgba(99, 102, 241, 0.5)',
+              fontSize: 11,
+              padding: '4px 10px',
+              borderRadius: 4,
+              cursor:
+                isRunning || (fleetState?.profiles.some(p => p.status === 'queued' || p.status === 'working') ?? false)
+                  ? 'not-allowed'
+                  : 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 4,
+            }}
+          >
+            {t('Run Fleet')}
           </button>
           <button
             data-testid="btn-toggle-live-run"
@@ -2018,10 +2656,91 @@ export function FlowCanvas() {
         </div>
       </div>
 
+      {/* Element Action Picker (Wave 2b) */}
+      {pickerOpen && (
+        <div
+          data-testid="element-action-picker"
+          style={{
+            position: 'absolute',
+            top: 76,
+            right: 336,
+            zIndex: 60,
+            width: 260,
+            background: 'rgba(18, 18, 20, 0.96)',
+            backdropFilter: 'blur(12px)',
+            border: '1px solid rgba(255,255,255,0.14)',
+            borderRadius: 10,
+            boxShadow: '0 12px 40px rgba(0,0,0,0.7)',
+            padding: 14,
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 10,
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <span style={{ fontSize: 12, fontWeight: 700, color: '#fafafa' }}>{t('Element picker')}</span>
+            <button
+              data-testid="btn-close-picker"
+              onClick={closePicker}
+              style={{ background: 'none', border: 'none', color: '#a1a1aa', fontSize: 13, cursor: 'pointer' }}
+            >
+              ✕
+            </button>
+          </div>
+          {pickerElement ? (
+            <>
+              <div
+                data-testid="picker-element-summary"
+                style={{
+                  padding: 8,
+                  borderRadius: 6,
+                  background: '#141416',
+                  border: '1px solid rgba(255,255,255,0.08)',
+                  fontSize: 11,
+                  color: '#a1a1aa',
+                  fontFamily: 'var(--font-mono, monospace)',
+                  wordBreak: 'break-all',
+                  lineHeight: 1.4,
+                }}
+              >
+                {pickerElement.tag ? `<${pickerElement.tag}> ` : ''}
+                {pickerElement.selector ?? 'no stable selector'}
+              </div>
+              <span style={{ fontSize: 11, color: '#71717a' }}>{t('Choose an action for this element')}</span>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <button data-testid="pick-action-click" onClick={() => handlePickedAction('click')} style={pickerButtonStyle}>
+                  {t('Click')}
+                </button>
+                <button data-testid="pick-action-human-click" onClick={() => handlePickedAction('human_click')} style={pickerButtonStyle}>
+                  {t('Human Click')}
+                </button>
+                <button data-testid="pick-action-type" onClick={() => handlePickedAction('type')} style={pickerButtonStyle}>
+                  {t('Type')}
+                </button>
+                <button data-testid="pick-action-human-type" onClick={() => handlePickedAction('human_type')} style={pickerButtonStyle}>
+                  {t('Human Type')}
+                </button>
+                <button data-testid="pick-action-wait" onClick={() => handlePickedAction('wait')} style={pickerButtonStyle}>
+                  {t('Wait For')}
+                </button>
+                <button data-testid="pick-action-extract" onClick={() => handlePickedAction('extract')} style={pickerButtonStyle}>
+                  {t('Extract')}
+                </button>
+              </div>
+            </>
+          ) : (
+            <span data-testid="picker-waiting" style={{ fontSize: 11, color: '#71717a' }}>
+              {t('Pick element on the page')}
+            </span>
+          )}
+        </div>
+      )}
+
       {/* Bottom / Overlay Live Run Panel */}
       {showLiveRun && (
-        <div
-          data-testid="live-run-panel"
+        <>
+          <div
+            data-testid="live-run-panel"
           style={{
             height: 240,
             borderTop: '1px solid rgba(255,255,255,0.12)',
@@ -2236,7 +2955,44 @@ export function FlowCanvas() {
               );
             })}
           </div>
-        </div>
+          </div>
+
+          {/* Fleet run view: one row per profile + selected profile's log.
+              Selecting a fleet row shows that profile's own log stream. */}
+          {showFleetPanel && (
+            <div
+              data-testid="fleet-panel-container"
+              style={{
+                height: 300,
+                borderTop: '1px solid rgba(255,255,255,0.12)',
+                background: '#0d0d10',
+                zIndex: 41,
+              }}
+            >
+              {fleetRunError && (
+                <div
+                  style={{
+                    color: '#ef4444',
+                    fontSize: 11,
+                    padding: '4px 12px',
+                    background: 'rgba(239, 68, 68, 0.1)',
+                    borderBottom: '1px solid rgba(239, 68, 68, 0.2)',
+                  }}
+                >
+                  [ERROR] {fleetRunError}
+                </div>
+              )}
+              <FleetPanel
+                state={fleetState}
+                profileNames={profileNames}
+                selectedTaskUuid={selectedFleetTaskUuid}
+                onSelectProfile={uuid => setSelectedFleetTaskUuid(uuid)}
+                onStop={handleStopFleetRun}
+                running={isRunning}
+              />
+            </div>
+          )}
+        </>
       )}
     </div>
   );

@@ -1,4 +1,6 @@
-# Antidetect Browser (working title)
+# NullTrace
+
+**Zero footprint, infinite scale.** _Leave nothing behind._
 
 Персональный антидетект-браузер — функциональный клон **AdsPower**, заточенный под связку с собственными автоматизациями через Local API.
 

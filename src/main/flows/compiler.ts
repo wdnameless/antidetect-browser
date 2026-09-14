@@ -356,11 +356,56 @@ function generateNodeCode(node: FlowNode, outgoingEdges: FlowEdge[]): string[] {
       code.push(`const __moduleId = ${JSON.stringify(node.moduleId)};`);
       code.push(`const __args = ${JSON.stringify(node.args || {})};`);
       code.push(`app.log('Calling script module ' + __moduleId);`);
-      code.push(`// Module calls run via app.http or script engine invocation if supported`);
-      code.push(`const __moduleResult = { success: true, moduleId: __moduleId, args: __args };`);
+      code.push(`const __moduleResult = await app.callModule(__moduleId, __args);`);
       if (node.variable) {
         code.push(`__vars[${JSON.stringify(node.variable)}] = __moduleResult;`);
       }
+      const nextEdge = outgoingEdges.find((e) => e.branch === 'default');
+      code.push(`return ${nextEdge ? JSON.stringify(nextEdge.target) : 'null'};`);
+      break;
+    }
+
+    case 'fill_form': {
+      code.push(`// Action: fill_form`);
+      code.push(`const __fillMapping = ${JSON.stringify(node.mapping)};`);
+      code.push(`app.log('Filling form via persona');`);
+      code.push(`if (typeof app.persona?.fillForm !== 'function') {`);
+      code.push(`  throw new Error('app.persona.fillForm unavailable in this sandbox');`);
+      code.push(`}`);
+      code.push(`const __fillResult = await app.persona.fillForm(__fillMapping);`);
+      code.push(`if (__fillResult && __fillResult.unfilled && __fillResult.unfilled.length > 0) {`);
+      code.push(`  app.log('[FORM_FILL_UNFILLED] ' + JSON.stringify(__fillResult.unfilled.map((u) => u.selector || u)));`);
+      code.push(`}`);
+      const nextEdge = outgoingEdges.find((e) => e.branch === 'default');
+      code.push(`return ${nextEdge ? JSON.stringify(nextEdge.target) : 'null'};`);
+      break;
+    }
+
+    case 'key_read': {
+      code.push(`// Action: key_read`);
+      code.push(`const __keyName = ${JSON.stringify(node.key)};`);
+      code.push(`if (typeof app.keys?.get !== 'function') {`);
+      code.push(`  throw new Error('app.keys.get unavailable in this sandbox');`);
+      code.push(`}`);
+      code.push(`const __keyValue = app.keys.get(__keyName);`);
+      code.push(`if (__keyValue === undefined || __keyValue === null) {`);
+      code.push(`  throw new Error('missing global key: ' + __keyName);`);
+      code.push(`}`);
+      code.push(`__vars[${JSON.stringify(node.variable)}] = __keyValue;`);
+      code.push(`app.log('Read global key ' + __keyName + ' into variable ' + ${JSON.stringify(node.variable)});`);
+      const nextEdge = outgoingEdges.find((e) => e.branch === 'default');
+      code.push(`return ${nextEdge ? JSON.stringify(nextEdge.target) : 'null'};`);
+      break;
+    }
+
+    case 'key_write': {
+      code.push(`// Action: key_write`);
+      code.push(`const __keyName = ${JSON.stringify(node.key)};`);
+      code.push(`if (typeof app.keys?.set !== 'function') {`);
+      code.push(`  throw new Error('app.keys.set unavailable in this sandbox');`);
+      code.push(`}`);
+      code.push(`app.keys.set(__keyName, ${JSON.stringify(node.value)});`);
+      code.push(`app.log('Wrote global key ' + __keyName);`);
       const nextEdge = outgoingEdges.find((e) => e.branch === 'default');
       code.push(`return ${nextEdge ? JSON.stringify(nextEdge.target) : 'null'};`);
       break;

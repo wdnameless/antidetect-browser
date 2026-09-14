@@ -3,6 +3,9 @@ import { motionSessions } from '../../motion/session';
 import type { GlidePlan, MoveStep } from '../../motion/trajectory';
 import type { TypingPlan } from '../../motion/typing';
 import { getCdpEndpoint, getRunningPort } from '../../launcher/chromium';
+import { generatePersona } from '../../motion/persona';
+import { fillFormOnProfile } from '../../motion/formFill';
+import { resolveLaunchConfig } from '../../profiles/profileManager';
 
 export const motionRouter = Router();
 
@@ -228,6 +231,58 @@ motionRouter.post('/api/v1/motion/:profileId/:command', async (req: Request, res
     }
 
     cdp?.close();
+  } catch (err) {
+    res.json({ code: -1, msg: (err as Error).message, data: {} });
+  }
+});
+// ---------------------------------------------------------------------------
+// Persona + form filling (parity: form-filling-helper). The persona is derived
+// from the profile's fingerprint seed, so a profile always presents the same
+// person; filling goes through the Motion input path as real keystrokes.
+// ---------------------------------------------------------------------------
+
+// GET /api/v1/persona?profile_id=...
+motionRouter.get('/api/v1/persona', (req: Request, res: Response) => {
+  try {
+    const profileId = String(req.query.profile_id || '');
+    if (!profileId) {
+      res.json({ code: -1, msg: 'profile_id is required', data: {} });
+      return;
+    }
+    const cfg = resolveLaunchConfig(profileId);
+    const country = typeof req.query.country === 'string' ? req.query.country : undefined;
+    const persona = generatePersona(cfg.fingerprintSeed, country ? { country } : {});
+    res.json({ code: 0, msg: 'success', data: { persona } });
+  } catch (err) {
+    res.json({ code: -1, msg: (err as Error).message, data: {} });
+  }
+});
+
+// POST /api/v1/persona/fill {profile_id, mapping, clear_first?}
+motionRouter.post('/api/v1/persona/fill', async (req: Request, res: Response) => {
+  try {
+    const body = (req.body ?? {}) as {
+      profile_id?: unknown;
+      mapping?: unknown;
+      clear_first?: unknown;
+    };
+    const profileId = typeof body.profile_id === 'string' ? body.profile_id : '';
+    if (!profileId) {
+      res.json({ code: -1, msg: 'profile_id is required', data: {} });
+      return;
+    }
+    const mapping =
+      body.mapping && typeof body.mapping === 'object' && !Array.isArray(body.mapping)
+        ? (body.mapping as Record<string, string>)
+        : {};
+    if (Object.keys(mapping).length === 0) {
+      res.json({ code: -1, msg: 'mapping must map a selector to a persona field', data: {} });
+      return;
+    }
+    const cfg = resolveLaunchConfig(profileId);
+    const persona = generatePersona(cfg.fingerprintSeed);
+    const result = await fillFormOnProfile(profileId, persona, mapping, cfg.fingerprintSeed);
+    res.json({ code: 0, msg: 'success', data: result });
   } catch (err) {
     res.json({ code: -1, msg: (err as Error).message, data: {} });
   }

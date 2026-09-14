@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { moveDataRoot, getMoveStatus, cancelMove } from '../../dataRoot/mover';
+import { getTelegramSettings, saveTelegramSettings } from '../../telegram/bot';
 import { getSetting, setSetting } from '../../config';
 
 const router = Router();
@@ -78,6 +79,55 @@ router.get('/api/v1/settings/data-root/move/status', (_req: Request, res: Respon
 router.post('/api/v1/settings/data-root/move/cancel', (_req: Request, res: Response) => {
   const cancelled = cancelMove();
   res.json({ code: 0, msg: cancelled ? 'Cancel requested' : 'No move in progress', data: { cancelled } });
+});
+
+// GET /api/v1/settings/telegram
+// Token masking rule: never echo the raw token back; return has_token: boolean
+router.get('/api/v1/settings/telegram', (_req: Request, res: Response) => {
+  try {
+    const s = getTelegramSettings();
+    res.json({
+      code: 0,
+      msg: 'success',
+      data: {
+        has_token: Boolean(s.token && s.token.trim().length > 0),
+        chatIds: s.chatIds,
+        enabled: s.enabled,
+      },
+    });
+  } catch (err) {
+    res.status(500).json({ code: -1, msg: (err as Error).message });
+  }
+});
+
+router.put('/api/v1/settings/telegram', (req: Request, res: Response) => {
+  try {
+    const current = getTelegramSettings();
+    const body = req.body || {};
+
+    // If token is explicitly passed (string), update it. If omitted or undefined, keep current token.
+    const token = typeof body.token === 'string' ? body.token.trim() : current.token;
+    const chatIds = Array.isArray(body.chatIds)
+      ? body.chatIds.map(String)
+      : Array.isArray(body.chat_ids)
+      ? body.chat_ids.map(String)
+      : current.chatIds;
+    const enabled = typeof body.enabled === 'boolean' ? body.enabled : current.enabled;
+
+    saveTelegramSettings({ token, chatIds, enabled });
+
+    res.json({
+      code: 0,
+      msg: 'success',
+      data: {
+        has_token: Boolean(token && token.length > 0),
+        chatIds,
+        enabled,
+      },
+    });
+  } catch (err) {
+    res.status(500).json({ code: -1, msg: (err as Error).message });
+  }
 });
 
 export default router;

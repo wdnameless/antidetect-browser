@@ -73,4 +73,56 @@ router.get('/api/v1/scripts/:id/runs', (req: Request, res: Response) => {
   }
 });
 
+router.post('/api/v1/scripts/:id/invoke', async (req: Request, res: Response) => {
+  const scriptId = String(req.params.id);
+  const script = engine.getScript(scriptId);
+  if (!script) {
+    res.status(404).json({ code: 'NOT_FOUND', msg: `script not found: ${scriptId}`, data: {} });
+    return;
+  }
+
+  const body = (req.body ?? {}) as { args?: unknown; profile_id?: unknown };
+  const args =
+    body.args && typeof body.args === 'object' && !Array.isArray(body.args)
+      ? (body.args as Record<string, unknown>)
+      : {};
+  // `profileId` is required by the sandbox: it is what app.profileId reports to the
+  // script. `keyValues` is not an option — the engine preloads keys itself.
+  const profileId =
+    typeof body.profile_id === 'string' && body.profile_id
+      ? body.profile_id
+      : typeof args.profile_id === 'string'
+        ? (args.profile_id as string)
+        : '';
+  if (!profileId) {
+    res.status(400).json({
+      code: 'PROFILE_ID_REQUIRED',
+      msg: 'profile_id is required (the sandbox exposes it as app.profileId)',
+      data: {},
+    });
+    return;
+  }
+
+  let handle: engine.TaskInvocationHandle;
+  try {
+    handle = engine.invokeScriptTask({ scriptId, profileId });
+  } catch (err) {
+    res.status(500).json({ code: 'INVOKE_FAILED', msg: (err as Error).message, data: {} });
+    return;
+  }
+
+  let settled = false;
+  handle.logStream.on('done', ({ result, logs }: { result?: unknown; logs: string[] }) => {
+    if (settled) return;
+    settled = true;
+    res.json({ code: 0, msg: 'success', data: { result, logs } });
+  });
+
+  handle.logStream.on('error', ({ error, logs }: { error: string; logs: string[] }) => {
+    if (settled) return;
+    settled = true;
+    res.status(500).json({ code: 'TASK_ERROR', msg: error, data: { logs } });
+  });
+});
+
 export default router;

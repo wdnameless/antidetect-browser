@@ -1,6 +1,8 @@
 import { useEffect, useState, useCallback } from 'react';
-import { initApiKey, api } from './api';
+import { initApiKey, api, setApiKey } from './api';
+import { LoginScreen } from './LoginScreen';
 import { useI18n } from './i18n';
+import { PRODUCT_NAME, TAGLINE_PRIMARY } from './brand';
 import {
   SIDEBAR_COLLAPSED_KEY,
   getStoredSidebarCollapsed,
@@ -22,6 +24,7 @@ import { Trash } from './pages/Trash';
 import { Scripts } from './pages/Scripts';
 import { Catalog } from './pages/Catalog';
 import { FlowCanvas } from './pages/FlowCanvas';
+import { Email } from './pages/Email';
 import { WorkspaceSwitcher } from './components/WorkspaceSwitcher';
 import {
   ProfilesIcon,
@@ -39,7 +42,7 @@ import {
   FlowIcon,
   CalendarIcon,
 } from './icons';
-type Page = 'profiles' | 'groups' | 'proxies' | 'devices' | 'extensions' | 'teams' | 'cloud' | 'diagnostics' | 'trash' | 'scripts' | 'catalog' | 'flows' | 'settings' | 'calendar';
+type Page = 'profiles' | 'groups' | 'proxies' | 'devices' | 'extensions' | 'email' | 'teams' | 'cloud' | 'diagnostics' | 'trash' | 'scripts' | 'catalog' | 'flows' | 'settings' | 'calendar';
 
 interface NavItem {
   key: Page;
@@ -53,6 +56,7 @@ const NAV: NavItem[] = [
   { key: 'proxies', label: 'Proxies', icon: ProxiesIcon },
   { key: 'devices', label: 'Devices', icon: DevicesIcon },
   { key: 'extensions', label: 'Extensions', icon: ExtensionsIcon },
+  { key: 'email', label: 'Email', icon: ShieldIcon },
   { key: 'diagnostics', label: 'Diagnostics', icon: KeyIcon },
   { key: 'trash', label: 'Trash', icon: TrashIcon },
   { key: 'flows', label: 'Flow Canvas', icon: FlowIcon },
@@ -66,23 +70,35 @@ const NAV: NavItem[] = [
 export function App() {
   const { t } = useI18n();
   const [ready, setReady] = useState(false);
+  const [authenticated, setAuthenticated] = useState<boolean>(false);
   const [page, setPage] = useState<Page>('profiles');
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
   const [workspace, setWorkspace] = useState('personal');
   const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(() => getStoredSidebarCollapsed());
   const [runningCount, setRunningCount] = useState<number>(0);
   const [syncConnected, setSyncConnected] = useState<boolean>(false);
-  useEffect(() => {
-    void initApiKey().then(() => {
-      // Restore the persisted workspace (Pro feature; defaults to personal).
-      api.teamsList()
-        .then((res) => {
-          if (res.code === 0 && res.data.active_workspace) setWorkspace(res.data.active_workspace);
-        })
-        .catch(() => undefined);
-      setReady(true);
-    });
+
+  const initSession = useCallback((token: string) => {
+    setApiKey(token);
+    setAuthenticated(true);
+    api.teamsList()
+      .then((res) => {
+        if (res.code === 0 && res.data.active_workspace) setWorkspace(res.data.active_workspace);
+      })
+      .catch(() => undefined);
+    setReady(true);
   }, []);
+
+  useEffect(() => {
+    void initApiKey().then((token) => {
+      if (token) {
+        initSession(token);
+      } else {
+        setAuthenticated(false);
+        setReady(true);
+      }
+    });
+  }, [initSession]);
 
   const toggleSidebar = useCallback(() => {
     setSidebarCollapsed((prev) => {
@@ -129,10 +145,15 @@ export function App() {
   };
   if (!ready) {
     return (
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', color: 'var(--text-muted)' }}>
-        Loading Antidetect...
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100vh', gap: '8px', color: 'var(--text-muted)' }}>
+        <div>Loading {PRODUCT_NAME}...</div>
+        <div style={{ fontSize: '12px', opacity: 0.7 }}>{TAGLINE_PRIMARY}</div>
       </div>
     );
+  }
+
+  if (!authenticated) {
+    return <LoginScreen onSuccess={initSession} />;
   }
 
   const activeNav = NAV.find((n) => n.key === page);
@@ -148,11 +169,11 @@ export function App() {
         aria-label="Navigation sidebar"
       >
         <div>
-          <div className="brand" title="Antidetect PRO">
+          <div className="brand" title={`${PRODUCT_NAME} PRO`}>
             <div className="brand-icon">
               <ShieldIcon size={20} />
             </div>
-            <div className="brand-title">Antidetect</div>
+            <div className="brand-title">{PRODUCT_NAME}</div>
             <span className="brand-version">PRO</span>
           </div>
 
@@ -246,6 +267,8 @@ export function App() {
             <Devices />
           ) : page === 'extensions' ? (
             <Extensions />
+          ) : page === 'email' ? (
+            <Email />
           ) : page === 'diagnostics' ? (
             <Diagnostics />
           ) : page === 'trash' ? (

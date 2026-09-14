@@ -5,6 +5,7 @@ import type {
   SubSeeds,
 } from './types';
 import { WINDOWS_FINGERPRINT_CATALOG, EXTENDED_FINGERPRINT_CATALOG } from './catalog';
+// KEEP: Seeds every fingerprint sub-seed; changing silently re-seeds every profile's fingerprint.
 export const HMAC_SECRET = 'antidetect-fingerprint-catalog-domain-v1';
 
 /**
@@ -34,35 +35,11 @@ const ALL_DOMAINS: SubSeedDomain[] = [
   'screen',
 ];
 
-/**
- * Standard CRC32 table implementation for deterministic seed derivation from strings.
- */
-function makeCrcTable(): Uint32Array {
-  const table = new Uint32Array(256);
-  for (let n = 0; n < 256; n++) {
-    let c = n;
-    for (let k = 0; k < 8; k++) {
-      if (c & 1) {
-        c = 0xedb88320 ^ (c >>> 1);
-      } else {
-        c = c >>> 1;
-      }
-    }
-    table[n] = c >>> 0;
-  }
-  return table;
-}
-
-const CRC_TABLE = makeCrcTable();
-
-export function crc32(str: string): number {
-  let crc = 0 ^ -1;
-  const buf = Buffer.from(str, 'utf8');
-  for (let i = 0; i < buf.length; i++) {
-    crc = (crc >>> 8) ^ CRC_TABLE[(crc ^ buf[i]) & 0xff];
-  }
-  return (crc ^ -1) >>> 0;
-}
+// CRC32 lives in a leaf module so `migration.ts` can use it without closing the
+// migration -> derivation -> catalog -> macosFamilies -> migration import cycle.
+// Re-exported here to keep the existing public surface and its importers working.
+import { crc32 } from './crc32';
+export { crc32 };
 
 /**
  * Legacy seed migration function:

@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <defs>
+    <filter id="noir-grain" x="0%" y="0%" width="100%" height="100%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.65" numOctaves="3" seed="42" result="noise" />
+      <feColorMatrix type="matrix" values="0 0 0 0 0.04   0 0 0 0 0.04   0 0 0 0 0.04   0 0 0 0.22 0" in="noise" result="tintedNoise" />
+      <feComposite in="SourceGraphic" in2="tintedNoise" operator="over" />
+    </filter>
+  </defs>
+
+  <!-- Ground: Solid white disc (canvas backdrop transparent for app icon) -->
+  <circle cx="512" cy="512" r="486" fill="#ffffff" />
+
+  <!-- Subject: Black silhouette with stamped screen-printed grain -->
+  <path d="M 512,340 L 450,250 L 360,120 L 290,230 L 235,330 L 195,415 L 180,425 L 260,480 L 185,510 L 280,545 L 200,585 L 300,620 L 220,665 L 325,705 L 245,750 L 350,790 L 280,840 L 340,895 L 420,940 L 512,955 L 605,940 L 685,895 L 755,830 L 810,745 L 835,645 L 830,555 L 800,495 L 965,445 L 790,400 L 760,305 L 710,215 L 685,155 L 595,255 Z" fill="#0a0a0a" filter="url(#noir-grain)" />
+
+  <!-- White cutouts: Intruding left wedge, eyes, and dot -->
+  <path d="M 175,420 L 300,442 L 180,465 Z" fill="#ffffff" />
+  <path d="M 360,442 L 455,415 L 445,465 Z" fill="#ffffff" />
+  <path d="M 545,415 L 640,442 L 555,465 Z" fill="#ffffff" />
+  <circle cx="685" cy="442" r="16" fill="#ffffff" />
+</svg>

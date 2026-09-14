@@ -111,7 +111,20 @@ export interface ProxyTestResult {
   error?: string;
 }
 
-export async function initApiKey(): Promise<void> {
+export function getApiKey(): string {
+  return apiKey;
+}
+
+export function setApiKey(key: string): void {
+  apiKey = key;
+  if (key) {
+    localStorage.setItem('apiKey', key);
+  } else {
+    localStorage.removeItem('apiKey');
+  }
+}
+
+export async function initApiKey(): Promise<string> {
   if (window.antidetect?.getApiKey) {
     const start = Date.now();
     const timeoutMs = 30000;
@@ -121,7 +134,7 @@ export async function initApiKey(): Promise<void> {
         const key = await window.antidetect.getApiKey();
         if (key) {
           apiKey = key;
-          return;
+          return key;
         }
       } catch {
         // Wait and retry if IPC is not yet registered or service is starting up
@@ -131,23 +144,33 @@ export async function initApiKey(): Promise<void> {
       await new Promise((resolve) => setTimeout(resolve, delay));
     }
   }
-  const stored = localStorage.getItem('apiKey');
+  const stored = typeof localStorage !== 'undefined' ? localStorage.getItem('apiKey') : null;
   if (stored) {
     apiKey = stored;
-    return;
+    return stored;
   }
-  const entered = window.prompt('Enter Local API key (printed in the service console):') || '';
-  apiKey = entered;
-  if (entered) localStorage.setItem('apiKey', entered);
+  return '';
+}
+
+export function resolveApiBase(
+  location?: { protocol: string; host: string; origin: string },
+  override?: string | null
+): string {
+  if (override && override.startsWith('http')) {
+    return override.replace(/\/$/, '');
+  }
+  if (location && (location.protocol === 'http:' || location.protocol === 'https:')) {
+    return location.origin;
+  }
+  return 'http://127.0.0.1:50325';
 }
 
 export function getApiBase(): string {
   // Dev/test override: localStorage.apiBase (e.g. a second service instance on another port).
   const override = typeof localStorage !== 'undefined' ? localStorage.getItem('apiBase') : null;
-  if (override && override.startsWith('http')) return override.replace(/\/$/, '');
-  return 'http://127.0.0.1:50325';
+  const loc = typeof window !== 'undefined' && window.location ? window.location : undefined;
+  return resolveApiBase(loc, override);
 }
-
 async function request<T>(path: string, options: RequestInit = {}, retries = 3): Promise<ApiEnvelope<T>> {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -379,6 +402,33 @@ export interface CatalogScriptItem {
   version: string;
   url: string;
   checksum_sha256: string;
+}
+
+// ---- Email (read-only IMAP + code extraction) ----
+export interface EmailAccount {
+  id: string;
+  label: string | null;
+  email: string;
+  host: string;
+  port: number;
+  username: string;
+  has_password: boolean;
+  created_at: number;
+  updated_at: number;
+}
+
+export interface EmailMessageSummary {
+  uid: string;
+  subject: string;
+  from: string;
+  date: string;
+}
+
+export interface EmailMessageDetail extends EmailMessageSummary {
+  id: string;
+  accountId: string;
+  body: string;
+  cached?: boolean;
 }
 
 export const api = {
@@ -878,4 +928,67 @@ export const api = {
     }),
   taskGroupsList: () => request<{ list: TaskGroupItem[] }>('/api/task-groups'),
   taskGroupGet: (id: string) => request<TaskGroupItem>(`/api/task-groups/${encodeURIComponent(id)}`),
+  taskGroupTasks: (id: string) =>
+    request<{
+      list: Array<{
+        uuid: string;
+        group_id: string;
+        profile_id: string;
+        script_id?: string;
+        status: string;
+        attempts?: number;
+        repeat_count?: number;
+        timeout_ms?: number;
+        next_run_at?: number;
+        created_at?: number;
+        updated_at?: number;
+        finished_at?: number | null;
+        error?: string | null;
+      }>;
+    }>(`/api/task-groups/${encodeURIComponent(id)}/tasks`),
+  taskGroupStop: (id: string) =>
+    request<{ status: string }>(`/api/task-groups/${encodeURIComponent(id)}/stop`, {
+      method: 'POST',
+    }),
+  // ---- Flows (fleet run view) ----
+  flowRun: (id: string, profileIds: string[], concurrency?: number) =>
+    request<{
+      flowId: string;
+      taskGroupId: string;
+      group: {
+        id: string;
+        name: string;
+        script_id: string;
+        profile_ids: string[];
+        active_session_cap: number;
+        status: string;
+      };
+    }>(`/api/flows/${encodeURIComponent(id)}/run`, {
+      method: 'POST',
+      body: JSON.stringify({
+        profile_ids: profileIds,
+        ...(concurrency !== undefined ? { concurrency } : {}),
+      }),
+    }),
+  // ---- Email (read-only IMAP + code extraction) ----
+  emailAccountsList: () => request<EmailAccount[]>('/api/v1/email/accounts'),
+  emailAccountCreate: (body: { label?: string; email: string; host: string; port?: number; username: string; password?: string }) =>
+    request<EmailAccount>('/api/v1/email/accounts', { method: 'POST', body: JSON.stringify(body) }),
+  emailAccountDelete: (accountId: string) =>
+    request<{ deleted: boolean }>(`/api/v1/email/accounts/${encodeURIComponent(accountId)}`, { method: 'DELETE' }),
+  emailInboxList: (accountId: string) =>
+    request<{ messages: EmailMessageSummary[]; cached: boolean }>(
+      `/api/v1/email/accounts/${encodeURIComponent(accountId)}/inbox`
+    ),
+  emailMessageGet: (accountId: string, uid: string) =>
+    request<EmailMessageDetail>(`/api/v1/email/accounts/${encodeURIComponent(accountId)}/messages/${encodeURIComponent(uid)}`),
+  emailExtractCodes: (text: string) =>
+    request<{ codes: string[] }>('/api/v1/email/extract-codes', { method: 'POST', body: JSON.stringify({ text }) }),
+  // ---- Flow recorder (Wave 2b) ----
+  // WebSocket endpoint for the recorder bridge (auth: tunnel key query param,
+  // same contract the CDP tunnel uses — WS clients cannot send headers).
+  recorderWsUrl: (profileId: string) =>
+    `${getApiBase().replace(/^http/, 'ws')}/recorder/${encodeURIComponent(profileId)}${
+      apiKey ? `?key=${encodeURIComponent(apiKey)}` : ''
+    }`,
 };

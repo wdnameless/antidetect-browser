@@ -52,6 +52,7 @@ export interface VerificationResult {
   mismatchedFiles?: string[];
 }
 
+// KEEP: Release signature domain; changing invalidates existing signed releases.
 export const SIGNING_DOMAIN_PREFIX = 'antidetect:supply-chain:v1\0';
 
 /**

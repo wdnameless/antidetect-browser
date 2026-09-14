@@ -35,6 +35,13 @@ export const GATED_TOOL_NAMES = new Set<string>([
   'profiles.export_preserved',
   'profiles.cleanup_preserved',
   'browser.evaluate_allowlisted',
+  'proxies.delete',
+  'extensions.delete',
+  'trash.delete_forever',
+  'cookies.export',
+  'cookies.import',
+  'triggers.delete',
+  'batch.delete',
 ]);
 
 export const DEFAULT_TOOL_NAMES = new Set<string>([
@@ -50,6 +57,29 @@ export const DEFAULT_TOOL_NAMES = new Set<string>([
   'browser.human_click',
   'browser.screenshot',
   'diagnostics.run',
+  'proxies.list',
+  'proxies.create',
+  'proxies.check',
+  'extensions.list',
+  'extensions.install',
+  'flows.list',
+  'flows.get',
+  'flows.run',
+  'flows.validate',
+  'task_groups.list',
+  'task_groups.get',
+  'task_groups.tasks',
+  'task_groups.start',
+  'task_groups.stop',
+  'trash.list',
+  'triggers.list',
+  'triggers.create',
+  'triggers.toggle',
+  'tags.list',
+  'tags.attach',
+  'tags.detach',
+  'batch.start',
+  'batch.stop',
 ]);
 
 export class NonceReplayDefense {
