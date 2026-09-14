@@ -6,14 +6,17 @@
 //    click could get there.
 // 2. Window controls rendered where the Electron bridge is absent — in a
 //    browser-served client those buttons would do nothing.
+//
+// Line endings are normalised on read: the parsers below split on `\n`, and a Windows CI
+// checkout hands back `\r\n`, so an un-normalised read found zero nav entries there while
+// passing locally. Same source, different result — the worst kind of green.
 import { describe, it, expect } from 'vitest';
 import * as fs from 'fs';
 import * as path from 'path';
 
-const APP = fs.readFileSync(
-  path.join(__dirname, '..', '..', 'src', 'renderer', 'src', 'App.tsx'),
-  'utf8'
-);
+const APP = fs
+  .readFileSync(path.join(__dirname, '..', '..', 'src', 'renderer', 'src', 'App.tsx'), 'utf8')
+  .replace(/\r\n/g, '\n');
 
 /** The `Page` union members. */
 function pageUnion(): string[] {
