@@ -3,6 +3,44 @@
 All notable changes are documented here. Releases are published on
 [GitHub Releases](https://github.com/wdnameless/antidetect-browser/releases).
 
+## Unreleased - Density redesign and the brand mark
+
+The interface was called «слишком нагромажденный» with «много визуальных багов», against the
+ShardX reference, with one hard constraint: «не урезать функционал».
+
+Measuring the running app first changed the plan. The renderer already painted **zero
+chromatic colours across 19 values**, so colour was never the clutter. What was actually
+wrong, and what changed:
+
+| | before | after |
+|---|---|---|
+| Profile rows | 100px, two storeys | **52px, one line** |
+| Sidebar items | 15 flat | **7 destinations + sub-tabs** |
+| Full-perimeter bordered boxes | 55 | surfaces + dividers |
+| `!important` | 2 | **0** |
+| `:focus-visible` rules | 0 | 1 |
+| Spacing scale | none, every gap a literal px | `--space-1…7` |
+
+- **Rows** use a frozen `.row-dense` contract across six table pages. Density comes from
+  row height and padding — the tables stay real `<table>` elements so column alignment
+  survives (Proxies is a multi-column grid). Actions hide on `opacity` and reveal on hover
+  or keyboard focus; the batch checkbox is deliberately never hover-gated, because a
+  checkbox that only appears on hover cannot be used by keyboard or touch.
+- **Navigation** keeps all 15 pages reachable via a parent/child model. `NAV` was not
+  shrunk: `tests/unit/shellGroups.test.ts` guards reachability (it exists because `scripts`
+  was once rendered but unclickable) and was adapted rather than deleted.
+- **The brand icon is now the user's mark** — the black visor mask, not the indigo shield
+  `#6366f1` that `predist` was overwriting it with. Applied to the `.exe`, tray, favicon,
+  `.ico`/`.icns` and the sidebar, from a single geometry source.
+- **Fixed** while verifying: the Vite dev template was mistaken for built output, serving a
+  page that referenced `/src/main.tsx` and yielded a blank UI; `EmptyState.description` was
+  typed required while callers passed undefined; long profile names wrapped onto a second
+  line, breaking the one-line row contract.
+
+Verified on the running app, not only in tests: 7 nav items, sub-tabs switch, measured row
+height exactly 52px with a single distinct height across 71 rows, actions at `opacity: 0`,
+chromatic colour count 0, and a blind acceptance pass over all 11 criteria.
+
 ## v0.3.4 - SDKs, Google Drive, macOS, Tauri shell
 
 The open items from the parity program, closed. Every claim below was verified by

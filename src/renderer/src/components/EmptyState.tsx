@@ -7,8 +7,10 @@ export interface EmptyStateProps {
   icon: ReactNode;
   /** Bold one-line headline. */
   title: string;
-  /** Explanatory line stating what the page/list is for. */
-  description: string;
+  /** Explanatory line stating what the page/list is for. Optional: a state that is
+   *  self-explanatory (e.g. "No groups matching search") does not need a second line,
+   *  and callers already pass undefined for it. */
+  description?: string;
   /** Optional primary action button or element. */
   action?: ReactNode;
   /** Optional container style overrides. */
@@ -42,9 +44,11 @@ export function EmptyState({
       <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)' }}>
         {title}
       </div>
-      <div style={{ fontSize: 12, color: 'var(--text-secondary)', maxWidth: 420, lineHeight: 1.5 }}>
-        {description}
-      </div>
+      {description ? (
+        <div style={{ fontSize: 12, color: 'var(--text-secondary)', maxWidth: 420, lineHeight: 1.5 }}>
+          {description}
+        </div>
+      ) : null}
       {action ? <div style={{ marginTop: 6 }}>{action}</div> : null}
     </div>
   );

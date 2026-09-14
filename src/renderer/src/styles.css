@@ -64,14 +64,43 @@
   --text-primary: var(--text);
   --border-color: var(--border);
   --success: var(--ok);
-}
 
+  /* Spacing scale (4px base, named by step) */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 48px;
+
+  /* Density + shell metrics */
+  --row-h: 52px;
+  --control-h: 32px;
+  --control-h-sm: 28px;
+  --sidebar-w: 232px;
+  --sidebar-w-collapsed: 52px;
+  --topbar-h: 48px;
+
+  /* Type scale */
+  --text-xs: 11px;
+  --text-sm: 12px;
+  --text-base: 13px;
+  --text-lg: 15px;
+  --text-xl: 18px;
+  --leading-tight: 1.25;
+  --leading-normal: 1.45;
+}
 * {
   box-sizing: border-box;
   margin: 0;
   padding: 0;
 }
 
+*:focus-visible {
+  outline: 2px solid var(--border-focus);
+  outline-offset: 1px;
+}
 body {
   font-family: var(--font-sans);
   background: var(--bg-app);
@@ -93,13 +122,13 @@ body {
 /* Sidebar */
 /* Sidebar: 220px expanded, 52px collapsed rail */
 .sidebar {
-  width: 220px;
+  width: var(--sidebar-w);
   background: var(--bg-sidebar);
-  border-right: 1px solid var(--border);
+  border-right: 1px solid var(--divider);
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-  padding: 14px 10px;
+  padding: var(--space-4) var(--space-2);
   flex-shrink: 0;
   transition: width 180ms ease, padding 180ms ease;
   position: relative;
@@ -107,8 +136,8 @@ body {
 }
 
 .sidebar.collapsed {
-  width: 52px;
-  padding: 14px 6px;
+  width: var(--sidebar-w-collapsed);
+  padding: var(--space-4) var(--space-1);
 }
 
 .brand {
@@ -129,7 +158,7 @@ body {
 .sidebar.collapsed .brand-version,
 .sidebar.collapsed .nav-label,
 .sidebar.collapsed .workspace-switcher-wrapper {
-  display: none !important;
+  display: none;
 }
 
 .brand-icon {
@@ -600,42 +629,6 @@ body {
   gap: 16px;
 }
 
-.page-header-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.window-controls {
-  display: flex;
-  align-items: center;
-  margin-left: 8px;
-}
-
-.window-control-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 32px;
-  background: transparent;
-  border: none;
-  color: var(--text-secondary);
-  cursor: pointer;
-  transition: background 0.12s ease, color 0.12s ease;
-  border-radius: var(--radius-sm);
-}
-
-.window-control-btn:hover {
-  background: var(--control-bg-hover);
-  color: var(--text);
-}
-
-.window-control-btn.window-close:hover {
-  background: var(--control-bg-active);
-  color: var(--text);
-}
-
 .page-title {
   font-size: 17px;
   font-weight: 700;
@@ -662,13 +655,13 @@ body {
 }
 
 .topbar {
-  height: 48px;
+  height: var(--topbar-h);
   background: var(--bg-header);
   border-bottom: 1px solid var(--divider);
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 16px 0 28px;
+  padding: 0 var(--space-4) 0 var(--space-6);
   flex-shrink: 0;
   /* Frameless window: the header is the drag handle. Interactive children opt out. */
   -webkit-app-region: drag;
@@ -975,9 +968,92 @@ input, textarea {
 
 .empty-cell {
   text-align: center;
-  padding: 48px 18px !important;
+  padding: 48px 18px;
   color: var(--text-muted);
   font-size: 14px;
+}
+
+/* Dense row contract (interfaces.md / ui-density-redesign) */
+.row-dense {
+  height: var(--row-h);
+  border: none;
+  border-bottom: 1px solid var(--divider);
+  transition: background 0.12s ease;
+}
+
+.row-dense td {
+  height: var(--row-h);
+  padding: 0 var(--space-4);
+  border: none;
+  border-bottom: 1px solid var(--divider);
+  vertical-align: middle;
+}
+
+.table tbody tr.row-dense:last-child td,
+.row-dense:last-child {
+  border-bottom: 1px solid var(--divider);
+}
+
+.row-dense:hover {
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.row-dense__lead {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+/* The row is a ONE-LINE contract: a long profile name must truncate, not wrap onto a
+   second line, or the row silently grows past --row-h and density is lost. */
+.row-dense__lead > strong {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.row-dense__meta {
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.row-dense__status {
+  display: inline-flex;
+  align-items: center;
+}
+
+.row-dense__actions {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+
+.row-dense:hover .row-dense__actions,
+.row-dense:focus-within .row-dense__actions,
+tr.row-dense:hover .row-dense__actions,
+tr.row-dense:focus-within .row-dense__actions {
+  opacity: 1;
+}
+
+.row-dense__check {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  opacity: 1;
+  visibility: visible;
+}
+
+.row-dense__group {
+  display: inline-flex;
+  align-items: center;
 }
 
 /* Badges & Tags */

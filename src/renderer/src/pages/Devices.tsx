@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { api, type DeviceItem, type ProfileListItem } from '../api';
 import { DevicesIcon, CopyIcon, CheckIcon, SearchIcon } from '../icons';
 import { useI18n } from '../i18n';
-
+import { EmptyState } from '../components/EmptyState';
 export function Devices() {
   const { t } = useI18n();
   const [devices, setDevices] = useState<DeviceItem[]>([]);
@@ -230,52 +230,63 @@ export function Devices() {
               </tr>
             </thead>
             <tbody>
-              {filteredPhones.map((m, idx) => (
-                <tr key={m.id}>
-                  <td style={{ color: 'var(--text-muted)', fontSize: 12 }}>{idx + 1}</td>
-                  <td>
-                    <strong style={{ fontSize: 13, color: 'var(--text)' }}>{m.name}</strong>
-                    <div style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>{m.model}</div>
-                  </td>
-                  <td>
-                    <span className="badge badge-gray" style={{ fontSize: 11 }}>
-                      Android {m.androidVersion}
-                    </span>
-                  </td>
-                  <td>
-                    <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{m.gpu}</span>
-                  </td>
-                  <td>
-                    <span style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: 'var(--text-muted)' }}>
-                      {m.id}
-                    </span>
-                  </td>
-                  <td>
-                    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6 }}>
-                      <button
-                        type="button"
-                        className="btn btn-sm"
-                        onClick={() => copyId(m.id)}
-                        title={t('Copy preset ID')}
-                      >
-                        {copiedId === m.id ? <CheckIcon size={12} /> : <CopyIcon size={12} />}
-                        <span>{copiedId === m.id ? t('Copied!') : t('Copy ID')}</span>
-                      </button>
-                      <button
-                        type="button"
-                        className="btn btn-sm"
-                        onClick={() => {
-                          setApplyTarget({ kind: 'phone', id: m.id, label: m.name });
-                          setApplyProfileId('');
-                          setApplyMsg('');
-                        }}
-                      >
-                        {t('Apply to Profile')}
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
+              {filteredPhones.length === 0 ? (
+                <EmptyState
+                  colSpan={6}
+                  icon={<DevicesIcon size={32} />}
+                  title={t('No mobile presets found')}
+                  description={t('Try adjusting your search query.')}
+                />
+              ) : (
+                filteredPhones.map((m, idx) => (
+                  <tr key={m.id} className="row-dense">
+                    <td style={{ color: 'var(--text-muted)', fontSize: 12 }}>{idx + 1}</td>
+                    <td>
+                      <div className="row-dense__lead">
+                        <strong style={{ fontSize: 13, color: 'var(--text)' }}>{m.name}</strong>
+                        <span className="row-dense__meta">{m.model}</span>
+                      </div>
+                    </td>
+                    <td>
+                      <span className="badge badge-gray" style={{ fontSize: 11 }}>
+                        Android {m.androidVersion}
+                      </span>
+                    </td>
+                    <td>
+                      <span className="row-dense__meta" style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{m.gpu}</span>
+                    </td>
+                    <td>
+                      <span className="row-dense__meta" style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: 'var(--text-muted)' }}>
+                        {m.id}
+                      </span>
+                    </td>
+                    <td>
+                      <div className="row-dense__actions" style={{ display: 'flex', justifyContent: 'flex-end', gap: 6 }}>
+                        <button
+                          type="button"
+                          className="btn btn-sm"
+                          onClick={() => copyId(m.id)}
+                          title={t('Copy preset ID')}
+                        >
+                          {copiedId === m.id ? <CheckIcon size={12} /> : <CopyIcon size={12} />}
+                          <span>{copiedId === m.id ? t('Copied!') : t('Copy ID')}</span>
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-sm"
+                          onClick={() => {
+                            setApplyTarget({ kind: 'phone', id: m.id, label: m.name });
+                            setApplyProfileId('');
+                            setApplyMsg('');
+                          }}
+                        >
+                          {t('Apply to Profile')}
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>

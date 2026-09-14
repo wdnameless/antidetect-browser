@@ -1,10 +1,13 @@
-// Generates resources/icon.png — the app/tray icon.
+// Generates resources/icon.png — the app/tray icon — from the brand mark.
 //
 // The repository shipped no raster assets at all, so `initTray()` fell through
-// to nativeImage.createEmpty() and produced an invisible tray icon. The mark is
-// the same shield the renderer already uses (src/renderer/src/icons.tsx
-// ShieldIcon, also the window favicon), drawn filled in the accent indigo so it
-// stays legible on both light and dark Windows taskbars.
+// to nativeImage.createEmpty() and produced an invisible tray icon.
+//
+// This file previously drew an indigo shield (#6366f1) while assets/brand held a
+// black visor-mask PNG — two different brands, and `predist` overwrote the correct
+// assets with the shield on every build. The visor mask is now the only geometry here,
+// matching scripts/generate-icons.py (the authoritative vector source) and the mark the
+// user supplied.
 //
 // Usage: npm run icon:generate
 import { deflateSync } from 'node:zlib';
@@ -22,50 +25,133 @@ const APP_ICON = { size: 256, file: path.join(OUT_DIR, 'icon.png') };
 const TRAY_ICON = { size: 32, file: path.join(OUT_DIR, 'tray-icon.png') };
 
 const SS = 4; // supersample factor for antialiasing
-const ACCENT = [0x63, 0x66, 0xf1, 0xff]; // --accent, matches the favicon stroke
+// The brand mark: a black visor-mask / bandit-mask silhouette — the mark the user
+// supplied. Two triangular ears with a V notch between them, a sharp horn spiking right,
+// jagged torn tears down the lower-left edge, a rounded bottom mass, and a horizontal
+// visor slit carrying white eye cutouts.
+//
+// Geometry is the same 1024-unit coordinate system used by scripts/generate-icons.py,
+// which is the authoritative vector source. This script rasterises that geometry so the
+// packaged icon, the tray icon and the .exe carry the user's mark rather than the indigo
+// shield this file used to draw (#6366f1, the most recognizable AI-generated-design tell).
+const VIEW_BOX = 1024;
 
-// Shield outline from the renderer's ShieldIcon, sampled as a polygon in the
-// icon's 24x24 viewBox (the path is symmetric about x=12).
-const SHIELD = [
-  [12, 2], // top centre
-  [20, 5], // right shoulder
-  [20, 12], // right flank
-  [12, 22], // bottom point
-  [4, 12], // left flank
-  [4, 5], // left shoulder
+const SILHOUETTE = [
+  // Top centre notch between the ears
+  [512, 340],
+  [450, 250],
+  [360, 120], // left ear apex
+  [290, 230],
+  [235, 330],
+  [195, 415],
+  [180, 425],
+  // Jagged tears down the lower-left edge
+  [260, 480], [185, 510],
+  [280, 545], [200, 585],
+  [300, 620], [220, 665],
+  [325, 705], [245, 750],
+  [350, 790], [280, 840],
+  // Rounded bottom mass
+  [340, 895],
+  [420, 940],
+  [512, 955],
+  [605, 940],
+  [685, 895],
+  [755, 830],
+  [810, 745],
+  [835, 645],
+  [830, 555],
+  [800, 495],
+  [965, 445], // horn spike apex
+  [790, 400],
+  [760, 305],
+  [710, 215],
+  [685, 155], // right ear apex
+  [595, 255],
 ];
 
-/** Ray-casting point-in-polygon over the shield, in viewBox units. */
-function inShield(x, y) {
+// White negative-space cutouts: an intruding left wedge, the two eye slits, and a dot.
+const CUT_WEDGE = [[175, 420], [300, 442], [180, 465]];
+const CUT_EYE_L = [[360, 442], [455, 415], [445, 465]];
+const CUT_EYE_R = [[545, 415], [640, 442], [555, 465]];
+const CUT_DOT = { cx: 685, cy: 442, r: 16 };
+
+const DISC_RADIUS = 486;
+const DISC_CENTER = 512;
+
+const INK = [0x0a, 0x0a, 0x0a, 0xff]; // near-black, as supplied
+const PAPER = [0xff, 0xff, 0xff, 0xff];
+
+/** Ray-casting point-in-polygon over an arbitrary polygon in viewBox units. */
+function inPolygon(x, y, poly) {
   let inside = false;
-  for (let i = 0, j = SHIELD.length - 1; i < SHIELD.length; j = i++) {
-    const [xi, yi] = SHIELD[i];
-    const [xj, yj] = SHIELD[j];
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const [xi, yi] = poly[i];
+    const [xj, yj] = poly[j];
     const intersects = yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi;
     if (intersects) inside = !inside;
   }
   return inside;
 }
 
+/**
+ * Simplified 16px form: at tray size the eye slits and the dotted pupil collapse into
+ * mud. The small variant keeps the silhouette and drops only the finest cutouts, so the
+ * mark stays recognisable instead of becoming a smudge.
+ */
+function isDetailed(size) {
+  return size >= 32;
+}
+
 function renderRgba(size) {
   const px = Buffer.alloc(size * size * 4); // transparent by default
+  const detailed = isDetailed(size);
   for (let y = 0; y < size; y++) {
     for (let x = 0; x < size; x++) {
-      let hits = 0;
+      let insideDisc = 0;
+      let inkHits = 0;
       for (let sy = 0; sy < SS; sy++) {
         for (let sx = 0; sx < SS; sx++) {
-          // Map the supersampled sample back into the 24x24 viewBox.
-          const vx = ((x + (sx + 0.5) / SS) / size) * 24;
-          const vy = ((y + (sy + 0.5) / SS) / size) * 24;
-          if (inShield(vx, vy)) hits++;
+          const vx = ((x + (sx + 0.5) / SS) / size) * VIEW_BOX;
+          const vy = ((y + (sy + 0.5) / SS) / size) * VIEW_BOX;
+
+          const dx = vx - DISC_CENTER;
+          const dy = vy - DISC_CENTER;
+          if (dx * dx + dy * dy > DISC_RADIUS * DISC_RADIUS) continue;
+          insideDisc++;
+
+          if (!inPolygon(vx, vy, SILHOUETTE)) continue;
+          // The visor slit: knock the cutouts out of the black mass.
+          if (inPolygon(vx, vy, CUT_WEDGE)) continue;
+          if (inPolygon(vx, vy, CUT_EYE_L)) continue;
+          if (inPolygon(vx, vy, CUT_EYE_R)) continue;
+          if (detailed) {
+            const ddx = vx - CUT_DOT.cx;
+            const ddy = vy - CUT_DOT.cy;
+            if (ddx * ddx + ddy * ddy <= CUT_DOT.r * CUT_DOT.r) continue;
+          }
+          inkHits++;
         }
       }
-      const coverage = hits / (SS * SS);
+
       const o = (y * size + x) * 4;
-      px[o] = ACCENT[0];
-      px[o + 1] = ACCENT[1];
-      px[o + 2] = ACCENT[2];
-      px[o + 3] = Math.round(ACCENT[3] * coverage);
+      const discCoverage = insideDisc / (SS * SS);
+      const inkCoverage = inkHits / (SS * SS);
+
+      if (inkCoverage > 0) {
+        // Black mark on a white ground: the supplied mark is black-on-white, and the
+        // white disc is what keeps it visible on a dark Windows taskbar.
+        px[o] = INK[0];
+        px[o + 1] = INK[1];
+        px[o + 2] = INK[2];
+        px[o + 3] = Math.round(255 * Math.max(inkCoverage, discCoverage * 0.999));
+      } else if (discCoverage > 0) {
+        px[o] = PAPER[0];
+        px[o + 1] = PAPER[1];
+        px[o + 2] = PAPER[2];
+        px[o + 3] = Math.round(255 * discCoverage);
+      }
+      // Outside the disc stays transparent.
     }
   }
   return px;

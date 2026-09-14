@@ -92,19 +92,27 @@ export function Trash() {
               </tr>
             ) : (
               items.map((it) => (
-                <tr key={it.id}>
+                <tr key={it.id} className="row-dense">
                   <td>
-                    <strong style={{ fontSize: 13.5 }}>{it.name || it.id}</strong>
-                    <div style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
-                      {it.id.slice(0, 14)}...
+                    <div className="row-dense__lead">
+                      <strong style={{ fontSize: 13, color: 'var(--text)' }}>{it.name || it.id}</strong>
+                      <span
+                        style={{
+                          fontSize: 11,
+                          color: 'var(--text-muted)',
+                          fontFamily: 'var(--font-mono)',
+                        }}
+                      >
+                        {it.id.slice(0, 14)}…
+                      </span>
                     </div>
                   </td>
-                  <td style={{ fontSize: 12.5, color: 'var(--text-secondary)' }}>{it.group_name || t('(No Group / Ungrouped)')}</td>
-                  <td style={{ fontSize: 12.5, color: 'var(--text-secondary)' }}>
+                  <td className="row-dense__group">{it.group_name || t('(No Group / Ungrouped)')}</td>
+                  <td className="row-dense__meta">
                     {it.deleted_at ? new Date(it.deleted_at).toLocaleString() : '—'}
                   </td>
                   <td>
-                    <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
+                    <div className="row-dense__actions">
                       <button className="btn btn-sm" onClick={() => void restore(it.id)} disabled={busy}>
                         {t('Restore')}
                       </button>

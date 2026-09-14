@@ -194,6 +194,25 @@ export function getApiKey(): string {
 }
 
 /**
+ * Directories that may hold the fingerprint-chromium kernel, in priority order:
+ * a packaged build ships it under resources/kernel, a dev/portable run keeps it
+ * under the data dir.
+ *
+ * Exported so the executable lookup and the version report read the SAME list —
+ * they previously disagreed, and a packaged app therefore launched fine while
+ * Settings reported the kernel as missing.
+ */
+export function kernelBaseDirs(): string[] {
+  const dirs: string[] = [];
+  // Packaged app: kernel shipped inside resources/kernel (extraResources).
+  if (process.resourcesPath) {
+    dirs.push(path.join(process.resourcesPath, 'kernel', 'fingerprint-chromium'));
+  }
+  dirs.push(path.join(CHROMIUM_DIR, 'fingerprint-chromium'));
+  return dirs;
+}
+
+/**
  * Locate the patched fingerprint-chromium executable.
  * Priority: CHROMIUM_PATH env -> packaged resources (process.resourcesPath/kernel) -> data dir.
  */
@@ -213,13 +232,11 @@ function findFingerprintChromium(): string | null {
     return null;
   };
 
-  // Packaged app: kernel shipped inside resources/kernel (extraResources).
-  if (process.resourcesPath) {
-    const packaged = scan(path.join(process.resourcesPath, 'kernel', 'fingerprint-chromium'));
-    if (packaged) return packaged;
+  for (const base of kernelBaseDirs()) {
+    const found = scan(base);
+    if (found) return found;
   }
-
-  return scan(path.join(CHROMIUM_DIR, 'fingerprint-chromium'));
+  return null;
 }
 
 /**

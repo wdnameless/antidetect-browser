@@ -204,70 +204,74 @@ export function Extensions() {
                 }
               />
             ) : (
-              extensions.map((e) => (
-                <tr key={e.extension_id}>
-                  <td>
-                    <strong style={{ fontSize: 13.5 }}>{e.name}</strong>
-                  </td>
-                  <td>
-                    <span className="proxy-type-badge">{e.version || '1.0.0'}</span>
-                  </td>
-                  <td>
+            extensions.map((e) => (
+              <tr key={e.extension_id} className="row-dense">
+                <td>
+                  <div className="row-dense__lead">
+                    <strong style={{ fontSize: 13.5, color: 'var(--text)' }}>{e.name}</strong>
+                  </div>
+                </td>
+                <td>
+                  <span className="proxy-type-badge">{e.version || '1.0.0'}</span>
+                </td>
+                <td>
+                  <div className="row-dense__meta">
                     <code style={{ fontSize: 12, color: 'var(--text-muted)' }}>{e.path}</code>
-                  </td>
-                  <td>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6 }}>
-                      {bindTarget?.extId === e.extension_id ? (
-                        <div style={{ display: 'flex', gap: 6 }}>
-                          <select
-                            className="select-input"
-                            value={bindTarget.profileId}
-                            onChange={(evt) =>
-                              setBindTarget({ extId: e.extension_id, profileId: evt.target.value })
-                            }
-                          >
-                            <option value="">Select Profile</option>
-                            {profiles.map((p) => (
-                              <option key={p.user_id} value={p.user_id}>
-                                {p.name || p.user_id}
-                              </option>
-                            ))}
-                          </select>
-                          <button
-                            className="btn primary"
-                            onClick={() => void bind()}
-                            disabled={busy || !bindTarget.profileId}
-                          >
-                            Save
-                          </button>
-                          <button className="btn" onClick={() => setBindTarget(null)}>
-                            Cancel
-                          </button>
-                        </div>
-                      ) : (
-                        <>
-                          <button
-                            className="btn"
-                            onClick={() => setBindTarget({ extId: e.extension_id, profileId: '' })}
-                            title="Расширение будет загружаться в этом профиле / The extension loads in this profile"
-                          >
-                            {t('Bind to Profile')}
-                          </button>
-                          <button
-                            className="btn-icon"
-                            style={{ color: 'var(--danger)' }}
-                            onClick={() => void remove(e.extension_id)}
-                            disabled={busy}
-                            title="Delete Extension"
-                          >
-                            <TrashIcon size={14} />
-                          </button>
-                        </>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              ))
+                  </div>
+                </td>
+                <td>
+                  <div className="row-dense__actions" style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6 }}>
+                    {bindTarget?.extId === e.extension_id ? (
+                      <div style={{ display: 'flex', gap: 6 }}>
+                        <select
+                          className="select-input"
+                          value={bindTarget.profileId}
+                          onChange={(evt) =>
+                            setBindTarget({ extId: e.extension_id, profileId: evt.target.value })
+                          }
+                        >
+                          <option value="">Select Profile</option>
+                          {profiles.map((p) => (
+                            <option key={p.user_id} value={p.user_id}>
+                              {p.name || p.user_id}
+                            </option>
+                          ))}
+                        </select>
+                        <button
+                          className="btn primary"
+                          onClick={() => void bind()}
+                          disabled={busy || !bindTarget.profileId}
+                        >
+                          Save
+                        </button>
+                        <button className="btn" onClick={() => setBindTarget(null)}>
+                          Cancel
+                        </button>
+                      </div>
+                    ) : (
+                      <>
+                        <button
+                          className="btn"
+                          onClick={() => setBindTarget({ extId: e.extension_id, profileId: '' })}
+                          title="Расширение будет загружаться в этом профиле / The extension loads in this profile"
+                        >
+                          {t('Bind to Profile')}
+                        </button>
+                        <button
+                          className="btn-icon"
+                          style={{ color: 'var(--danger)' }}
+                          onClick={() => void remove(e.extension_id)}
+                          disabled={busy}
+                          title="Delete Extension"
+                        >
+                          <TrashIcon size={14} />
+                        </button>
+                      </>
+                    )}
+                  </div>
+                </td>
+              </tr>
+            ))
             )}
           </tbody>
         </table>

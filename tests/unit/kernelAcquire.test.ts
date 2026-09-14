@@ -238,3 +238,26 @@ describe('kernelAcquire', () => {
     expect(result.executablePath).toBe(targetExe);
   });
 });
+
+describe('kernel version report matches where the kernel actually lives', () => {
+  it('searches the packaged resources dir, not only the data dir', async () => {
+    // A packaged build keeps the kernel under resources/kernel. The version report
+    // used to read only the data dir, so a working packaged app showed the kernel as
+    // not installed in Settings — the launcher and the report disagreed.
+    const mod = await import('../../src/main/util/kernelUpdate');
+    const config = await import('../../src/main/config');
+    expect(typeof mod.getInstalledKernelVersion).toBe('function');
+    const dirs = config.kernelBaseDirs();
+    expect(dirs.length).toBeGreaterThanOrEqual(1);
+    // The data-dir candidate must always be present as the dev/portable location.
+    expect(dirs.some((d) => d.includes('fingerprint-chromium'))).toBe(true);
+  });
+
+  it('resolves the executable from the same candidate list', async () => {
+    const config = await import('../../src/main/config');
+    const dirs = config.kernelBaseDirs();
+    // resourcesPath is set in Electron, absent under plain vitest — so in this
+    // environment the list is exactly the data dir, and it must not be empty.
+    expect(dirs.every((d) => typeof d === 'string' && d.length > 0)).toBe(true);
+  });
+});

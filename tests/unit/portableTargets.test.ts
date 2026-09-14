@@ -136,3 +136,44 @@ describe('electron-builder config is schema-valid', () => {
     expect(offenders, 'comments are not valid inside `build` — move them beside it').toEqual([]);
   });
 });
+
+describe('packaged build carries its browser kernel', () => {
+  const root = path.resolve(__dirname, '../..');
+  const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
+
+  it('ships fingerprint-chromium where config.ts looks for it', () => {
+    // config.ts scans <resourcesPath>/kernel/fingerprint-chromium for chrome.exe.
+    // The rebrand commit dropped this entry while the lookup kept pointing at it, so
+    // the packaged app silently fell back to system Chrome — which is not a
+    // fingerprint-spoofing browser at all, just Chrome under a different name.
+    const entry = pkg.build.extraResources.find(
+      (e: { to?: string }) => e.to === 'kernel/fingerprint-chromium',
+    );
+    expect(entry).toBeDefined();
+    expect(entry.from).toBe('data/chromium/fingerprint-chromium');
+  });
+
+  it('looks for the kernel at exactly that packaged path', () => {
+    // Guards the pair: if the lookup path in config.ts changes, this fails and forces
+    // the extraResources entry to move with it.
+    const config = fs.readFileSync(path.join(root, 'src/main/config.ts'), 'utf8');
+    expect(config).toContain("'kernel'");
+    expect(config).toContain('fingerprint-chromium');
+  });
+});
+
+describe('every platform build prepares the kernel first', () => {
+  const root = path.resolve(__dirname, '../..');
+  const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
+
+  for (const target of ['win', 'linux', 'mac']) {
+    it(`dist:${target} triggers its predist hook`, () => {
+      // npm fires `pre<name>` only for the exact script name. `dist` had a predist
+      // hook, but dist:win/linux/mac are different names — so nothing fetched the
+      // kernel before packaging, and data/ is gitignored. A fresh clone therefore
+      // built an app with no browser kernel and silently used system Chrome.
+      expect(pkg.scripts[`predist:${target}`]).toBeDefined();
+      expect(pkg.scripts[`predist:${target}`]).toContain('ensure-kernel');
+    });
+  }
+});
