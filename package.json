@@ -4,7 +4,8 @@
   "private": true,
   "description": "NullTrace — zero footprint, infinite scale. Personal antidetect browser with an AdsPower-compatible Local API.",
   "workspaces": [
-    "packages/*"
+    "packages/*",
+    "mcp"
   ],
   "main": "dist/electron/main.js",
   "engines": {
