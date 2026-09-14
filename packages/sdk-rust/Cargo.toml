@@ -1,0 +1,12 @@
+[package]
+name = "nulltrace-sdk"
+version = "0.1.0"
+edition = "2021"
+description = "NullTrace standalone SDK — profile control and CDP endpoint over the patched Chromium engine"
+license = "MIT"
+
+[dependencies]
+sha2 = "0.10"
+hex = "0.4"
+
+[dev-dependencies]

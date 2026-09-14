@@ -5,12 +5,13 @@ import {
   FlowDocument,
   FlowNodeType,
   FlowValidationError,
-  FlowNodeSchema,
   CanvasNodeState,
   CanvasEdgeState,
 } from '../../../main/flows/types';
-import { validateFlow } from '../../../main/flows/validator';
-import { getApiBase } from '../api';
+import { validateFlow } from '../flowValidator';
+import { getApiBase, api } from '../api';
+import { mapCapturedAction, CaptureRecord, TypingCoalescer } from '../../../main/recorder/actionMap';
+import { useI18n } from '../i18n';
 import {
   parseSseLine,
   extractScreenshotRef,
@@ -18,7 +19,11 @@ import {
   reduceLogLines,
   shouldAutoScroll,
   SseLogEntry,
+  FleetRunState,
+  FleetRunEvent,
+  reduceFleetRunState,
 } from '../flowLiveRun';
+import { FleetPanel, LogLineList } from '../components/FleetPanel';
 
 export type { CanvasNodeState, CanvasEdgeState };
 export interface NodePaletteItem {
@@ -148,6 +153,17 @@ const INITIAL_EDGES: CanvasEdgeState[] = [
   { id: 'e2', source: 'node-click', target: 'node-check', branch: 'default' },
 ];
 
+const pickerButtonStyle: React.CSSProperties = {
+  background: 'var(--surface-2)',
+  border: '1px solid var(--border)',
+  color: 'var(--text)',
+  fontSize: 12,
+  padding: '6px 10px',
+  borderRadius: 6,
+  cursor: 'pointer',
+  textAlign: 'left',
+};
+
 export function FlowCanvas() {
   const [nodes, setNodes] = useState<CanvasNodeState[]>(INITIAL_NODES);
   const [edges, setEdges] = useState<CanvasEdgeState[]>(INITIAL_EDGES);
@@ -169,8 +185,63 @@ export function FlowCanvas() {
   const [nodeTimings, setNodeTimings] = useState<Record<string, number>>({});
   const [isScrolledUp, setIsScrolledUp] = useState<boolean>(false);
 
+  // Fleet run view: multi-profile run scope + per-profile progress/logs.
+  const [selectedProfileIds, setSelectedProfileIds] = useState<string[]>([]);
+  const [concurrency, setConcurrency] = useState<number>(1);
+  const [showFleetPanel, setShowFleetPanel] = useState<boolean>(false);
+  const [selectedFleetTaskUuid, setSelectedFleetTaskUuid] = useState<string | null>(null);
+  const [fleetState, setFleetState] = useState<FleetRunState | null>(null);
+  // Dispatch folds through the pure reducer; resetting re-seeds from `null`,
+  // which the reducer treats as a fresh run (see reduceFleetRunState).
+  const dispatchFleet = useCallback(
+    (ev: FleetRunEvent) => setFleetState(prev => reduceFleetRunState(prev, ev)),
+    []
+  );
+  const resetFleetRun = useCallback(() => setFleetState(null), []);
+  const [fleetRunError, setFleetRunError] = useState<string | null>(null);
+
+  // Display names for fleet rows (profile_id -> human name, fallback id).
+  const profileNames = useMemo(() => {
+    const map: Record<string, string> = {};
+    for (const p of profiles) {
+      if (p.name) map[p.user_id] = p.name;
+    }
+    return map;
+  }, [profiles]);
+
+  // Flow recorder state (Wave 2b)
+  const [isRecording, setIsRecording] = useState<boolean>(false);
+  const [recorderHuman, setRecorderHuman] = useState<boolean>(false);
+  const [recorderError, setRecorderError] = useState<string | null>(null);
+  const recorderSocketRef = useRef<WebSocket | null>(null);
+  const recorderCoalescerRef = useRef<TypingCoalescer | null>(null);
+  const recorderNowRef = useRef<number>(0);
+  // Element action picker (independent of recording)
+  const [pickerOpen, setPickerOpen] = useState<boolean>(false);
+  const [pickerElement, setPickerElement] = useState<{ selector: string | null; tag?: string; id?: string | null } | null>(null);
+  const pickerSocketRef = useRef<WebSocket | null>(null);
+
+  const { t } = useI18n();
+
   const logsContainerRef = useRef<HTMLDivElement>(null);
   const eventSourceRef = useRef<EventSource | null>(null);
+  const fleetEventSourcesRef = useRef<Map<string, EventSource>>(new Map());
+  const stoppedFleetRef = useRef<boolean>(false);
+
+  // Clean up recorder + picker sockets on unmount
+  useEffect(() => {
+    return () => {
+      if (recorderSocketRef.current) {
+        recorderSocketRef.current.close();
+        recorderSocketRef.current = null;
+      }
+      if (pickerSocketRef.current) {
+        pickerSocketRef.current.close();
+        pickerSocketRef.current = null;
+      }
+      setIsRecording(false);
+    };
+  }, []);
 
   // Load profiles for run picker
   useEffect(() => {
@@ -352,6 +423,170 @@ export function FlowCanvas() {
     }
   };
 
+  // ------------------------------------------------------------------
+  // Fleet run view: N task streams folded through reduceFleetRunState.
+  // ------------------------------------------------------------------
+
+  // Stream one task's logs into the fleet reducer. Reuses the canonical
+  // SSE parsing (parseSseLine) — same contract as the single-profile run.
+  const fleetConnectTaskLogs = useCallback(
+    (taskUuid: string) => {
+      const existing = fleetEventSourcesRef.current.get(taskUuid);
+      if (existing) existing.close();
+      const sseUrl = `${getApiBase()}/api/tasks/${encodeURIComponent(taskUuid)}/logs?stream=true`;
+      const es = new EventSource(sseUrl);
+      fleetEventSourcesRef.current.set(taskUuid, es);
+
+      const close = () => {
+        es.close();
+        fleetEventSourcesRef.current.delete(taskUuid);
+      };
+
+      es.onmessage = (e) => {
+        try {
+          dispatchFleet({ kind: 'payload', taskUuid, payload: String(e.data) });
+          if (!selectedFleetTaskUuid) setSelectedFleetTaskUuid(taskUuid);
+        } catch {
+          // ignore parse error — reducer drops unknown payloads
+        }
+      };
+      es.onerror = () => {
+        close();
+        // Marking the affected profile terminal keeps the run from hanging
+        // forever on a dropped stream; other streams keep updating.
+        dispatchFleet({ kind: 'payload', taskUuid, payload: JSON.stringify({ event: 'end', status: 'error', error: 'log stream closed' }) });
+      };
+    },
+    [selectedFleetTaskUuid]
+  );
+
+  // Stop the whole fleet run through the existing task-group stop endpoint.
+  // The backend marks waiting tasks 'stop' and terminates running workers;
+  // locally we flip queued/working rows to stopped so queued profiles never
+  // start afterwards (the reducer's sticky stopped status also guards them
+  // against late payloads arriving after this point).
+  const handleStopFleetRun = useCallback(async () => {
+    if (!activeTaskGroupId) return;
+    stoppedFleetRef.current = true;
+    dispatchFleet({ kind: 'stopAll' });
+    for (const es of fleetEventSourcesRef.current.values()) es.close();
+    fleetEventSourcesRef.current.clear();
+    try {
+      await api.taskGroupStop(activeTaskGroupId);
+    } catch {
+      // Backend stop is best-effort from the UI's perspective: local state
+      // already reflects a stopped run.
+    }
+  }, [activeTaskGroupId]);
+
+  // Close all fleet streams on unmount.
+  useEffect(() => {
+    return () => {
+      for (const es of fleetEventSourcesRef.current.values()) es.close();
+      fleetEventSourcesRef.current.clear();
+    };
+  }, []);
+
+  // Fleet run handler: multi-profile run scope with a concurrency limit.
+  const handleRunFleet = async () => {
+    if (isRunning) return;
+    if (fleetState?.profiles.some(p => p.status === 'queued' || p.status === 'working')) return;
+
+    const targetProfiles =
+      selectedProfileIds.length > 0
+        ? selectedProfileIds
+        : [selectedProfileId || profiles[0]?.user_id || 'default'];
+
+    setFleetRunError(null);
+    setShowLiveRun(true);
+    setShowFleetPanel(true);
+    setSelectedFleetTaskUuid(null);
+    setIsRunning(true);
+    setRunStatus('running');
+    setRunLogs([]);
+    setNodeTimings({});
+    setIsScrolledUp(false);
+    // Fresh run: drop the previous run's fleet state entirely.
+    resetFleetRun();
+    stoppedFleetRef.current = false;
+
+    const flowPayload = {
+      name: flowName,
+      nodes: nodes.map(n => ({
+        ...n.config,
+        id: n.id,
+        type: n.type,
+        name: n.name,
+        timeoutMs: n.timeoutMs,
+        retryCount: n.retryCount,
+      })),
+      edges,
+      entryNodeId,
+    };
+
+    try {
+      // 1. Create or save the flow document (same as the single-profile path).
+      const saveRes = await fetch(`${getApiBase()}/api/flows`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(flowPayload),
+      });
+      let flowId = 'canvas-flow';
+      if (saveRes.ok) {
+        const saveJson = await saveRes.json();
+        flowId = saveJson?.data?.id || saveJson?.id || flowId;
+      }
+
+      // 2. Trigger the run with the chosen profile set + concurrency.
+      const runRes = await fetch(`${getApiBase()}/api/flows/${encodeURIComponent(flowId)}/run`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          profile_ids: targetProfiles,
+          concurrency,
+        }),
+      });
+      if (!runRes.ok) {
+        const errJson = await runRes.json().catch(() => ({}));
+        throw new Error(errJson?.msg || errJson?.error || `Run failed with HTTP ${runRes.status}`);
+      }
+      const runJson = await runRes.json();
+      const taskGroupId = runJson?.data?.taskGroupId || runJson?.taskGroupId;
+      setActiveTaskGroupId(taskGroupId);
+
+      // 3. Fetch the group's tasks to init each per-profile row (in backend
+      // dispatch order) and open one SSE stream per task.
+      const groupRes = await api.taskGroupTasks(taskGroupId);
+      const tasks = groupRes.data?.list ?? [];
+      const cap = runJson?.data?.group?.active_session_cap ?? concurrency;
+      const flowNodeCount = nodes.length;
+      for (const es of fleetEventSourcesRef.current.values()) es.close();
+      fleetEventSourcesRef.current.clear();
+      tasks.forEach((task, idx) => {
+        dispatchFleet({
+          kind: 'init',
+          taskUuid: task.uuid,
+          profileId: task.profile_id,
+          totalNodes: flowNodeCount,
+          activeSessionCap: cap,
+          slotIndex: idx,
+          snapshotStatus: task.status,
+        });
+      });
+      // Select the first profile's log stream by default.
+      if (tasks[0]?.uuid && !selectedFleetTaskUuid) setSelectedFleetTaskUuid(tasks[0].uuid);
+      for (const task of tasks) {
+        if (stoppedFleetRef.current) break;
+        fleetConnectTaskLogs(task.uuid);
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setFleetRunError(msg);
+      setRunStatus('error');
+      setIsRunning(false);
+    }
+  };
+
   // Dragging state for nodes
   const [draggingNodeId, setDraggingNodeId] = useState<string | null>(null);
   const [dragOffset, setDragOffset] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
@@ -521,6 +756,215 @@ export function FlowCanvas() {
     if (nodes.length === 0) setEntryNodeId(id);
   };
 
+  // ------------------------------------------------------------------
+  // Flow recorder (Wave 2b): capture -> node through the SAME addNode path
+  // ------------------------------------------------------------------
+
+  // Append a recorded (or picker-chosen) node exactly like a hand-made one.
+  const appendMappedNode = useCallback((flowNode: FlowNode) => {
+    const node = flowNode as FlowNode & { id: string };
+    const nodeType = node.type as FlowNodeType;
+    const paletteItem = NODE_PALETTE.find(p => p.type === nodeType);
+    setNodes(prev => {
+      // The flow node already carries the palette-shaped config; split it
+      // back into CanvasNodeState (id/type/name live outside config).
+      const config = { ...(node as unknown as Record<string, unknown>) };
+      delete config.id;
+      delete config.type;
+      delete config.name;
+      const currentMaxX = prev.reduce((max, n) => Math.max(max, n.x), 40);
+      const canvasNode: CanvasNodeState = {
+        id: node.id,
+        type: nodeType,
+        name: node.name || paletteItem?.label || nodeType,
+        x: currentMaxX + 220,
+        y: 120 + ((prev.length % 3) * 60),
+        config,
+      };
+      return [...prev, canvasNode];
+    });
+    setSelectedNodeId(node.id);
+    setSelectedEdgeId(null);
+    setEntryNodeId(prev => (prev ? prev : node.id));
+  }, []);
+
+  // Close any open recorder/picker socket (drops its in-page listeners).
+  const disposeRecorderSocket = useCallback(() => {
+    if (recorderSocketRef.current) {
+      recorderSocketRef.current.close();
+      recorderSocketRef.current = null;
+    }
+  }, []);
+
+  const handleRecorderEvent = useCallback(
+    (ev: MessageEvent) => {
+      let frame: { type?: string; message?: string; record?: CaptureRecord; pick?: { selector: string | null; tag?: string; id?: string | null } };
+      try {
+        frame = JSON.parse(String(ev.data)) as { type?: string; message?: string; record?: CaptureRecord; pick?: { selector: string | null; tag?: string; id?: string | null } };
+      } catch {
+        return;
+      }
+      if (frame.type === 'record' && frame.record) {
+        if (!recorderCoalescerRef.current) return;
+        const now = ++recorderNowRef.current;
+        const burst = recorderCoalescerRef.current.push(frame.record, now);
+        for (const rec of burst) {
+          const node = mapCapturedAction(rec, { human: recorderHuman });
+          if (node) appendMappedNode(node);
+        }
+        return;
+      }
+      if (frame.type === 'picked' && frame.pick) {
+        setPickerElement(frame.pick);
+        setPickerOpen(true);
+        // Picker served its purpose: flip back to inert so browsing is not captured.
+        if (recorderSocketRef.current && recorderSocketRef.current.readyState === WebSocket.OPEN) {
+          recorderSocketRef.current.send(JSON.stringify({ type: 'mode', mode: 'off' }));
+        }
+      }
+      if (frame.type === 'recording_started') setRecorderError(null);
+      if (frame.type === 'recording_stopped') {
+        if (recorderCoalescerRef.current) {
+          for (const rec of recorderCoalescerRef.current.flush()) {
+            const node = mapCapturedAction(rec, { human: recorderHuman });
+            if (node) appendMappedNode(node);
+          }
+        }
+      }
+      if (frame.type === 'error' && typeof frame.message === 'string') {
+        setRecorderError(frame.message);
+        setIsRecording(false);
+      }
+    },
+    [appendMappedNode, recorderHuman]
+  );
+
+  /** Open the recorder bridge WS for a profile (used by both surfaces). */
+  const openRecorderSocket = useCallback(
+    (profileId: string, onEvent: (ev: MessageEvent) => void, onOpen: (ws: WebSocket) => void) => {
+      try {
+        const ws = new WebSocket(api.recorderWsUrl(profileId));
+        ws.onmessage = onEvent;
+        ws.onopen = () => onOpen(ws);
+        ws.onerror = () => setRecorderError(t('Recorder connection failed'));
+        return ws;
+      } catch (err) {
+        setRecorderError(t('Recorder connection failed'));
+        return null;
+      }
+    },
+    [t]
+  );
+
+  const handleStartRecording = () => {
+    if (isRecording) return;
+    const profileId = selectedProfileId || profiles[0]?.user_id;
+    if (!profileId) return;
+    disposeRecorderSocket();
+    recorderCoalescerRef.current = new TypingCoalescer(250);
+    recorderNowRef.current = 0;
+    const ws = openRecorderSocket(
+      profileId,
+      handleRecorderEvent,
+      (socket) => {
+        socket.send(JSON.stringify({ type: 'start', human: recorderHuman }));
+        setIsRecording(true);
+      }
+    );
+    recorderSocketRef.current = ws;
+  };
+
+  const handleStopRecording = () => {
+    if (recorderSocketRef.current && recorderSocketRef.current.readyState === WebSocket.OPEN) {
+      recorderSocketRef.current.send(JSON.stringify({ type: 'stop' }));
+      // Flush any pending burst locally as well, so a burst interrupted by
+      // stop is still materialised as ONE node.
+      if (recorderCoalescerRef.current) {
+        for (const rec of recorderCoalescerRef.current.flush()) {
+          const node = mapCapturedAction(rec, { human: recorderHuman });
+          if (node) appendMappedNode(node);
+        }
+      }
+    }
+    disposeRecorderSocket();
+    setIsRecording(false);
+    recorderCoalescerRef.current = null;
+  };
+
+  // Element action picker (independent of recording)
+  const openPicker = () => {
+    if (isRecording) return; // the bridge is single-session — one surface at a time
+    const profileId = selectedProfileId || profiles[0]?.user_id;
+    if (!profileId) return;
+    if (pickerElement) setPickerElement(null);
+    pickerSocketRef.current?.close();
+    const ws = openRecorderSocket(
+      profileId,
+      (ev) => {
+        let frame: { type?: string; pick?: { selector: string | null; tag?: string; id?: string | null } };
+        try {
+          frame = JSON.parse(String(ev.data)) as { type?: string; pick?: { selector: string | null; tag?: string; id?: string | null } };
+        } catch {
+          return;
+        }
+        if (frame.type === 'picked' && frame.pick) {
+          setPickerElement(frame.pick);
+          setPickerOpen(true);
+        }
+      },
+      (socket) => {
+        socket.send(JSON.stringify({ type: 'mode', mode: 'picker' }));
+        setPickerOpen(true);
+      }
+    );
+    pickerSocketRef.current = ws;
+  };
+
+  const closePicker = () => {
+    if (pickerSocketRef.current) {
+      pickerSocketRef.current.close();
+      pickerSocketRef.current = null;
+    }
+    setPickerOpen(false);
+    setPickerElement(null);
+  };
+
+  const handlePickedAction = (action: 'click' | 'human_click' | 'type' | 'human_type' | 'wait' | 'extract') => {
+    if (!pickerElement?.selector) return;
+    const selector = pickerElement.selector;
+    const record: CaptureRecord = { kind: 'click', selector };
+    let node: FlowNode | null = null;
+    switch (action) {
+      case 'human_click':
+        node = mapCapturedAction({ kind: 'click', selector }, { human: true });
+        break;
+      case 'type':
+        node = mapCapturedAction({ kind: 'type', selector, text: '' }, {});
+        break;
+      case 'human_type':
+        node = mapCapturedAction({ kind: 'type', selector, text: '' }, { human: true });
+        break;
+      case 'wait':
+        node = mapCapturedAction({ kind: 'wait', selector, waitType: 'selector' });
+        break;
+      case 'extract':
+        node = {
+          type: 'extract',
+          id: `node-extract-${Date.now().toString().slice(-4)}`,
+          name: 'Extract Data',
+          selector,
+          variable: 'value',
+        };
+        break;
+      case 'click':
+      default:
+        node = mapCapturedAction(record, {});
+        break;
+    }
+    if (node) appendMappedNode(node);
+    closePicker();
+  };
+
   // Node Dragging Start
   const handleNodeMouseDown = (e: React.MouseEvent, node: CanvasNodeState) => {
     e.stopPropagation();
@@ -644,8 +1088,8 @@ export function FlowCanvas() {
         width: '100%',
         height: '100%',
         position: 'relative',
-        background: '#09090b',
-        color: '#fafafa',
+        background: 'var(--bg-app)',
+        color: 'var(--text)',
         overflow: 'hidden',
         userSelect: 'none',
       }}
@@ -658,20 +1102,20 @@ export function FlowCanvas() {
         data-testid="node-palette"
         style={{
           width: 260,
-          borderRight: '1px solid rgba(255,255,255,0.08)',
-          background: '#0c0c0e',
+          borderRight: '1px solid var(--border)',
+          background: 'var(--panel)',
           display: 'flex',
           flexDirection: 'column',
           zIndex: 10,
           flexShrink: 0,
         }}
       >
-        <div style={{ padding: '16px 14px 12px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+        <div style={{ padding: '16px 14px 12px', borderBottom: '1px solid var(--divider)' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-            <span style={{ fontSize: 13, fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', color: '#a1a1aa' }}>
+            <span style={{ fontSize: 13, fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--text-secondary)' }}>
               Nodes Palette
             </span>
-            <span style={{ fontSize: 11, background: 'rgba(255,255,255,0.08)', padding: '2px 6px', borderRadius: 4, color: '#d4d4d8' }}>
+            <span style={{ fontSize: 11, background: 'var(--control-bg-hover)', padding: '2px 6px', borderRadius: 'var(--radius-sm)', color: 'var(--text-secondary)' }}>
               {NODE_PALETTE.length}
             </span>
           </div>
@@ -685,10 +1129,10 @@ export function FlowCanvas() {
               width: '100%',
               padding: '6px 10px',
               fontSize: 12,
-              background: '#141416',
-              border: '1px solid rgba(255,255,255,0.1)',
+              background: 'var(--surface-2)',
+              border: '1px solid var(--border)',
               borderRadius: 6,
-              color: '#fafafa',
+              color: 'var(--text)',
               outline: 'none',
             }}
           />
@@ -705,8 +1149,8 @@ export function FlowCanvas() {
               style={{
                 padding: '10px 12px',
                 borderRadius: 8,
-                background: '#141416',
-                border: '1px solid rgba(255,255,255,0.07)',
+                background: 'var(--surface-2)',
+                border: '1px solid var(--border)',
                 cursor: 'grab',
                 transition: 'all 0.15s ease',
                 display: 'flex',
@@ -714,19 +1158,19 @@ export function FlowCanvas() {
                 gap: 3,
               }}
               onMouseEnter={e => {
-                (e.currentTarget as HTMLElement).style.borderColor = 'rgba(255,255,255,0.25)';
-                (e.currentTarget as HTMLElement).style.background = '#1a1a1e';
+                (e.currentTarget as HTMLElement).style.borderColor = 'var(--border-focus)';
+                (e.currentTarget as HTMLElement).style.background = 'var(--surface-3)';
               }}
               onMouseLeave={e => {
-                (e.currentTarget as HTMLElement).style.borderColor = 'rgba(255,255,255,0.07)';
-                (e.currentTarget as HTMLElement).style.background = '#141416';
+                (e.currentTarget as HTMLElement).style.borderColor = 'var(--border)';
+                (e.currentTarget as HTMLElement).style.background = 'var(--surface-2)';
               }}
             >
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <span style={{ fontSize: 13, fontWeight: 600, color: '#f4f4f5' }}>{item.label}</span>
-                <span style={{ fontSize: 10, color: '#71717a', textTransform: 'uppercase', fontWeight: 600 }}>{item.category}</span>
+                <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>{item.label}</span>
+                <span style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600 }}>{item.category}</span>
               </div>
-              <span style={{ fontSize: 11, color: '#a1a1aa', lineHeight: 1.3 }}>{item.description}</span>
+              <span style={{ fontSize: 11, color: 'var(--text-secondary)', lineHeight: 1.3 }}>{item.description}</span>
             </div>
           ))}
         </div>
@@ -736,8 +1180,8 @@ export function FlowCanvas() {
           data-testid="palette-validation-summary"
           style={{
             padding: '12px 14px',
-            borderTop: '1px solid rgba(255,255,255,0.06)',
-            background: validation.valid ? 'rgba(34, 197, 94, 0.06)' : 'rgba(239, 68, 68, 0.08)',
+            borderTop: '1px solid var(--divider)',
+            background: validation.valid ? 'var(--control-bg)' : 'var(--control-bg-active)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
@@ -749,11 +1193,11 @@ export function FlowCanvas() {
                 width: 8,
                 height: 8,
                 borderRadius: '50%',
-                background: validation.valid ? '#22c55e' : '#ef4444',
-                boxShadow: validation.valid ? '0 0 8px #22c55e' : '0 0 8px #ef4444',
+                background: validation.valid ? 'var(--ok)' : 'var(--text-muted)',
+                boxShadow: validation.valid ? 'var(--shadow-sm)' : 'none',
               }}
             />
-            <span style={{ fontSize: 12, fontWeight: 600, color: validation.valid ? '#86efac' : '#fca5a5' }}>
+            <span style={{ fontSize: 12, fontWeight: 600, color: validation.valid ? 'var(--text)' : 'var(--text-secondary)' }}>
               {validation.valid ? 'Flow Valid' : `${validation.errors.length} Issue(s)`}
             </span>
           </div>
@@ -765,7 +1209,7 @@ export function FlowCanvas() {
               padding: '2px 6px',
               borderRadius: 4,
               background: 'rgba(255,255,255,0.1)',
-              color: '#d4d4d8',
+              color: 'var(--text-secondary)',
               border: 'none',
             }}
           >
@@ -788,7 +1232,7 @@ export function FlowCanvas() {
           overflow: 'hidden',
           cursor: isPanning ? 'grabbing' : 'default',
           backgroundImage:
-            'radial-gradient(circle, rgba(255,255,255,0.07) 1px, transparent 1px)',
+            'radial-gradient(circle, var(--divider) 1px, transparent 1px)',
           backgroundSize: '24px 24px',
           backgroundPosition: `${pan.x}px ${pan.y}px`,
         }}
@@ -803,9 +1247,9 @@ export function FlowCanvas() {
             display: 'flex',
             alignItems: 'center',
             gap: 8,
-            background: 'rgba(18, 18, 20, 0.85)',
+            background: 'var(--panel)',
             backdropFilter: 'blur(12px)',
-            border: '1px solid rgba(255,255,255,0.1)',
+            border: '1px solid var(--border)',
             borderRadius: 8,
             padding: '6px 12px',
           }}
@@ -818,15 +1262,15 @@ export function FlowCanvas() {
             style={{
               background: 'transparent',
               border: 'none',
-              color: '#fafafa',
+              color: 'var(--text)',
               fontSize: 13,
               fontWeight: 600,
               outline: 'none',
               width: 180,
             }}
           />
-          <div style={{ width: 1, height: 16, background: 'rgba(255,255,255,0.12)' }} />
-          <span style={{ fontSize: 11, color: '#a1a1aa' }}>
+          <div style={{ width: 1, height: 16, background: 'var(--divider)' }} />
+          <span style={{ fontSize: 11, color: 'var(--text-secondary)' }}>
             {nodes.length} nodes, {edges.length} edges
           </span>
           <button
@@ -835,7 +1279,7 @@ export function FlowCanvas() {
             style={{
               background: 'rgba(255,255,255,0.08)',
               border: 'none',
-              color: '#d4d4d8',
+              color: 'var(--text-secondary)',
               fontSize: 11,
               padding: '3px 8px',
               borderRadius: 4,
@@ -844,7 +1288,7 @@ export function FlowCanvas() {
           >
             Reset View
           </button>
-          <div style={{ width: 1, height: 16, background: 'rgba(255,255,255,0.12)' }} />
+          <div style={{ width: 1, height: 16, background: 'var(--divider)' }} />
           {/* Profile picker & Run action */}
           {profiles.length > 0 && (
             <select
@@ -852,8 +1296,8 @@ export function FlowCanvas() {
               value={selectedProfileId}
               onChange={e => setSelectedProfileId(e.target.value)}
               style={{
-                background: '#18181b',
-                color: '#e4e4e7',
+                background: 'var(--surface-2)',
+                color: 'var(--text)',
                 border: '1px solid rgba(255,255,255,0.12)',
                 borderRadius: 4,
                 fontSize: 11,
@@ -868,13 +1312,175 @@ export function FlowCanvas() {
               ))}
             </select>
           )}
+          {/* Multi-profile fleet scope: optional extra profiles + concurrency.
+              Leaving the multi-select empty defaults the fleet run to the
+              single-profile behaviour (one profile, concurrency 1). */}
+          {profiles.length > 0 && (
+            <select
+              multiple
+              size={1}
+              data-testid="fleet-profile-multi-select"
+              value={selectedProfileIds}
+              onChange={e => {
+                const picked = Array.from(e.target.selectedOptions).map(o => o.value);
+                setSelectedProfileIds(picked);
+              }}
+              title={t('Select profiles for a fleet run')}
+              style={{
+                background: 'var(--surface-2)',
+                color: 'var(--text)',
+                border: '1px solid rgba(255,255,255,0.12)',
+                borderRadius: 4,
+                fontSize: 11,
+                padding: '2px 4px',
+                outline: 'none',
+                minWidth: 24,
+                maxWidth: 160,
+              }}
+            >
+              {profiles.map(p => (
+                <option key={p.user_id} value={p.user_id}>
+                  {p.name || p.user_id}
+                </option>
+              ))}
+            </select>
+          )}
+          <label
+            data-testid="concurrency-label"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 4,
+              fontSize: 10,
+              color: 'var(--text-secondary)',
+            }}
+          >
+            {t('Concurrency')}
+            <input
+              type="number"
+              min={1}
+              max={5}
+              data-testid="fleet-concurrency-input"
+              value={concurrency}
+              onChange={e => setConcurrency(Math.max(1, parseInt(e.target.value, 10) || 1))}
+              style={{
+                width: 42,
+                background: 'var(--surface-2)',
+                color: 'var(--text)',
+                border: '1px solid rgba(255,255,255,0.12)',
+                borderRadius: 4,
+                fontSize: 11,
+                padding: '2px 4px',
+                outline: 'none',
+              }}
+            />
+          </label>
+          {/* Flow recorder controls (Wave 2b) */}
+          <label
+            data-testid="recorder-human-toggle"
+            title={t('Human input')}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 4,
+              fontSize: 10,
+              color: recorderHuman ? 'var(--text)' : 'var(--text-muted)',
+              cursor: 'pointer',
+            }}
+          >
+            <input
+              type="checkbox"
+              checked={recorderHuman}
+              onChange={e => setRecorderHuman(e.target.checked)}
+              style={{ cursor: 'pointer' }}
+            />
+            Human
+          </label>
+          {isRecording ? (
+            <button
+              data-testid="btn-stop-recording"
+              onClick={handleStopRecording}
+              style={{
+                background: 'var(--text)',
+                color: 'var(--bg-app)',
+                fontWeight: 700,
+                border: 'none',
+                fontSize: 11,
+                padding: '4px 10px',
+                borderRadius: 4,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 4,
+              }}
+            >
+              <span
+                data-testid="recording-indicator"
+                style={{
+                  width: 8,
+                  height: 8,
+                  borderRadius: '50%',
+                  background: 'var(--bg-app)',
+                  boxShadow: '0 0 6px var(--bg-app)',
+                }}
+              />
+              {t('Stop Recording')}
+            </button>
+          ) : (
+            <button
+              data-testid="btn-start-recording"
+              onClick={handleStartRecording}
+              style={{
+                background: 'var(--control-bg-active)',
+                border: '1px solid var(--border-focus)',
+                color: 'var(--text-secondary)',
+                fontWeight: 700,
+                fontSize: 11,
+                padding: '4px 10px',
+                borderRadius: 4,
+                cursor: 'pointer',
+              }}
+            >
+              ● {t('Record actions')}
+            </button>
+          )}
+          <button
+            data-testid="btn-element-picker"
+            onClick={openPicker}
+            disabled={isRecording}
+            title={t('Pick element')}
+            style={{
+              background: pickerOpen ? 'var(--control-bg-selected)' : 'var(--control-bg)',
+              border: pickerOpen ? '1px solid var(--border-focus)' : '1px solid var(--border)',
+              color: pickerOpen ? 'var(--text)' : 'var(--text-secondary)',
+              fontSize: 11,
+              padding: '4px 8px',
+              borderRadius: 4,
+              cursor: isRecording ? 'not-allowed' : 'pointer',
+              opacity: isRecording ? 0.5 : 1,
+            }}
+          >
+            {t('Pick element')}
+          </button>
+          {recorderError && (
+            <span
+              data-testid="recorder-error"
+              style={{
+                fontSize: 10,
+                color: 'var(--text)', background: 'var(--control-bg-active)',
+                padding: '2px 8px',
+                borderRadius: 4,
+              }}
+            >
+              {recorderError}
+            </span>
+          )}
           <button
             data-testid="btn-run-flow"
             onClick={handleRunFlow}
             disabled={isRunning}
             style={{
-              background: isRunning ? '#3f3f46' : '#22c55e',
-              color: '#09090b',
+              background: isRunning ? 'var(--control-bg-selected)' : 'var(--accent)', color: isRunning ? 'var(--text-secondary)' : 'var(--bg-app)',
               fontWeight: 700,
               border: 'none',
               fontSize: 11,
@@ -889,12 +1495,42 @@ export function FlowCanvas() {
             {isRunning ? 'Running...' : '▶ Run Flow'}
           </button>
           <button
+            data-testid="btn-run-fleet"
+            onClick={handleRunFleet}
+            disabled={isRunning || (fleetState?.profiles.some(p => p.status === 'queued' || p.status === 'working') ?? false)}
+            title={t('Run Fleet')}
+            style={{
+              background:
+                isRunning || (fleetState?.profiles.some(p => p.status === 'queued' || p.status === 'working') ?? false)
+                  ? 'var(--control-bg)'
+                  : 'var(--control-bg-active)',
+              color:
+                isRunning || (fleetState?.profiles.some(p => p.status === 'queued' || p.status === 'working') ?? false)
+                  ? 'var(--text-muted)'
+                  : 'var(--text)',
+              fontWeight: 700,
+              border: '1px solid var(--border)',
+              fontSize: 11,
+              padding: '4px 10px',
+              borderRadius: 4,
+              cursor:
+                isRunning || (fleetState?.profiles.some(p => p.status === 'queued' || p.status === 'working') ?? false)
+                  ? 'not-allowed'
+                  : 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 4,
+            }}
+          >
+            {t('Run Fleet')}
+          </button>
+          <button
             data-testid="btn-toggle-live-run"
             onClick={() => setShowLiveRun(v => !v)}
             style={{
-              background: showLiveRun ? 'rgba(59, 130, 246, 0.2)' : 'rgba(255,255,255,0.08)',
-              color: showLiveRun ? '#60a5fa' : '#d4d4d8',
-              border: showLiveRun ? '1px solid rgba(59, 130, 246, 0.4)' : 'none',
+              background: showLiveRun ? 'var(--control-bg-selected)' : 'var(--control-bg)',
+              color: showLiveRun ? 'var(--text)' : 'var(--text-secondary)',
+              border: showLiveRun ? '1px solid var(--border-focus)' : '1px solid var(--border)',
               fontSize: 11,
               padding: '4px 8px',
               borderRadius: 4,
@@ -928,7 +1564,7 @@ export function FlowCanvas() {
               markerHeight="6"
               orient="auto-start-reverse"
             >
-              <path d="M 0 1 L 10 5 L 0 9 z" fill="#a1a1aa" />
+              <path d="M 0 1 L 10 5 L 0 9 z" style={{ fill: 'var(--text-muted)' }} />
             </marker>
             <marker
               id="arrow-selected"
@@ -939,7 +1575,7 @@ export function FlowCanvas() {
               markerHeight="6"
               orient="auto-start-reverse"
             >
-              <path d="M 0 1 L 10 5 L 0 9 z" fill="#ffffff" />
+              <path d="M 0 1 L 10 5 L 0 9 z" style={{ fill: 'var(--text)' }} />
             </marker>
             <marker
               id="arrow-error"
@@ -950,7 +1586,7 @@ export function FlowCanvas() {
               markerHeight="6"
               orient="auto-start-reverse"
             >
-              <path d="M 0 1 L 10 5 L 0 9 z" fill="#ef4444" />
+              <path d="M 0 1 L 10 5 L 0 9 z" style={{ fill: 'var(--text-secondary)' }} />
             </marker>
           </defs>
 
@@ -992,13 +1628,16 @@ export function FlowCanvas() {
                   data-testid={`edge-${edge.id}`}
                   d={pathData}
                   fill="none"
-                  stroke={hasError ? '#ef4444' : isSelected ? '#ffffff' : '#71717a'}
+                  style={{
+                    stroke: hasError ? 'var(--text-secondary)' : isSelected ? 'var(--text)' : 'var(--text-muted)',
+                    cursor: 'pointer',
+                    transition: 'stroke 0.15s ease',
+                  }}
                   strokeWidth={isSelected ? 2.5 : 1.5}
                   strokeDasharray={edge.branch !== 'default' ? '4 3' : undefined}
                   markerEnd={
                     hasError ? 'url(#arrow-error)' : isSelected ? 'url(#arrow-selected)' : 'url(#arrow-default)'
                   }
-                  style={{ cursor: 'pointer', transition: 'stroke 0.15s ease' }}
                   onClick={e => {
                     e.stopPropagation();
                     setSelectedEdgeId(edge.id);
@@ -1010,10 +1649,8 @@ export function FlowCanvas() {
                   <text
                     x={(sx + tx) / 2}
                     y={(sy + ty) / 2 - 8}
-                    fill="#d4d4d8"
+                    style={{ fill: 'var(--text)', background: 'var(--panel)', padding: '2px 4px' }}
                     fontSize="10"
-                    textAnchor="middle"
-                    style={{ background: '#111', padding: '2px 4px' }}
                   >
                     {edge.branch}
                   </text>
@@ -1038,7 +1675,7 @@ export function FlowCanvas() {
                   data-testid="active-connecting-edge"
                   d={pathData}
                   fill="none"
-                  stroke="#3b82f6"
+                  style={{ stroke: 'var(--text-secondary)' }}
                   strokeWidth="2"
                   strokeDasharray="4 4"
                 />
@@ -1066,12 +1703,8 @@ export function FlowCanvas() {
                 top: node.y + pan.y,
                 width: 200,
                 borderRadius: 10,
-                background: isSelected ? '#18181b' : '#121214',
-                border: hasError
-                  ? '1.5px solid #ef4444'
-                  : isSelected
-                  ? '1.5px solid #ffffff'
-                  : '1px solid rgba(255,255,255,0.1)',
+                background: isSelected ? 'var(--surface-3)' : 'var(--surface-1)',
+                border: hasError ? '1.5px dashed var(--border-focus)' : isSelected ? '1.5px solid var(--text)' : '1px solid var(--border)',
                 boxShadow: isSelected
                   ? '0 8px 24px rgba(0,0,0,0.7), 0 0 0 1px rgba(255,255,255,0.2)'
                   : '0 4px 14px rgba(0,0,0,0.5)',
@@ -1092,19 +1725,19 @@ export function FlowCanvas() {
                   width: 14,
                   height: 14,
                   borderRadius: '50%',
-                  background: '#09090b',
-                  border: '2px solid #a1a1aa',
+                  background: 'var(--bg-app)',
+                  border: '2px solid var(--text-muted)',
                   cursor: 'pointer',
                   zIndex: 20,
                   transition: 'transform 0.15s ease, border-color 0.15s ease',
                 }}
                 onMouseEnter={e => {
                   (e.currentTarget as HTMLElement).style.transform = 'scale(1.25)';
-                  (e.currentTarget as HTMLElement).style.borderColor = '#ffffff';
+                  (e.currentTarget as HTMLElement).style.borderColor = 'var(--text)';
                 }}
                 onMouseLeave={e => {
                   (e.currentTarget as HTMLElement).style.transform = 'scale(1)';
-                  (e.currentTarget as HTMLElement).style.borderColor = '#a1a1aa';
+                  (e.currentTarget as HTMLElement).style.borderColor = 'var(--text-muted)';
                 }}
               />
 
@@ -1112,7 +1745,7 @@ export function FlowCanvas() {
               <div
                 style={{
                   padding: '10px 12px 8px',
-                  borderBottom: '1px solid rgba(255,255,255,0.06)',
+                  borderBottom: '1px solid var(--divider)',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'space-between',
@@ -1125,7 +1758,7 @@ export function FlowCanvas() {
                       style={{
                         fontSize: 9,
                         background: 'rgba(255,255,255,0.12)',
-                        color: '#fafafa',
+                        color: 'var(--text)',
                         fontWeight: 700,
                         padding: '1px 5px',
                         borderRadius: 3,
@@ -1135,7 +1768,7 @@ export function FlowCanvas() {
                       Start
                     </span>
                   )}
-                  <span style={{ fontSize: 11, color: '#a1a1aa', textTransform: 'uppercase', fontWeight: 600 }}>
+                  <span style={{ fontSize: 11, color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 600 }}>
                     {node.type}
                   </span>
                 </div>
@@ -1152,8 +1785,8 @@ export function FlowCanvas() {
                         width: 16,
                         height: 16,
                         borderRadius: '50%',
-                        background: '#ef4444',
-                        color: '#fff',
+                        background: 'var(--text)',
+                        color: 'var(--bg-app)',
                         fontSize: 10,
                         fontWeight: 700,
                       }}
@@ -1171,14 +1804,14 @@ export function FlowCanvas() {
                     style={{
                       background: 'none',
                       border: 'none',
-                      color: '#71717a',
+                      color: 'var(--text-muted)',
                       fontSize: 13,
                       cursor: 'pointer',
                       padding: '2px 4px',
                       borderRadius: 4,
                     }}
-                    onMouseEnter={e => ((e.currentTarget as HTMLElement).style.color = '#ef4444')}
-                    onMouseLeave={e => ((e.currentTarget as HTMLElement).style.color = '#71717a')}
+                    onMouseEnter={e => ((e.currentTarget as HTMLElement).style.color = 'var(--text)')}
+                    onMouseLeave={e => ((e.currentTarget as HTMLElement).style.color = 'var(--text-muted)')}
                   >
                     ×
                   </button>
@@ -1187,14 +1820,14 @@ export function FlowCanvas() {
 
               {/* Node Body */}
               <div style={{ padding: '8px 12px 10px' }}>
-                <div style={{ fontSize: 13, fontWeight: 600, color: '#f4f4f5', marginBottom: 4 }}>
+                <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', marginBottom: 4 }}>
                   {node.name}
                 </div>
                 <div
                   style={{
                     fontSize: 11,
-                    color: '#71717a',
-                    fontFamily: 'var(--font-mono, monospace)',
+                    color: 'var(--text-muted)',
+                    fontFamily: 'var(--font-mono)',
                     whiteSpace: 'nowrap',
                     overflow: 'hidden',
                     textOverflow: 'ellipsis',
@@ -1222,9 +1855,9 @@ export function FlowCanvas() {
                       marginTop: 6,
                       padding: '4px 6px',
                       borderRadius: 4,
-                      background: 'rgba(239, 68, 68, 0.12)',
-                      border: '1px solid rgba(239, 68, 68, 0.3)',
-                      color: '#fca5a5',
+                      background: 'var(--control-bg-active)',
+                      border: '1px solid var(--border)',
+                      color: 'var(--text-secondary)',
                       fontSize: 10,
                       lineHeight: 1.2,
                     }}
@@ -1246,19 +1879,19 @@ export function FlowCanvas() {
                   width: 14,
                   height: 14,
                   borderRadius: '50%',
-                  background: '#09090b',
-                  border: '2px solid #a1a1aa',
+                  background: 'var(--bg-app)',
+                  border: '2px solid var(--text-muted)',
                   cursor: 'crosshair',
                   zIndex: 20,
                   transition: 'transform 0.15s ease, border-color 0.15s ease',
                 }}
                 onMouseEnter={e => {
                   (e.currentTarget as HTMLElement).style.transform = 'scale(1.25)';
-                  (e.currentTarget as HTMLElement).style.borderColor = '#ffffff';
+                  (e.currentTarget as HTMLElement).style.borderColor = 'var(--text)';
                 }}
                 onMouseLeave={e => {
                   (e.currentTarget as HTMLElement).style.transform = 'scale(1)';
-                  (e.currentTarget as HTMLElement).style.borderColor = '#a1a1aa';
+                  (e.currentTarget as HTMLElement).style.borderColor = 'var(--text-muted)';
                 }}
               />
 
@@ -1271,9 +1904,9 @@ export function FlowCanvas() {
                     style={{
                       fontSize: 9,
                       padding: '2px 5px',
-                      background: 'rgba(34, 197, 94, 0.15)',
-                      border: '1px solid rgba(34, 197, 94, 0.3)',
-                      color: '#86efac',
+                      background: 'var(--control-bg-active)',
+                      border: '1px solid var(--border)',
+                      color: 'var(--text)',
                       borderRadius: 4,
                       cursor: 'crosshair',
                     }}
@@ -1286,9 +1919,9 @@ export function FlowCanvas() {
                     style={{
                       fontSize: 9,
                       padding: '2px 5px',
-                      background: 'rgba(239, 68, 68, 0.15)',
-                      border: '1px solid rgba(239, 68, 68, 0.3)',
-                      color: '#fca5a5',
+                      background: 'var(--control-bg-active)',
+                      border: '1px solid var(--border)',
+                      color: 'var(--text-secondary)',
                       borderRadius: 4,
                       cursor: 'crosshair',
                     }}
@@ -1308,16 +1941,16 @@ export function FlowCanvas() {
         data-testid="config-inspector"
         style={{
           width: 320,
-          borderLeft: '1px solid rgba(255,255,255,0.08)',
-          background: '#0c0c0e',
+          borderLeft: '1px solid var(--border)',
+          background: 'var(--panel)',
           display: 'flex',
           flexDirection: 'column',
           zIndex: 10,
           flexShrink: 0,
         }}
       >
-        <div style={{ padding: '16px 16px 12px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-          <span style={{ fontSize: 13, fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', color: '#a1a1aa' }}>
+        <div style={{ padding: '16px 16px 12px', borderBottom: '1px solid var(--divider)' }}>
+          <span style={{ fontSize: 13, fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--text-secondary)' }}>
             Inspector & Config
           </span>
         </div>
@@ -1326,14 +1959,14 @@ export function FlowCanvas() {
           {selectedEdge && (
             <div data-testid="edge-config-form" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <span style={{ fontSize: 14, fontWeight: 600, color: '#f4f4f5' }}>Connection Edge</span>
+                <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)' }}>Connection Edge</span>
                 <button
                   data-testid="btn-delete-selected-edge"
                   onClick={() => handleDeleteEdge(selectedEdge.id)}
                   style={{
-                    background: 'rgba(239, 68, 68, 0.15)',
-                    border: '1px solid rgba(239, 68, 68, 0.3)',
-                    color: '#fca5a5',
+                    background: 'var(--control-bg-active)',
+                    border: '1px solid var(--border)',
+                    color: 'var(--text-secondary)',
                     fontSize: 11,
                     padding: '3px 8px',
                     borderRadius: 4,
@@ -1345,7 +1978,7 @@ export function FlowCanvas() {
               </div>
 
               <div>
-                <label style={{ fontSize: 11, color: '#a1a1aa', display: 'block', marginBottom: 4 }}>
+                <label style={{ fontSize: 11, color: 'var(--text-secondary)', display: 'block', marginBottom: 4 }}>
                   Source Node
                 </label>
                 <input
@@ -1356,16 +1989,16 @@ export function FlowCanvas() {
                     width: '100%',
                     padding: '6px 10px',
                     fontSize: 12,
-                    background: '#141416',
-                    border: '1px solid rgba(255,255,255,0.1)',
+                    background: 'var(--surface-2)',
+                    border: '1px solid var(--border)',
                     borderRadius: 6,
-                    color: '#71717a',
+                    color: 'var(--text-muted)',
                   }}
                 />
               </div>
 
               <div>
-                <label style={{ fontSize: 11, color: '#a1a1aa', display: 'block', marginBottom: 4 }}>
+                <label style={{ fontSize: 11, color: 'var(--text-secondary)', display: 'block', marginBottom: 4 }}>
                   Target Node
                 </label>
                 <input
@@ -1376,16 +2009,16 @@ export function FlowCanvas() {
                     width: '100%',
                     padding: '6px 10px',
                     fontSize: 12,
-                    background: '#141416',
-                    border: '1px solid rgba(255,255,255,0.1)',
+                    background: 'var(--surface-2)',
+                    border: '1px solid var(--border)',
                     borderRadius: 6,
-                    color: '#71717a',
+                    color: 'var(--text-muted)',
                   }}
                 />
               </div>
 
               <div>
-                <label style={{ fontSize: 11, color: '#a1a1aa', display: 'block', marginBottom: 4 }}>
+                <label style={{ fontSize: 11, color: 'var(--text-secondary)', display: 'block', marginBottom: 4 }}>
                   Branch Condition
                 </label>
                 <select
@@ -1401,10 +2034,10 @@ export function FlowCanvas() {
                     width: '100%',
                     padding: '6px 10px',
                     fontSize: 12,
-                    background: '#141416',
-                    border: '1px solid rgba(255,255,255,0.1)',
+                    background: 'var(--surface-2)',
+                    border: '1px solid var(--border)',
                     borderRadius: 6,
-                    color: '#fafafa',
+                    color: 'var(--text)',
                   }}
                 >
                   <option value="default">Default / Next</option>
@@ -1420,7 +2053,7 @@ export function FlowCanvas() {
             <div data-testid="node-config-form" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
               {/* Header & Delete */}
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <span style={{ fontSize: 14, fontWeight: 600, color: '#f4f4f5' }}>
+                <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)' }}>
                   Node: {selectedNode.type}
                 </span>
                 <div style={{ display: 'flex', gap: 6 }}>
@@ -1431,7 +2064,7 @@ export function FlowCanvas() {
                       style={{
                         background: 'rgba(255,255,255,0.08)',
                         border: '1px solid rgba(255,255,255,0.15)',
-                        color: '#d4d4d8',
+                        color: 'var(--text-secondary)',
                         fontSize: 11,
                         padding: '3px 8px',
                         borderRadius: 4,
@@ -1445,9 +2078,9 @@ export function FlowCanvas() {
                     data-testid="btn-delete-inspected-node"
                     onClick={() => handleDeleteNode(selectedNode.id)}
                     style={{
-                      background: 'rgba(239, 68, 68, 0.15)',
-                      border: '1px solid rgba(239, 68, 68, 0.3)',
-                      color: '#fca5a5',
+                      background: 'var(--control-bg-active)',
+                      border: '1px solid var(--border)',
+                      color: 'var(--text-secondary)',
                       fontSize: 11,
                       padding: '3px 8px',
                       borderRadius: 4,
@@ -1461,7 +2094,7 @@ export function FlowCanvas() {
 
               {/* Node ID */}
               <div>
-                <label style={{ fontSize: 11, color: '#a1a1aa', display: 'block', marginBottom: 4 }}>Node ID</label>
+                <label style={{ fontSize: 11, color: 'var(--text-secondary)', display: 'block', marginBottom: 4 }}>Node ID</label>
                 <input
                   type="text"
                   disabled
@@ -1470,17 +2103,17 @@ export function FlowCanvas() {
                     width: '100%',
                     padding: '6px 10px',
                     fontSize: 12,
-                    background: '#141416',
-                    border: '1px solid rgba(255,255,255,0.1)',
+                    background: 'var(--surface-2)',
+                    border: '1px solid var(--border)',
                     borderRadius: 6,
-                    color: '#71717a',
+                    color: 'var(--text-muted)',
                   }}
                 />
               </div>
 
               {/* Node Label / Name */}
               <div>
-                <label style={{ fontSize: 11, color: '#a1a1aa', display: 'block', marginBottom: 4 }}>Display Name</label>
+                <label style={{ fontSize: 11, color: 'var(--text-secondary)', display: 'block', marginBottom: 4 }}>Display Name</label>
                 <input
                   type="text"
                   data-testid="input-node-name"
@@ -1490,23 +2123,23 @@ export function FlowCanvas() {
                     width: '100%',
                     padding: '6px 10px',
                     fontSize: 12,
-                    background: '#141416',
-                    border: '1px solid rgba(255,255,255,0.1)',
+                    background: 'var(--surface-2)',
+                    border: '1px solid var(--border)',
                     borderRadius: 6,
-                    color: '#fafafa',
+                    color: 'var(--text)',
                   }}
                 />
               </div>
 
               {/* Dynamic Type-specific Form Controls Bound to Schema */}
-              <div style={{ height: 1, background: 'rgba(255,255,255,0.08)', margin: '4px 0' }} />
-              <span style={{ fontSize: 12, fontWeight: 600, color: '#e4e4e7' }}>Step Parameters</span>
+              <div style={{ height: 1, background: 'var(--divider)', margin: '4px 0' }} />
+              <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text)' }}>Step Parameters</span>
 
               {/* NAVIGATE CONFIG */}
               {selectedNode.type === 'navigate' && (
                 <>
                   <div>
-                    <label style={{ fontSize: 11, color: '#a1a1aa', display: 'block', marginBottom: 4 }}>Target URL</label>
+                    <label style={{ fontSize: 11, color: 'var(--text-secondary)', display: 'block', marginBottom: 4 }}>Target URL</label>
                     <input
                       type="text"
                       data-testid="config-url"
@@ -1517,15 +2150,15 @@ export function FlowCanvas() {
                         width: '100%',
                         padding: '6px 10px',
                         fontSize: 12,
-                        background: '#141416',
-                        border: '1px solid rgba(255,255,255,0.1)',
+                        background: 'var(--surface-2)',
+                        border: '1px solid var(--border)',
                         borderRadius: 6,
-                        color: '#fafafa',
+                        color: 'var(--text)',
                       }}
                     />
                   </div>
                   <div>
-                    <label style={{ fontSize: 11, color: '#a1a1aa', display: 'block', marginBottom: 4 }}>Timeout (ms)</label>
+                    <label style={{ fontSize: 11, color: 'var(--text-secondary)', display: 'block', marginBottom: 4 }}>Timeout (ms)</label>
                     <input
                       type="number"
                       data-testid="config-timeoutMs"
@@ -1535,10 +2168,10 @@ export function FlowCanvas() {
                         width: '100%',
                         padding: '6px 10px',
                         fontSize: 12,
-                        background: '#141416',
-                        border: '1px solid rgba(255,255,255,0.1)',
+                        background: 'var(--surface-2)',
+                        border: '1px solid var(--border)',
                         borderRadius: 6,
-                        color: '#fafafa',
+                        color: 'var(--text)',
                       }}
                     />
                   </div>
@@ -1549,7 +2182,7 @@ export function FlowCanvas() {
               {selectedNode.type === 'click' && (
                 <>
                   <div>
-                    <label style={{ fontSize: 11, color: '#a1a1aa', display: 'block', marginBottom: 4 }}>CSS Selector</label>
+                    <label style={{ fontSize: 11, color: 'var(--text-secondary)', display: 'block', marginBottom: 4 }}>CSS Selector</label>
                     <input
                       type="text"
                       data-testid="config-selector"
@@ -1560,15 +2193,15 @@ export function FlowCanvas() {
                         width: '100%',
                         padding: '6px 10px',
                         fontSize: 12,
-                        background: '#141416',
-                        border: '1px solid rgba(255,255,255,0.1)',
+                        background: 'var(--surface-2)',
+                        border: '1px solid var(--border)',
                         borderRadius: 6,
-                        color: '#fafafa',
+                        color: 'var(--text)',
                       }}
                     />
                   </div>
                   <div>
-                    <label style={{ fontSize: 11, color: '#a1a1aa', display: 'block', marginBottom: 4 }}>Click Count</label>
+                    <label style={{ fontSize: 11, color: 'var(--text-secondary)', display: 'block', marginBottom: 4 }}>Click Count</label>
                     <input
                       type="number"
                       data-testid="config-clickCount"
@@ -1578,10 +2211,10 @@ export function FlowCanvas() {
                         width: '100%',
                         padding: '6px 10px',
                         fontSize: 12,
-                        background: '#141416',
-                        border: '1px solid rgba(255,255,255,0.1)',
+                        background: 'var(--surface-2)',
+                        border: '1px solid var(--border)',
                         borderRadius: 6,
-                        color: '#fafafa',
+                        color: 'var(--text)',
                       }}
                     />
                   </div>
@@ -1592,7 +2225,7 @@ export function FlowCanvas() {
               {selectedNode.type === 'type' && (
                 <>
                   <div>
-                    <label style={{ fontSize: 11, color: '#a1a1aa', display: 'block', marginBottom: 4 }}>Input Selector</label>
+                    <label style={{ fontSize: 11, color: 'var(--text-secondary)', display: 'block', marginBottom: 4 }}>Input Selector</label>
                     <input
                       type="text"
                       data-testid="config-selector"
@@ -1602,15 +2235,15 @@ export function FlowCanvas() {
                         width: '100%',
                         padding: '6px 10px',
                         fontSize: 12,
-                        background: '#141416',
-                        border: '1px solid rgba(255,255,255,0.1)',
+                        background: 'var(--surface-2)',
+                        border: '1px solid var(--border)',
                         borderRadius: 6,
-                        color: '#fafafa',
+                        color: 'var(--text)',
                       }}
                     />
                   </div>
                   <div>
-                    <label style={{ fontSize: 11, color: '#a1a1aa', display: 'block', marginBottom: 4 }}>Text Content</label>
+                    <label style={{ fontSize: 11, color: 'var(--text-secondary)', display: 'block', marginBottom: 4 }}>Text Content</label>
                     <textarea
                       rows={3}
                       data-testid="config-text"
@@ -1620,11 +2253,11 @@ export function FlowCanvas() {
                         width: '100%',
                         padding: '6px 10px',
                         fontSize: 12,
-                        background: '#141416',
-                        border: '1px solid rgba(255,255,255,0.1)',
+                        background: 'var(--surface-2)',
+                        border: '1px solid var(--border)',
                         borderRadius: 6,
-                        color: '#fafafa',
-                        fontFamily: 'var(--font-mono, monospace)',
+                        color: 'var(--text)',
+                        fontFamily: 'var(--font-mono)',
                       }}
                     />
                   </div>
@@ -1635,7 +2268,7 @@ export function FlowCanvas() {
               {selectedNode.type === 'human_click' && (
                 <>
                   <div>
-                    <label style={{ fontSize: 11, color: '#a1a1aa', display: 'block', marginBottom: 4 }}>Target Selector</label>
+                    <label style={{ fontSize: 11, color: 'var(--text-secondary)', display: 'block', marginBottom: 4 }}>Target Selector</label>
                     <input
                       type="text"
                       data-testid="config-selector"
@@ -1645,15 +2278,15 @@ export function FlowCanvas() {
                         width: '100%',
                         padding: '6px 10px',
                         fontSize: 12,
-                        background: '#141416',
-                        border: '1px solid rgba(255,255,255,0.1)',
+                        background: 'var(--surface-2)',
+                        border: '1px solid var(--border)',
                         borderRadius: 6,
-                        color: '#fafafa',
+                        color: 'var(--text)',
                       }}
                     />
                   </div>
                   <div>
-                    <label style={{ fontSize: 11, color: '#a1a1aa', display: 'block', marginBottom: 4 }}>Target Width (px, feeds Fitts's law)</label>
+                    <label style={{ fontSize: 11, color: 'var(--text-secondary)', display: 'block', marginBottom: 4 }}>Target Width (px, feeds Fitts's law)</label>
                     <input
                       type="number"
                       data-testid="config-targetWidth"
@@ -1663,10 +2296,10 @@ export function FlowCanvas() {
                         width: '100%',
                         padding: '6px 10px',
                         fontSize: 12,
-                        background: '#141416',
-                        border: '1px solid rgba(255,255,255,0.1)',
+                        background: 'var(--surface-2)',
+                        border: '1px solid var(--border)',
                         borderRadius: 6,
-                        color: '#fafafa',
+                        color: 'var(--text)',
                       }}
                     />
                   </div>
@@ -1677,7 +2310,7 @@ export function FlowCanvas() {
               {selectedNode.type === 'human_type' && (
                 <>
                   <div>
-                    <label style={{ fontSize: 11, color: '#a1a1aa', display: 'block', marginBottom: 4 }}>Input Selector</label>
+                    <label style={{ fontSize: 11, color: 'var(--text-secondary)', display: 'block', marginBottom: 4 }}>Input Selector</label>
                     <input
                       type="text"
                       data-testid="config-selector"
@@ -1687,15 +2320,15 @@ export function FlowCanvas() {
                         width: '100%',
                         padding: '6px 10px',
                         fontSize: 12,
-                        background: '#141416',
-                        border: '1px solid rgba(255,255,255,0.1)',
+                        background: 'var(--surface-2)',
+                        border: '1px solid var(--border)',
                         borderRadius: 6,
-                        color: '#fafafa',
+                        color: 'var(--text)',
                       }}
                     />
                   </div>
                   <div>
-                    <label style={{ fontSize: 11, color: '#a1a1aa', display: 'block', marginBottom: 4 }}>Text Content</label>
+                    <label style={{ fontSize: 11, color: 'var(--text-secondary)', display: 'block', marginBottom: 4 }}>Text Content</label>
                     <textarea
                       rows={3}
                       data-testid="config-text"
@@ -1705,16 +2338,16 @@ export function FlowCanvas() {
                         width: '100%',
                         padding: '6px 10px',
                         fontSize: 12,
-                        background: '#141416',
-                        border: '1px solid rgba(255,255,255,0.1)',
+                        background: 'var(--surface-2)',
+                        border: '1px solid var(--border)',
                         borderRadius: 6,
-                        color: '#fafafa',
-                        fontFamily: 'var(--font-mono, monospace)',
+                        color: 'var(--text)',
+                        fontFamily: 'var(--font-mono)',
                       }}
                     />
                   </div>
                   <div>
-                    <label style={{ fontSize: 11, color: '#a1a1aa', display: 'block', marginBottom: 4 }}>Allow Typos (human typo model)</label>
+                    <label style={{ fontSize: 11, color: 'var(--text-secondary)', display: 'block', marginBottom: 4 }}>Allow Typos (human typo model)</label>
                     <select
                       data-testid="config-allowTypos"
                       value={selectedNode.config.allowTypos ? 'true' : 'false'}
@@ -1723,10 +2356,10 @@ export function FlowCanvas() {
                         width: '100%',
                         padding: '6px 10px',
                         fontSize: 12,
-                        background: '#141416',
-                        border: '1px solid rgba(255,255,255,0.1)',
+                        background: 'var(--surface-2)',
+                        border: '1px solid var(--border)',
                         borderRadius: 6,
-                        color: '#fafafa',
+                        color: 'var(--text)',
                       }}
                     >
                       <option value="false">No — type exactly</option>
@@ -1740,7 +2373,7 @@ export function FlowCanvas() {
               {selectedNode.type === 'wait' && (
                 <>
                   <div>
-                    <label style={{ fontSize: 11, color: '#a1a1aa', display: 'block', marginBottom: 4 }}>Wait Mode</label>
+                    <label style={{ fontSize: 11, color: 'var(--text-secondary)', display: 'block', marginBottom: 4 }}>Wait Mode</label>
                     <select
                       data-testid="config-mode"
                       value={String(selectedNode.config.mode || 'time')}
@@ -1749,10 +2382,10 @@ export function FlowCanvas() {
                         width: '100%',
                         padding: '6px 10px',
                         fontSize: 12,
-                        background: '#141416',
-                        border: '1px solid rgba(255,255,255,0.1)',
+                        background: 'var(--surface-2)',
+                        border: '1px solid var(--border)',
                         borderRadius: 6,
-                        color: '#fafafa',
+                        color: 'var(--text)',
                       }}
                     >
                       <option value="time">Duration (ms)</option>
@@ -1762,7 +2395,7 @@ export function FlowCanvas() {
                   </div>
                   {selectedNode.config.mode === 'selector' ? (
                     <div>
-                      <label style={{ fontSize: 11, color: '#a1a1aa', display: 'block', marginBottom: 4 }}>Selector to Wait For</label>
+                      <label style={{ fontSize: 11, color: 'var(--text-secondary)', display: 'block', marginBottom: 4 }}>Selector to Wait For</label>
                       <input
                         type="text"
                         data-testid="config-selector"
@@ -1772,16 +2405,16 @@ export function FlowCanvas() {
                           width: '100%',
                           padding: '6px 10px',
                           fontSize: 12,
-                          background: '#141416',
-                          border: '1px solid rgba(255,255,255,0.1)',
+                          background: 'var(--surface-2)',
+                          border: '1px solid var(--border)',
                           borderRadius: 6,
-                          color: '#fafafa',
+                          color: 'var(--text)',
                         }}
                       />
                     </div>
                   ) : (
                     <div>
-                      <label style={{ fontSize: 11, color: '#a1a1aa', display: 'block', marginBottom: 4 }}>Duration (ms)</label>
+                      <label style={{ fontSize: 11, color: 'var(--text-secondary)', display: 'block', marginBottom: 4 }}>Duration (ms)</label>
                       <input
                         type="number"
                         data-testid="config-durationMs"
@@ -1791,10 +2424,10 @@ export function FlowCanvas() {
                           width: '100%',
                           padding: '6px 10px',
                           fontSize: 12,
-                          background: '#141416',
-                          border: '1px solid rgba(255,255,255,0.1)',
+                          background: 'var(--surface-2)',
+                          border: '1px solid var(--border)',
                           borderRadius: 6,
-                          color: '#fafafa',
+                          color: 'var(--text)',
                         }}
                       />
                     </div>
@@ -1806,7 +2439,7 @@ export function FlowCanvas() {
               {selectedNode.type === 'condition' && (
                 <>
                   <div>
-                    <label style={{ fontSize: 11, color: '#a1a1aa', display: 'block', marginBottom: 4 }}>JavaScript Expression</label>
+                    <label style={{ fontSize: 11, color: 'var(--text-secondary)', display: 'block', marginBottom: 4 }}>JavaScript Expression</label>
                     <input
                       type="text"
                       data-testid="config-expression"
@@ -1817,11 +2450,11 @@ export function FlowCanvas() {
                         width: '100%',
                         padding: '6px 10px',
                         fontSize: 12,
-                        background: '#141416',
-                        border: '1px solid rgba(255,255,255,0.1)',
+                        background: 'var(--surface-2)',
+                        border: '1px solid var(--border)',
                         borderRadius: 6,
-                        color: '#fafafa',
-                        fontFamily: 'var(--font-mono, monospace)',
+                        color: 'var(--text)',
+                        fontFamily: 'var(--font-mono)',
                       }}
                     />
                   </div>
@@ -1832,7 +2465,7 @@ export function FlowCanvas() {
               {selectedNode.type === 'loop' && (
                 <>
                   <div>
-                    <label style={{ fontSize: 11, color: '#a1a1aa', display: 'block', marginBottom: 4 }}>Iterations Count</label>
+                    <label style={{ fontSize: 11, color: 'var(--text-secondary)', display: 'block', marginBottom: 4 }}>Iterations Count</label>
                     <input
                       type="number"
                       data-testid="config-count"
@@ -1842,15 +2475,15 @@ export function FlowCanvas() {
                         width: '100%',
                         padding: '6px 10px',
                         fontSize: 12,
-                        background: '#141416',
-                        border: '1px solid rgba(255,255,255,0.1)',
+                        background: 'var(--surface-2)',
+                        border: '1px solid var(--border)',
                         borderRadius: 6,
-                        color: '#fafafa',
+                        color: 'var(--text)',
                       }}
                     />
                   </div>
                   <div>
-                    <label style={{ fontSize: 11, color: '#a1a1aa', display: 'block', marginBottom: 4 }}>Index Variable Name</label>
+                    <label style={{ fontSize: 11, color: 'var(--text-secondary)', display: 'block', marginBottom: 4 }}>Index Variable Name</label>
                     <input
                       type="text"
                       data-testid="config-loopVariable"
@@ -1860,10 +2493,10 @@ export function FlowCanvas() {
                         width: '100%',
                         padding: '6px 10px',
                         fontSize: 12,
-                        background: '#141416',
-                        border: '1px solid rgba(255,255,255,0.1)',
+                        background: 'var(--surface-2)',
+                        border: '1px solid var(--border)',
                         borderRadius: 6,
-                        color: '#fafafa',
+                        color: 'var(--text)',
                       }}
                     />
                   </div>
@@ -1874,7 +2507,7 @@ export function FlowCanvas() {
               {selectedNode.type === 'extract' && (
                 <>
                   <div>
-                    <label style={{ fontSize: 11, color: '#a1a1aa', display: 'block', marginBottom: 4 }}>Selector</label>
+                    <label style={{ fontSize: 11, color: 'var(--text-secondary)', display: 'block', marginBottom: 4 }}>Selector</label>
                     <input
                       type="text"
                       data-testid="config-selector"
@@ -1884,15 +2517,15 @@ export function FlowCanvas() {
                         width: '100%',
                         padding: '6px 10px',
                         fontSize: 12,
-                        background: '#141416',
-                        border: '1px solid rgba(255,255,255,0.1)',
+                        background: 'var(--surface-2)',
+                        border: '1px solid var(--border)',
                         borderRadius: 6,
-                        color: '#fafafa',
+                        color: 'var(--text)',
                       }}
                     />
                   </div>
                   <div>
-                    <label style={{ fontSize: 11, color: '#a1a1aa', display: 'block', marginBottom: 4 }}>Target Variable</label>
+                    <label style={{ fontSize: 11, color: 'var(--text-secondary)', display: 'block', marginBottom: 4 }}>Target Variable</label>
                     <input
                       type="text"
                       data-testid="config-targetVariable"
@@ -1902,10 +2535,10 @@ export function FlowCanvas() {
                         width: '100%',
                         padding: '6px 10px',
                         fontSize: 12,
-                        background: '#141416',
-                        border: '1px solid rgba(255,255,255,0.1)',
+                        background: 'var(--surface-2)',
+                        border: '1px solid var(--border)',
                         borderRadius: 6,
-                        color: '#fafafa',
+                        color: 'var(--text)',
                       }}
                     />
                   </div>
@@ -1916,7 +2549,7 @@ export function FlowCanvas() {
               {selectedNode.type === 'eval' && (
                 <>
                   <div>
-                    <label style={{ fontSize: 11, color: '#a1a1aa', display: 'block', marginBottom: 4 }}>JavaScript Code</label>
+                    <label style={{ fontSize: 11, color: 'var(--text-secondary)', display: 'block', marginBottom: 4 }}>JavaScript Code</label>
                     <textarea
                       rows={5}
                       data-testid="config-code"
@@ -1926,11 +2559,11 @@ export function FlowCanvas() {
                         width: '100%',
                         padding: '6px 10px',
                         fontSize: 12,
-                        background: '#141416',
-                        border: '1px solid rgba(255,255,255,0.1)',
+                        background: 'var(--surface-2)',
+                        border: '1px solid var(--border)',
                         borderRadius: 6,
-                        color: '#fafafa',
-                        fontFamily: 'var(--font-mono, monospace)',
+                        color: 'var(--text)',
+                        fontFamily: 'var(--font-mono)',
                       }}
                     />
                   </div>
@@ -1941,7 +2574,7 @@ export function FlowCanvas() {
               {selectedNode.type === 'screenshot' && (
                 <>
                   <div>
-                    <label style={{ fontSize: 11, color: '#a1a1aa', display: 'block', marginBottom: 4 }}>Save Path</label>
+                    <label style={{ fontSize: 11, color: 'var(--text-secondary)', display: 'block', marginBottom: 4 }}>Save Path</label>
                     <input
                       type="text"
                       data-testid="config-path"
@@ -1951,10 +2584,10 @@ export function FlowCanvas() {
                         width: '100%',
                         padding: '6px 10px',
                         fontSize: 12,
-                        background: '#141416',
-                        border: '1px solid rgba(255,255,255,0.1)',
+                        background: 'var(--surface-2)',
+                        border: '1px solid var(--border)',
                         borderRadius: 6,
-                        color: '#fafafa',
+                        color: 'var(--text)',
                       }}
                     />
                   </div>
@@ -1965,7 +2598,7 @@ export function FlowCanvas() {
               {(selectedNode.type as string) === 'subflow' && (
                 <>
                   <div>
-                    <label style={{ fontSize: 11, color: '#a1a1aa', display: 'block', marginBottom: 4 }}>Target Flow ID</label>
+                    <label style={{ fontSize: 11, color: 'var(--text-secondary)', display: 'block', marginBottom: 4 }}>Target Flow ID</label>
                     <input
                       type="text"
                       data-testid="config-flowId"
@@ -1975,10 +2608,10 @@ export function FlowCanvas() {
                         width: '100%',
                         padding: '6px 10px',
                         fontSize: 12,
-                        background: '#141416',
-                        border: '1px solid rgba(255,255,255,0.1)',
+                        background: 'var(--surface-2)',
+                        border: '1px solid var(--border)',
                         borderRadius: 6,
-                        color: '#fafafa',
+                        color: 'var(--text)',
                       }}
                     />
                   </div>
@@ -1992,16 +2625,16 @@ export function FlowCanvas() {
                   style={{
                     padding: 10,
                     borderRadius: 6,
-                    background: 'rgba(239, 68, 68, 0.1)',
-                    border: '1px solid rgba(239, 68, 68, 0.25)',
+                    background: 'var(--control-bg-active)',
+                    border: '1px solid var(--border)',
                     display: 'flex',
                     flexDirection: 'column',
                     gap: 6,
                   }}
                 >
-                  <span style={{ fontSize: 11, fontWeight: 700, color: '#ef4444' }}>Configuration Issues:</span>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text)' }}>Configuration Issues:</span>
                   {errorsByNode.get(selectedNode.id)?.map((err, idx) => (
-                    <div key={idx} style={{ fontSize: 11, color: '#fca5a5', lineHeight: 1.3 }}>
+                    <div key={idx} style={{ fontSize: 11, color: 'var(--text-secondary)', lineHeight: 1.3 }}>
                       • {err.message}
                     </div>
                   ))}
@@ -2011,21 +2644,102 @@ export function FlowCanvas() {
           )}
 
           {!selectedEdge && !selectedNode && (
-            <div style={{ color: '#71717a', fontSize: 12, textAlign: 'center', marginTop: 40 }}>
+            <div style={{ color: 'var(--text-muted)', fontSize: 12, textAlign: 'center', marginTop: 40 }}>
               Select a node or connection line on the canvas to edit its properties.
             </div>
           )}
         </div>
       </div>
 
+      {/* Element Action Picker (Wave 2b) */}
+      {pickerOpen && (
+        <div
+          data-testid="element-action-picker"
+          style={{
+            position: 'absolute',
+            top: 76,
+            right: 336,
+            zIndex: 60,
+            width: 260,
+            background: 'var(--panel)',
+            backdropFilter: 'blur(12px)',
+            border: '1px solid rgba(255,255,255,0.14)',
+            borderRadius: 10,
+            boxShadow: '0 12px 40px rgba(0,0,0,0.7)',
+            padding: 14,
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 10,
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)' }}>{t('Element picker')}</span>
+            <button
+              data-testid="btn-close-picker"
+              onClick={closePicker}
+              style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', fontSize: 13, cursor: 'pointer' }}
+            >
+              ✕
+            </button>
+          </div>
+          {pickerElement ? (
+            <>
+              <div
+                data-testid="picker-element-summary"
+                style={{
+                  padding: 8,
+                  borderRadius: 6,
+                  background: 'var(--surface-2)',
+                  border: '1px solid rgba(255,255,255,0.08)',
+                  fontSize: 11,
+                  color: 'var(--text-secondary)',
+                  fontFamily: 'var(--font-mono)',
+                  wordBreak: 'break-all',
+                  lineHeight: 1.4,
+                }}
+              >
+                {pickerElement.tag ? `<${pickerElement.tag}> ` : ''}
+                {pickerElement.selector ?? 'no stable selector'}
+              </div>
+              <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{t('Choose an action for this element')}</span>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <button data-testid="pick-action-click" onClick={() => handlePickedAction('click')} style={pickerButtonStyle}>
+                  {t('Click')}
+                </button>
+                <button data-testid="pick-action-human-click" onClick={() => handlePickedAction('human_click')} style={pickerButtonStyle}>
+                  {t('Human Click')}
+                </button>
+                <button data-testid="pick-action-type" onClick={() => handlePickedAction('type')} style={pickerButtonStyle}>
+                  {t('Type')}
+                </button>
+                <button data-testid="pick-action-human-type" onClick={() => handlePickedAction('human_type')} style={pickerButtonStyle}>
+                  {t('Human Type')}
+                </button>
+                <button data-testid="pick-action-wait" onClick={() => handlePickedAction('wait')} style={pickerButtonStyle}>
+                  {t('Wait For')}
+                </button>
+                <button data-testid="pick-action-extract" onClick={() => handlePickedAction('extract')} style={pickerButtonStyle}>
+                  {t('Extract')}
+                </button>
+              </div>
+            </>
+          ) : (
+            <span data-testid="picker-waiting" style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+              {t('Pick element on the page')}
+            </span>
+          )}
+        </div>
+      )}
+
       {/* Bottom / Overlay Live Run Panel */}
       {showLiveRun && (
-        <div
-          data-testid="live-run-panel"
+        <>
+          <div
+            data-testid="live-run-panel"
           style={{
             height: 240,
             borderTop: '1px solid rgba(255,255,255,0.12)',
-            background: '#0d0d10',
+            background: 'var(--panel)',
             display: 'flex',
             flexDirection: 'column',
             zIndex: 40,
@@ -2035,15 +2749,15 @@ export function FlowCanvas() {
           <div
             style={{
               padding: '6px 16px',
-              borderBottom: '1px solid rgba(255,255,255,0.08)',
+              borderBottom: '1px solid var(--divider)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
-              background: 'rgba(255,255,255,0.02)',
+              background: 'transparent',
             }}
           >
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <span style={{ fontSize: 12, fontWeight: 700, color: '#fafafa' }}>Live Run Stream</span>
+              <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)' }}>Live Run Stream</span>
               {/* Status Chip */}
               <span
                 data-testid="live-run-status-chip"
@@ -2055,50 +2769,49 @@ export function FlowCanvas() {
                   borderRadius: 12,
                   background:
                     runStatus === 'running'
-                      ? 'rgba(59, 130, 246, 0.2)'
+                      ? 'var(--control-bg-active)'
                       : runStatus === 'finished'
-                      ? 'rgba(34, 197, 94, 0.2)'
+                      ? 'var(--control-bg-selected)'
                       : runStatus === 'error'
-                      ? 'rgba(239, 68, 68, 0.2)'
-                      : 'rgba(255,255,255,0.08)',
+                      ? 'var(--control-bg)'
+                      : 'var(--control-bg)',
                   color:
                     runStatus === 'running'
-                      ? '#60a5fa'
+                      ? 'var(--text)'
                       : runStatus === 'finished'
-                      ? '#4ade80'
+                      ? 'var(--text)'
                       : runStatus === 'error'
-                      ? '#f87171'
-                      : '#a1a1aa',
+                      ? 'var(--text-secondary)'
+                      : 'var(--text-muted)',
                   border: `1px solid ${
                     runStatus === 'running'
-                      ? 'rgba(59, 130, 246, 0.3)'
+                      ? 'var(--border-focus)'
                       : runStatus === 'finished'
-                      ? 'rgba(34, 197, 94, 0.3)'
+                      ? 'var(--border)'
                       : runStatus === 'error'
-                      ? 'rgba(239, 68, 68, 0.3)'
-                      : 'rgba(255,255,255,0.1)'
+                      ? 'var(--border)'
+                      : 'var(--border)'
                   }`,
                 }}
               >
                 {runStatus}
               </span>
               {activeTaskUuid && (
-                <span style={{ fontSize: 10, color: '#71717a', fontFamily: 'monospace' }}>
+                <span style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: 'monospace' }}>
                   task: {activeTaskUuid.slice(0, 8)}…
                 </span>
               )}
               {/* Timings summary */}
               {Object.keys(nodeTimings).length > 0 && (
                 <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                  <span style={{ fontSize: 10, color: '#71717a' }}>Node timings:</span>
+                  <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>Node timings:</span>
                   {Object.entries(nodeTimings).map(([nid, ms]) => (
                     <span
                       key={nid}
                       data-testid={`node-timing-${nid}`}
                       style={{
                         fontSize: 10,
-                        color: '#38bdf8',
-                        background: 'rgba(56, 189, 248, 0.1)',
+                        color: 'var(--text-secondary)', background: 'var(--control-bg)',
                         padding: '1px 5px',
                         borderRadius: 4,
                       }}
@@ -2115,9 +2828,9 @@ export function FlowCanvas() {
                   data-testid="btn-resume-autoscroll"
                   onClick={() => setIsScrolledUp(false)}
                   style={{
-                    background: '#27272a',
-                    border: '1px solid rgba(255,255,255,0.1)',
-                    color: '#e4e4e7',
+                    background: 'var(--surface-2)',
+                    border: '1px solid var(--border)',
+                    color: 'var(--text)',
                     fontSize: 10,
                     padding: '2px 8px',
                     borderRadius: 4,
@@ -2133,7 +2846,7 @@ export function FlowCanvas() {
                 style={{
                   background: 'transparent',
                   border: 'none',
-                  color: '#71717a',
+                  color: 'var(--text-muted)',
                   fontSize: 11,
                   cursor: 'pointer',
                 }}
@@ -2146,7 +2859,7 @@ export function FlowCanvas() {
                 style={{
                   background: 'transparent',
                   border: 'none',
-                  color: '#a1a1aa',
+                  color: 'var(--text-secondary)',
                   fontSize: 12,
                   cursor: 'pointer',
                 }}
@@ -2172,16 +2885,16 @@ export function FlowCanvas() {
               fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
               fontSize: 11,
               lineHeight: 1.5,
-              color: '#d4d4d8',
+              color: 'var(--text-secondary)',
             }}
           >
             {runError && (
-              <div style={{ color: '#ef4444', marginBottom: 6 }}>
+              <div style={{ color: 'var(--text)', fontWeight: 600, marginBottom: 6 }}>
                 [ERROR] {runError}
               </div>
             )}
             {runLogs.length === 0 && !runError && (
-              <div style={{ color: '#52525b', fontStyle: 'italic' }}>
+              <div style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>
                 {isRunning ? 'Waiting for log stream...' : 'No logs yet. Click "Run Flow" to start.'}
               </div>
             )}
@@ -2196,12 +2909,12 @@ export function FlowCanvas() {
                     flexDirection: 'column',
                     gap: 4,
                     padding: '2px 0',
-                    borderBottom: '1px solid rgba(255,255,255,0.02)',
+                    borderBottom: '1px solid var(--divider)',
                   }}
                 >
                   <div style={{ display: 'flex', gap: 8 }}>
                     {log.created_at && (
-                      <span style={{ color: '#52525b', flexShrink: 0 }}>
+                      <span style={{ color: 'var(--text-muted)', flexShrink: 0 }}>
                         {new Date(log.created_at).toLocaleTimeString()}
                       </span>
                     )}
@@ -2214,8 +2927,8 @@ export function FlowCanvas() {
                         margin: '4px 0 4px 20px',
                         padding: 6,
                         borderRadius: 4,
-                        background: '#18181b',
-                        border: '1px solid rgba(255,255,255,0.1)',
+                        background: 'var(--surface-2)',
+                        border: '1px solid var(--border)',
                         maxWidth: 400,
                       }}
                     >
@@ -2226,7 +2939,7 @@ export function FlowCanvas() {
                           style={{ width: '100%', maxHeight: 180, objectFit: 'contain', borderRadius: 2 }}
                         />
                       ) : (
-                        <div style={{ fontSize: 10, color: '#38bdf8' }}>
+                        <div style={{ fontSize: 10, color: 'var(--text-secondary)' }}>
                           🖼️ Screenshot: {screenshot}
                         </div>
                       )}
@@ -2236,7 +2949,44 @@ export function FlowCanvas() {
               );
             })}
           </div>
-        </div>
+          </div>
+
+          {/* Fleet run view: one row per profile + selected profile's log.
+              Selecting a fleet row shows that profile's own log stream. */}
+          {showFleetPanel && (
+            <div
+              data-testid="fleet-panel-container"
+              style={{
+                height: 300,
+                borderTop: '1px solid rgba(255,255,255,0.12)',
+                background: 'var(--panel)',
+                zIndex: 41,
+              }}
+            >
+              {fleetRunError && (
+                <div
+                  style={{
+                    color: 'var(--text)',
+                    fontSize: 11,
+                    padding: '4px 12px',
+                    background: 'var(--control-bg-active)',
+                    borderBottom: '1px solid var(--border)',
+                  }}
+                >
+                  [ERROR] {fleetRunError}
+                </div>
+              )}
+              <FleetPanel
+                state={fleetState}
+                profileNames={profileNames}
+                selectedTaskUuid={selectedFleetTaskUuid}
+                onSelectProfile={uuid => setSelectedFleetTaskUuid(uuid)}
+                onStop={handleStopFleetRun}
+                running={isRunning}
+              />
+            </div>
+          )}
+        </>
       )}
     </div>
   );

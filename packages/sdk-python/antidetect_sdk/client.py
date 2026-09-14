@@ -13,6 +13,14 @@ from .models import (
     ProxyItem,
 )
 
+from .engine import ensure_engine
+from .standalone import (
+    StandaloneFingerprintConfig,
+    StandaloneLaunchConfig,
+    StandaloneProfileInstance,
+    build_standalone_args,
+    launch_standalone_profile,
+)
 
 def _parse_response(response: httpx.Response) -> ApiResponse:
     try:
@@ -396,6 +404,28 @@ class AntidetectClient:
     def __exit__(self, *args: Any) -> None:
         self.close()
 
+    def ensure_engine(self, **kwargs: Any) -> Dict[str, str]:
+        return ensure_engine(**kwargs)
+
+    def ensureEngine(self, **kwargs: Any) -> Dict[str, str]:
+        return self.ensure_engine(**kwargs)
+
+    def launch_standalone_profile(
+        self, config: Optional[StandaloneLaunchConfig] = None, **kwargs: Any
+    ) -> StandaloneProfileInstance:
+        return launch_standalone_profile(config, **kwargs)
+
+    def launchStandaloneProfile(
+        self, config: Optional[StandaloneLaunchConfig] = None, **kwargs: Any
+    ) -> StandaloneProfileInstance:
+        return self.launch_standalone_profile(config, **kwargs)
+
+    def build_standalone_args(self, config: StandaloneLaunchConfig) -> List[str]:
+        return build_standalone_args(config)
+
+    def buildStandaloneArgs(self, config: StandaloneLaunchConfig) -> List[str]:
+        return self.build_standalone_args(config)
+
 
 # Async client implementation
 
@@ -753,3 +783,25 @@ class AsyncAntidetectClient:
 
     async def __aexit__(self, *args: Any) -> None:
         await self.close()
+
+    def ensure_engine(self, **kwargs: Any) -> Dict[str, str]:
+        return ensure_engine(**kwargs)
+
+    def ensureEngine(self, **kwargs: Any) -> Dict[str, str]:
+        return self.ensure_engine(**kwargs)
+
+    def launch_standalone_profile(
+        self, config: Optional[StandaloneLaunchConfig] = None, **kwargs: Any
+    ) -> StandaloneProfileInstance:
+        return launch_standalone_profile(config, **kwargs)
+
+    def launchStandaloneProfile(
+        self, config: Optional[StandaloneLaunchConfig] = None, **kwargs: Any
+    ) -> StandaloneProfileInstance:
+        return self.launch_standalone_profile(config, **kwargs)
+
+    def build_standalone_args(self, config: StandaloneLaunchConfig) -> List[str]:
+        return build_standalone_args(config)
+
+    def buildStandaloneArgs(self, config: StandaloneLaunchConfig) -> List[str]:
+        return self.build_standalone_args(config)

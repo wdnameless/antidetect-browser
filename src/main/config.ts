@@ -9,6 +9,7 @@ function settingsBase(): string {
   if (process.env.ANTIDETECT_SETTINGS_DIR && process.env.ANTIDETECT_SETTINGS_DIR.length > 0) {
     return process.env.ANTIDETECT_SETTINGS_DIR;
   }
+  // KEEP: Preserves existing install directory location ~/.antidetect across updates.
   return path.join(os.homedir(), '.antidetect');
 }
 
@@ -33,25 +34,76 @@ function writeSettings(s: Record<string, unknown>): void {
   }
 }
 
-function resolveDataDir(): string {
+/**
+ * True when running from the installer-free portable artefact.
+ *
+ * electron-builder's `portable` target self-extracts and exports
+ * PORTABLE_EXECUTABLE_DIR pointing at the directory the user actually ran the
+ * .exe from. A portable copy must resolve its data relative to THAT directory,
+ * never to an absolute path captured on first run — otherwise moving the folder
+ * to another machine or drive breaks it, which is the whole point of portable.
+ */
+export function isPortableMode(): boolean {
+  return Boolean(process.env.PORTABLE_EXECUTABLE_DIR && process.env.PORTABLE_EXECUTABLE_DIR.length > 0);
+}
+
+/** Directory the portable executable was launched from, or null when not portable. */
+export function portableBaseDir(): string | null {
+  const dir = process.env.PORTABLE_EXECUTABLE_DIR;
+  return dir && dir.length > 0 ? dir : null;
+}
+
+/**
+ * Resolve the data directory from the current environment and settings.
+ *
+ * Exported so the resolution order (env → saved choice → portable → system
+ * default) can be exercised directly: `DATA_DIR` is a module-level constant, so
+ * testing the order through it would need a module reload per case.
+ */
+export function resolveDataDir(): string {
   // 1) Explicit env override (used by tests and CI).
   if (process.env.ANTIDETECT_DATA_DIR && process.env.ANTIDETECT_DATA_DIR.length > 0) {
     return process.env.ANTIDETECT_DATA_DIR;
   }
+  const settings = readSettings();
   // 2) User-chosen directory persisted in settings.json.
-  const saved = readSettings().dataDir;
+  const saved = settings.dataDir;
   if (typeof saved === 'string' && saved.length > 0) {
     return saved;
   }
-  // 3) Default: <settingsBase>/data (writable, stable across updates).
+  // 3) Portable mode: data beside the executable so the folder can be moved whole.
+  //    Honours an explicit 'system' choice, which falls through to the default below.
+  if (isPortableMode() && settings.dataMode !== 'system') {
+    return path.join(portableBaseDir() as string, 'data');
+  }
+  // 4) Default: <settingsBase>/data (writable, stable across updates).
   return path.join(settingsBase(), 'data');
 }
 
+/**
+ * Whether the operator has already answered "where should data live?" on a
+ * portable launch. When they have not, the UI asks once and persists the answer.
+ */
+export function needsDataModeChoice(): boolean {
+  if (!isPortableMode()) return false;
+  const mode = readSettings().dataMode;
+  return mode !== 'portable' && mode !== 'system';
+}
+
+/** Persist the portable data-location choice. Takes effect on next start. */
+export function setDataMode(mode: 'portable' | 'system'): void {
+  const s = readSettings();
+  s.dataMode = mode;
+  writeSettings(s);
+}
+
+// KEEP: Preserves existing data directory location across updates.
 export const DATA_DIR = resolveDataDir();
 export const PROFILES_DIR = path.join(DATA_DIR, 'profiles');
 export const CHROMIUM_DIR = path.join(DATA_DIR, 'chromium');
 export const CHROMEDRIVER_DIR = path.join(DATA_DIR, 'chromedriver');
 export const EXTENSIONS_DIR = path.join(DATA_DIR, 'extensions');
+// KEEP: Preserves existing database filename antidetect.db.
 export const DB_PATH = path.join(DATA_DIR, 'antidetect.db');
 
 export const API_HOST = process.env.API_HOST || '127.0.0.1';

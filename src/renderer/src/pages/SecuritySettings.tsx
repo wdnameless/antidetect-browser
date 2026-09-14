@@ -77,7 +77,7 @@ export function SecuritySettings() {
               style={{ width: 100 }}
             />
           </div>
-          {error && <div style={{ color: '#f87171', fontSize: 12 }}>{error}</div>}
+          {error && <div style={{ color: 'var(--danger)', fontSize: 12 }}>{error}</div>}
         </>
       )}
     </div>

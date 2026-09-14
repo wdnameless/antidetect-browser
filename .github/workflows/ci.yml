@@ -75,10 +75,27 @@ jobs:
         run: python -m pytest packages/sdk-python/tests -q
 
   release:
-    # Build and publish the Windows installer when a v* tag is pushed.
+    # Build and publish installer-free artefacts when a v* tag is pushed.
+    # Linux and macOS artefacts cannot be produced on Windows, so each platform
+    # builds on its own runner. No signing credentials are required or expected:
+    # the macOS artefact ships unsigned (we have no Apple Developer account), so
+    # the job must not fail for lack of them.
     if: startsWith(github.ref, 'refs/tags/v')
     needs: [test, sdk]
-    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            platform: win
+            artifact: NullTrace-portable-win-x64
+          - os: ubuntu-latest
+            platform: linux
+            artifact: NullTrace-portable-linux-x64
+          - os: macos-14
+            platform: mac
+            artifact: NullTrace-portable-mac-arm64
+    runs-on: ${{ matrix.os }}
     permissions:
       contents: write
     steps:
@@ -92,7 +109,56 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Build and publish installer
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: npm run publish
+      # A platform-specific break must be caught here rather than shipped, so the
+      # gates run on every runner, not just the Windows one.
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Build portable artefact for ${{ matrix.platform }}
+        run: npm run dist:${{ matrix.platform }}
+
+      - name: Upload artefact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: |
+            release/*.exe
+            release/*.AppImage
+            release/*.dmg
+          if-no-files-found: error
+
+      - name: Publish release assets
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            release/*.exe
+            release/*.AppImage
+            release/*.dmg
+          fail_on_unmatched_files: false
+
+  tauri:
+    name: Tauri Desktop Shell (Additive / Non-blocking)
+    runs-on: windows-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Verify Tauri shell test
+        run: npx vitest run tests/unit/tauriShell.test.ts
+
+      - name: Test sidecar lifecycle module
+        run: cargo test --manifest-path src-tauri/Cargo.toml

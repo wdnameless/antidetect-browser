@@ -123,6 +123,7 @@ export interface StealthConfig {
   webglNoise?: boolean;
   webglVendor?: string;
   webglRenderer?: string;
+  fontList?: string[];
 }
 
 export interface SshTunnelConfig {
@@ -1450,8 +1451,8 @@ export function resolveLaunchConfig(id: string): LaunchConfig {
 
   // Stealth layer applies to every profile (headless-trace fixes are universal);
   // device presets above refine it for mobile/desktop consistency.
+  const hwVector = deriveHardwareVector(fingerprintSeed);
   if (!stealth) {
-    const hwVector = deriveHardwareVector(fingerprintSeed);
     stealth = {
       mobile: false,
       logicalPlatform: 'windows',
@@ -1462,9 +1463,11 @@ export function resolveLaunchConfig(id: string): LaunchConfig {
           : hwVector.cpuCores,
       deviceMemory: hwVector.ramGB,
       locale: hwVector.locale,
+      fontList: hwVector.fontInventory,
     };
+  } else if (!stealth.fontList) {
+    stealth.fontList = hwVector.fontInventory;
   }
-
   let proxyServer: string | undefined;
   let proxyAuth: { username: string; password: string } | undefined;
   let sshTunnel: SshTunnelConfig | undefined;

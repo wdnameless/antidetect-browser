@@ -36,6 +36,16 @@ declare global {
         quitAndInstall: () => Promise<void>;
         onStatus: (cb: (status: UpdateStatus) => void) => () => void;
       };
+      /**
+       * Frameless window controls. Present only in the Electron shell — a browser
+       * client has no such bridge, so the renderer must detect it before rendering
+       * any control rather than showing dead buttons.
+       */
+      window?: {
+        minimize: () => void;
+        toggleMaximize: () => void;
+        close: () => void;
+      };
     };
   }
 }

@@ -7,7 +7,7 @@ export const PANEL_HTML = `<!doctype html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Antidetect Panel</title>
+  <title>NullTrace Web Panel</title>
 <style>
   :root { color-scheme: dark; }
   * { box-sizing: border-box; }
@@ -45,7 +45,7 @@ export const PANEL_HTML = `<!doctype html>
 </head>
 <body>
 <header>
-  <h1>Antidetect Panel</h1>
+    <h2 style="margin-top:0">NullTrace Web Panel</h2>
   <span id="conn" class="badge closed">offline</span>
   <button class="gray" onclick="logout()">Sign out</button>
 </header>
@@ -63,7 +63,7 @@ export const PANEL_HTML = `<!doctype html>
 
 <div id="login" style="display:none">
   <div class="card">
-    <h2>Antidetect Panel</h2>
+      <div class="brand">NullTrace</div>
 
     <!-- first run: create credentials -->
     <div id="f_setup" style="display:none">
@@ -125,6 +125,7 @@ export const PANEL_HTML = `<!doctype html>
 
 <div id="toast"></div>
 <script>
+// KEEP (INTERNAL): localStorage key antidetect_key preserves existing browser login session.
 var KEY = localStorage.getItem('antidetect_key') || '';
 var profiles = [];
 var ws = null, vctx = null, vmeta = null, vprofileId = null;

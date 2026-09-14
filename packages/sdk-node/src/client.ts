@@ -1,3 +1,7 @@
+import { ensureEngine } from './engine.js';
+import type { EnsureEngineOptions } from './engine.js';
+import { launchStandaloneProfile } from './standalone.js';
+import type { StandaloneLaunchConfig, StandaloneProfileInstance } from './standalone.js';
 import { ApiError } from './errors.js';
 import type {
   ClientConfig,
@@ -336,4 +340,18 @@ export class AntidetectClient {
       });
     },
   };
+
+  /**
+   * Standalone engine acquisition: download, verify SHA-256 digest, and cache patched Chromium.
+   */
+  public async ensureEngine(opts?: EnsureEngineOptions): Promise<{ executable: string; kernelDir: string }> {
+    return ensureEngine(opts);
+  }
+
+  /**
+   * Standalone profile launch: run Chromium directly without the desktop application or local API server.
+   */
+  public async launchStandaloneProfile(config?: StandaloneLaunchConfig): Promise<StandaloneProfileInstance> {
+    return launchStandaloneProfile(config);
+  }
 }

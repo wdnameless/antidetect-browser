@@ -18,3 +18,11 @@ packages/sdk-node/src/*.d.ts.map
 .opencode/
 .codebase-index/
 profiles/
+
+# Rust build output — never commit compiled artefacts.
+target/
+**/target/
+
+# Tauri generated schemas/capabilities — regenerated on build.
+src-tauri/gen/
+src-tauri/target/

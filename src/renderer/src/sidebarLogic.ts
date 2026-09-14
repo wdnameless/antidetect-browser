@@ -61,3 +61,6 @@ export function computeRunningCount(profiles: Array<{ status?: string | null }> 
   if (!Array.isArray(profiles)) return 0;
   return profiles.reduce((acc, p) => (p?.status === 'running' ? acc + 1 : acc), 0);
 }
+export function isEmailTab(tab: string): boolean {
+  return tab === 'email';
+}

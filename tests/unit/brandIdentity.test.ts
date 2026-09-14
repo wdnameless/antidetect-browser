@@ -1,0 +1,128 @@
+// Guards the data-compatibility boundary of the NullTrace rename.
+//
+// The product was renamed; some identifiers were deliberately NOT renamed because
+// their values carry cryptographic meaning or locate on-disk state. Changing any of
+// them silently re-seeds every profile's fingerprint, invalidates signed releases,
+// or orphans a user's existing data — with no error message to explain it.
+//
+// This test hardcodes the expected values on purpose. If a future rename "finishes
+// the job" here, the suite must fail loudly rather than let a user lose their data.
+import { describe, it, expect } from 'vitest';
+import * as fs from 'fs';
+import * as path from 'path';
+import { HMAC_SECRET } from '../../src/main/fingerprints/derivation';
+import { SIGNING_DOMAIN_PREFIX } from '../../src/main/security/signing';
+import { PRODUCT_NAME, TAGLINE_PRIMARY, TAGLINE_SECONDARY } from '../../src/renderer/src/brand';
+
+const SRC = path.join(__dirname, '..', '..', 'src');
+const ROOT = path.join(__dirname, '..', '..');
+
+describe('rename boundary: cryptographic identifiers must not move', () => {
+  it('the fingerprint derivation secret is unchanged', () => {
+    // Seeds every sub-seed (canvas, webgl, audio, voices, platform…). Changing this
+    // gives every existing profile a different identity.
+    expect(HMAC_SECRET).toBe('antidetect-fingerprint-catalog-domain-v1');
+  });
+
+  it('the release signing domain is unchanged', () => {
+    // Binds signatures to a domain string; changing it invalidates verification of
+    // artefacts signed before the rename.
+    expect(SIGNING_DOMAIN_PREFIX).toBe('antidetect:supply-chain:v1\0');
+  });
+});
+
+describe('rename boundary: on-disk locations must not move', () => {
+  const config = fs.readFileSync(path.join(SRC, 'main', 'config.ts'), 'utf8');
+
+  it('the database filename still points at existing installs', () => {
+    expect(config).toMatch(/DB_PATH\s*=\s*path\.join\(DATA_DIR,\s*'antidetect\.db'\)/);
+  });
+
+  it('the data directory name is still discoverable', () => {
+    // resolveDataDir() must still be able to find a pre-rename installation.
+    expect(config).toMatch(/\.antidetect|ANTIDETECT_DATA_DIR/);
+  });
+
+  it('the environment-variable prefix is unchanged', () => {
+    // Renaming these would make an existing deployment silently ignore its config.
+    expect(config).toMatch(/ANTIDETECT_/);
+  });
+
+  it('the instance lock still recognises the pre-rename executable name', () => {
+    const index = fs.readFileSync(path.join(SRC, 'main', 'index.ts'), 'utf8');
+    expect(index).toMatch(/Antidetect Browser\.exe/);
+  });
+});
+
+describe('rename boundary: packaging identity keeps update continuity', () => {
+  const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
+
+  it('the application id is unchanged so updates keep landing', () => {
+    expect(pkg.build.appId).toBe('com.antidetect.browser');
+  });
+});
+
+describe('brand identity', () => {
+  it('the product name is NullTrace', () => {
+    expect(PRODUCT_NAME).toBe('NullTrace');
+  });
+
+  it('the taglines are the agreed pair', () => {
+    expect(TAGLINE_PRIMARY).toBe('Zero footprint, infinite scale.');
+    expect(TAGLINE_SECONDARY).toBe('Leave nothing behind.');
+  });
+
+  it('the taglines are defined in exactly one place', () => {
+    const files = walk(path.join(SRC)).concat(walk(path.join(ROOT, 'electron')));
+    const offenders: string[] = [];
+    for (const file of files) {
+      if (file.endsWith(`${path.sep}brand.ts`)) continue;
+      const text = fs.readFileSync(file, 'utf8');
+      if (text.includes('Zero footprint, infinite scale.') || text.includes('Leave nothing behind.')) {
+        offenders.push(path.relative(ROOT, file));
+      }
+    }
+    expect(offenders, 'taglines must come from brand.ts, not be inlined').toEqual([]);
+  });
+});
+
+describe('no stale identity on user-visible surfaces', () => {
+  it('the renderer shell and its localisation contain no old name', () => {
+    for (const rel of [
+      path.join('renderer', 'index.html'),
+      path.join('renderer', 'src', 'App.tsx'),
+      path.join('renderer', 'src', 'i18n.tsx'),
+    ]) {
+      const text = fs.readFileSync(path.join(SRC, rel), 'utf8');
+      expect(text, `${rel} still names the old product`).not.toMatch(/Antidetect/);
+    }
+  });
+
+  it('both languages were renamed together', () => {
+    // A name changed in one language only leaves the UI inconsistent.
+    const i18n = fs.readFileSync(path.join(SRC, 'renderer', 'src', 'i18n.tsx'), 'utf8');
+    expect(i18n).toMatch(/NullTrace/);
+    expect(i18n).not.toMatch(/Antidetect/);
+  });
+
+  it('artefacts that leave the machine carry the new identity', () => {
+    const cookies = fs.readFileSync(path.join(SRC, 'main', 'api', 'routes', 'cookies.ts'), 'utf8');
+    const profiles = fs.readFileSync(path.join(SRC, 'main', 'api', 'routes', 'profiles.ts'), 'utf8');
+    expect(cookies).toMatch(/Generated by NullTrace/);
+    expect(profiles).toMatch(/nulltrace-profiles-/);
+  });
+});
+
+function walk(dir: string, out: string[] = []): string[] {
+  if (!fs.existsSync(dir)) return out;
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      if (entry.name === 'node_modules' || entry.name === 'dist' || entry.name === '.venv') continue;
+      walk(full, out);
+    } else if (/\.(ts|tsx)$/.test(entry.name)) {
+      out.push(full);
+    }
+  }
+  return out;
+}

@@ -41,7 +41,7 @@ export interface ChromiumBookmarksRoot {
   [key: string]: unknown;
 }
 
-export const MANAGED_NODE_NAME = 'Antidetect';
+export const MANAGED_NODE_NAME = 'NullTrace';
 export const MANAGED_NODE_ID = 'antidetect_managed';
 
 /**

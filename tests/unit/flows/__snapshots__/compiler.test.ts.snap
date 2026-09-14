@@ -124,8 +124,7 @@ exports[`Flow Compiler - Determinism & Per-Node Codegen > generates expected cod
       const __moduleId = "auth-mod";
       const __args = {};
       app.log('Calling script module ' + __moduleId);
-      // Module calls run via app.http or script engine invocation if supported
-      const __moduleResult = { success: true, moduleId: __moduleId, args: __args };
+      const __moduleResult = await app.callModule(__moduleId, __args);
       return null;
       __logSpanEnd("n-mod", __t0);
     } catch (err) {

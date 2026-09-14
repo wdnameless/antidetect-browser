@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { EmptyState } from '../components/EmptyState';
 import { api, type ExtensionItem, type ProfileListItem } from '../api';
 import { ExtensionsIcon, PlusIcon, TrashIcon } from '../icons';
 import { useI18n } from '../i18n';
@@ -105,10 +106,8 @@ export function Extensions() {
       <div className="page-header-actions">
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <ExtensionsIcon size={20} style={{ color: 'var(--accent)' }} />
-          <h2 style={{ fontSize: 16, fontWeight: 700 }}>Extensions Manager</h2>
           <span className="hint" style={{ margin: 0 }}>({extensions.length} extensions imported)</span>
         </div>
-
         <button className="btn primary" onClick={() => setShowForm((v) => !v)}>
           <PlusIcon size={15} />
           <span>{showForm ? 'Cancel' : 'Import Extension'}</span>
@@ -175,7 +174,7 @@ export function Extensions() {
           </button>
         </div>
         {webStoreSuccess ? (
-          <div style={{ marginTop: 8, color: 'var(--success, #10b981)', fontSize: 13 }}>
+          <div style={{ marginTop: 8, color: 'var(--ok)', fontSize: 13 }}>
             {webStoreSuccess}
           </div>
         ) : null}
@@ -192,20 +191,18 @@ export function Extensions() {
           </thead>
           <tbody>
             {extensions.length === 0 ? (
-              <tr>
-                <td colSpan={4} className="empty-cell">
-                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, padding: '24px 0' }}>
-                    <ExtensionsIcon size={32} style={{ opacity: 0.3 }} />
-                    <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-secondary)' }}>
-                      {t('No extensions imported yet')}
-                    </div>
-                    <p style={{ fontSize: 12, color: 'var(--text-muted)', maxWidth: 420, margin: 0 }}>
-                      Import an unpacked extension folder (e.g. MetaMask, EditThisCookie) to load it into your
-                      profiles. Click <strong>+ Import Extension</strong> to get started.
-                    </p>
-                  </div>
-                </td>
-              </tr>
+              <EmptyState
+                colSpan={4}
+                icon={<ExtensionsIcon size={32} />}
+                title={t('No extensions imported yet')}
+                description="Import an unpacked extension folder (e.g. MetaMask, EditThisCookie) to load it into your profiles. Click + Import Extension to get started."
+                action={
+                  <button className="btn btn-sm primary" onClick={() => setShowForm(true)}>
+                    <PlusIcon size={13} />
+                    <span>Import Extension</span>
+                  </button>
+                }
+              />
             ) : (
               extensions.map((e) => (
                 <tr key={e.extension_id}>

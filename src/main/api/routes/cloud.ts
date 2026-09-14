@@ -8,6 +8,22 @@ import * as pm from '../../profiles/profileManager';
 import { isRunning } from '../../launcher/chromium';
 import { getSetting, setSetting } from '../../config';
 import { protectSecret, revealSecret } from '../../util/secretStore';
+import {
+  getGDriveStatus,
+  saveGDriveCredentials,
+  disconnectGDrive,
+} from '../../cloud/gdriveAuth';
+import {
+  getOAuthTransport,
+  GDRIVE_REQUIRED_SCOPE,
+  finalizeTokenExchange,
+} from '../../cloud/gdriveClient';
+import {
+  pushToGDrive,
+  inspectGDrivePull,
+  pullFromGDrive,
+  ConflictResolution,
+} from '../../cloud/gdriveTransfer';
 
 const router = Router();
 
@@ -288,6 +304,203 @@ router.post('/api/v1/cloud/pull', async (req: Request, res: Response) => {
     msg: 'success',
     data: { pulled: results.filter((x) => x.ok).length, failed: results.filter((x) => !x.ok).length, results },
   });
+});
+
+// ============================================================================
+// Google Drive Sync Endpoints (nulltrace-gdrive)
+// ============================================================================
+
+/** Get GDrive status (safe status object, never leaks tokens or secrets) */
+router.get('/api/v1/cloud/gdrive/status', (_req: Request, res: Response) => {
+  res.json({
+    code: 0,
+    msg: 'success',
+    data: getGDriveStatus(),
+  });
+});
+
+/** Save operator's OAuth client credentials (stored in DPAPI secret store) */
+router.post('/api/v1/cloud/gdrive/credentials', (req: Request, res: Response) => {
+  const { clientId, clientSecret } = req.body || {};
+  try {
+    saveGDriveCredentials({ clientId, clientSecret });
+    res.json({
+      code: 0,
+      msg: 'Credentials saved securely',
+      data: getGDriveStatus(),
+    });
+  } catch (err) {
+    res.status(400).json({
+      code: 400,
+      msg: (err as Error).message,
+    });
+  }
+});
+
+/** Initiate Device Code flow for authorization */
+router.post('/api/v1/cloud/gdrive/auth/device-code', async (_req: Request, res: Response) => {
+  const status = getGDriveStatus();
+  if (!status.configured) {
+    res.status(400).json({
+      code: 400,
+      msg: 'Google OAuth Client ID must be configured first',
+    });
+    return;
+  }
+
+  const { getGDriveCredentials } = await import('../../cloud/gdriveAuth');
+  const creds = getGDriveCredentials();
+  if (!creds) {
+    res.status(400).json({ code: 400, msg: 'No credentials found' });
+    return;
+  }
+
+  try {
+    const transport = getOAuthTransport();
+    const deviceResp = await transport.requestDeviceCode(creds.clientId, GDRIVE_REQUIRED_SCOPE);
+    res.json({
+      code: 0,
+      msg: 'success',
+      data: {
+        userCode: deviceResp.user_code,
+        verificationUrl: deviceResp.verification_url,
+        deviceCode: deviceResp.device_code,
+        expiresIn: deviceResp.expires_in,
+        interval: deviceResp.interval,
+      },
+    });
+  } catch (err) {
+    res.status(500).json({
+      code: 500,
+      msg: (err as Error).message,
+    });
+  }
+});
+
+/** Poll Device Code flow */
+router.post('/api/v1/cloud/gdrive/auth/poll', async (req: Request, res: Response) => {
+  const { deviceCode } = req.body || {};
+  if (!deviceCode) {
+    res.status(400).json({ code: 400, msg: 'deviceCode is required' });
+    return;
+  }
+
+  const { getGDriveCredentials } = await import('../../cloud/gdriveAuth');
+  const creds = getGDriveCredentials();
+  if (!creds) {
+    res.status(400).json({ code: 400, msg: 'Credentials not configured' });
+    return;
+  }
+
+  try {
+    const transport = getOAuthTransport();
+    const result = await transport.pollDeviceToken(creds.clientId, creds.clientSecret, deviceCode);
+    if (result.status === 'pending' || result.status === 'slow_down') {
+      res.json({ code: 0, msg: result.status, data: { status: result.status } });
+      return;
+    }
+
+    if (result.status === 'success' && result.data) {
+      const finalInfo = await finalizeTokenExchange(result.data);
+      res.json({
+        code: 0,
+        msg: 'Connected successfully',
+        data: {
+          status: 'success',
+          email: finalInfo.email,
+          gdriveStatus: getGDriveStatus(),
+        },
+      });
+      return;
+    }
+
+    res.status(400).json({ code: 400, msg: 'Polling failed' });
+  } catch (err) {
+    res.status(400).json({
+      code: 400,
+      msg: (err as Error).message,
+    });
+  }
+});
+
+/** Disconnect GDrive (clears refresh token) */
+router.post('/api/v1/cloud/gdrive/disconnect', (_req: Request, res: Response) => {
+  disconnectGDrive();
+  res.json({
+    code: 0,
+    msg: 'Disconnected from Google Drive',
+    data: getGDriveStatus(),
+  });
+});
+
+/** Push profiles, scripts, and settings to Google Drive */
+router.post('/api/v1/cloud/gdrive/push', async (_req: Request, res: Response) => {
+  const status = getGDriveStatus();
+  if (!status.connected) {
+    res.status(400).json({ code: 400, msg: 'Not connected to Google Drive' });
+    return;
+  }
+
+  try {
+    const result = await pushToGDrive();
+    res.json({
+      code: 0,
+      msg: 'Pushed to Google Drive successfully',
+      data: result,
+    });
+  } catch (err) {
+    res.status(500).json({
+      code: 500,
+      msg: (err as Error).message,
+    });
+  }
+});
+
+/** Inspect remote Drive state without pulling */
+router.get('/api/v1/cloud/gdrive/inspect-pull', async (_req: Request, res: Response) => {
+  const status = getGDriveStatus();
+  if (!status.connected) {
+    res.status(400).json({ code: 400, msg: 'Not connected to Google Drive' });
+    return;
+  }
+
+  try {
+    const inspection = await inspectGDrivePull();
+    res.json({
+      code: 0,
+      msg: 'success',
+      data: inspection,
+    });
+  } catch (err) {
+    res.status(500).json({
+      code: 500,
+      msg: (err as Error).message,
+    });
+  }
+});
+
+/** Pull profiles, scripts, and settings from Google Drive */
+router.post('/api/v1/cloud/gdrive/pull', async (req: Request, res: Response) => {
+  const status = getGDriveStatus();
+  if (!status.connected) {
+    res.status(400).json({ code: 400, msg: 'Not connected to Google Drive' });
+    return;
+  }
+
+  const { conflictResolution } = (req.body || {}) as { conflictResolution?: ConflictResolution };
+  try {
+    const result = await pullFromGDrive({ conflictResolution });
+    res.json({
+      code: 0,
+      msg: 'Pulled from Google Drive successfully',
+      data: result,
+    });
+  } catch (err) {
+    res.status(400).json({
+      code: 400,
+      msg: (err as Error).message,
+    });
+  }
 });
 
 export default router;

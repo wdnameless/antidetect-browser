@@ -95,6 +95,28 @@ export const ModuleNodeSchema = FlowNodeBaseSchema.extend({
   variable: z.string().optional(),
 });
 
+/** Fill a form on the running profile with the profile's deterministic persona. */
+export const FillFormNodeSchema = FlowNodeBaseSchema.extend({
+  type: z.literal('fill_form'),
+  // selector -> persona field (dotted names like 'givenName' or 'card.number')
+  mapping: z.record(z.string()),
+  clearFirst: z.boolean().optional(),
+});
+
+/** Read a global key into a flow variable — missing keys fail the run. */
+export const KeyReadNodeSchema = FlowNodeBaseSchema.extend({
+  type: z.literal('key_read'),
+  key: z.string().min(1),
+  variable: z.string().min(1).regex(/^[a-zA-Z_][a-zA-Z0-9_]*$/, 'Invalid variable name identifier'),
+});
+
+/** Write a global key; persisted with the script engine's write-back diff. */
+export const KeyWriteNodeSchema = FlowNodeBaseSchema.extend({
+  type: z.literal('key_write'),
+  key: z.string().min(1),
+  value: z.string(),
+});
+
 export const FlowNodeSchema = z.discriminatedUnion('type', [
   NavigateNodeSchema,
   ClickNodeSchema,
@@ -108,6 +130,9 @@ export const FlowNodeSchema = z.discriminatedUnion('type', [
   ScreenshotNodeSchema,
   EvalNodeSchema,
   ModuleNodeSchema,
+  FillFormNodeSchema,
+  KeyReadNodeSchema,
+  KeyWriteNodeSchema,
 ]);
 export type FlowNode = z.infer<typeof FlowNodeSchema>;
 export type FlowNodeType = FlowNode['type'];

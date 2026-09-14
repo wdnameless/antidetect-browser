@@ -3,7 +3,7 @@ import type {
   AudioSignatureSpec,
   ScreenProfileSpec,
 } from './types';
-import { crc32 } from './derivation';
+import { crc32 } from './crc32';
 
 /**
  * Common font inventories based on public OS typography documentation.
