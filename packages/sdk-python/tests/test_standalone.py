@@ -78,8 +78,13 @@ def test_engine_wrong_digest_refusal():
 
         # A digest that cannot match must be refused, and refused as an engine
         # acquisition error rather than a generic failure.
-        from antidetect_sdk.engine import EngineAcquireError
-        from antidetect_sdk.engine import KernelAssetInfo
+        #
+        # The URL comes from Path.as_uri(), not an f-string: on Windows a raw path has
+        # backslashes, and `file://C:\...` is not a valid URL — urllib rejects it before
+        # the digest is ever checked, so the test would fail for the wrong reason.
+        from pathlib import Path
+
+        from antidetect_sdk.engine import EngineAcquireError, KernelAssetInfo
 
         wrong = KernelAssetInfo(
             asset="fake.zip",
@@ -90,7 +95,7 @@ def test_engine_wrong_digest_refusal():
         )
         with pytest.raises(EngineAcquireError) as excinfo:
             ensure_engine(
-                download_url=f"file://{fake_zip}",
+                download_url=Path(fake_zip).as_uri(),
                 target_dir=tmpdir,
                 expected_digests={"win32": wrong, "linux": wrong, "darwin": wrong},
                 platform="win32",

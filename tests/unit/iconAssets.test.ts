@@ -55,11 +55,13 @@ describe('NullTrace Icon Assets & Specifications', () => {
   });
 
   it('.ico container exists and contains multiple embedded icon sizes', () => {
+    // Only artefacts that live in the repository belong here. `release/` is build
+    // output and is gitignored, so asserting on it made this test pass locally (where
+    // a build had run) and fail on a fresh clone — which is exactly what happened in CI.
     const icoPaths = [
       'assets/brand/nulltrace-icon.ico',
       'assets/brand/favicon.ico',
       'build/icon.ico',
-      'release/.icon-ico/icon.ico',
     ];
 
     for (const relPath of icoPaths) {
