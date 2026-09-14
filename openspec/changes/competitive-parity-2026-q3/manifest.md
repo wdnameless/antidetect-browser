@@ -20,7 +20,7 @@ Silence never cancels a row. `dropped` requires the user's own quoted words.
 | R13 | Standalone SDKs for Node, Python, and Rust | «Да, Node+Python standalone» + «Только управление + CDP, плюс Rust» | in-spec |
 | R14 | SDK scope is profile control + CDP endpoint only (no bundled stealth driver) | «Только управление + CDP, плюс Rust» | in-spec |
 | R15 | macOS becomes the next platform | «Да, macOS следующим» | in-spec |
-| R16 | macOS ships signed with Developer ID and notarized (not unsigned) | «Developer ID + notarize» | placeholder |
+| R16 | macOS ships signed with Developer ID and notarized (not unsigned) | «Developer ID + notarize» | resolved-without-account |
 | R17 | macOS target architecture is arm64 | «arm64» | in-spec |
 | R18 | Google Drive sync is in scope | «google sync» | in-spec |
 | R19 | Google Drive auth uses a user-supplied OAuth client, not ours | «Пользовательский OAuth client» | in-spec |

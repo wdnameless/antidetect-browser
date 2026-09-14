@@ -84,3 +84,38 @@ describe('macOS Packaging and Portability Configuration', () => {
     expect(content).toContain('xattr -dr com.apple.quarantine');
   });
 });
+
+describe('macOS arm64 signing without an Apple account', () => {
+  const root = path.resolve(__dirname, '../..');
+  const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
+
+  it('keeps Developer ID signing off — there is no Apple account to sign with', () => {
+    expect(pkg.build.mac.identity).toBeNull();
+  });
+
+  it('applies an ad-hoc signature, which the Apple Silicon loader requires', () => {
+    // Unsigned ARM code does not execute on M-series Macs. Ad-hoc signing costs
+    // nothing and needs no certificate, so it is the only way to ship a runnable
+    // arm64 build without an account.
+    expect(pkg.build.mac.afterPack).toBe('scripts/afterPack-adhoc-sign.cjs');
+    const hook = fs.readFileSync(path.join(root, 'scripts/afterPack-adhoc-sign.cjs'), 'utf8');
+    expect(hook).toContain("'/usr/bin/codesign'");
+    expect(hook).toContain("'--sign'");
+    expect(hook).toContain("'-'");
+  });
+
+  it('fails loudly rather than shipping an arm64 bundle that cannot launch', () => {
+    const hook = fs.readFileSync(path.join(root, 'scripts/afterPack-adhoc-sign.cjs'), 'utf8');
+    // A swallowed signing error would produce a build that dies on the user's machine.
+    expect(hook).toMatch(/throw new Error/);
+    expect(hook).toMatch(/will not execute on Apple Silicon/);
+  });
+
+  it('does not claim Gatekeeper acceptance', () => {
+    // Ad-hoc satisfies the loader, not Gatekeeper. Conflating the two would make the
+    // docs promise an experience the operator will not get.
+    const hook = fs.readFileSync(path.join(root, 'scripts/afterPack-adhoc-sign.cjs'), 'utf8');
+    expect(hook).toMatch(/NOT Gatekeeper|not Gatekeeper/i);
+    expect(hook).toContain('xattr -dr com.apple.quarantine');
+  });
+});

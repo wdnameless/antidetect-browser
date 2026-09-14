@@ -2,6 +2,21 @@ import React, { useState, useEffect } from 'react';
 import { api, CloudStateData, CloudSessionItem, ProfileListItem, SyncResultRow } from '../api';
 import { useI18n } from '../i18n';
 
+// Self-hosted deployment: the bootstrap script and its guides live in the repository
+// under `deploy/`, served from the main branch so an operator always gets the current one.
+const BOOTSTRAP_URL =
+  'https://raw.githubusercontent.com/wdnameless/antidetect-browser/main/deploy/bootstrap.ps1';
+const DEPLOY_GUIDE_RU =
+  'https://github.com/wdnameless/antidetect-browser/blob/main/deploy/DEDICATED_AGENT_PROMPT.ru.md';
+const DEPLOY_GUIDE_EN =
+  'https://github.com/wdnameless/antidetect-browser/blob/main/README.md#dedicated-server';
+
+const DEPLOY_COMMAND = [
+  `irm ${BOOTSTRAP_URL} -OutFile bootstrap.ps1`,
+  'Set-ExecutionPolicy -Scope Process Bypass -Force',
+  '.\\bootstrap.ps1 -Peers 3',
+].join('\n');
+
 interface GDriveStatusState {
   configured: boolean;
   connected: boolean;
@@ -600,6 +615,53 @@ export const CloudSync: React.FC = () => {
             )}
           </div>
         )}
+      </div>
+
+      {/* =================================================================== */}
+      {/* DEPLOY TO YOUR OWN SERVER                                           */}
+      {/* Restored: the Drive work on this file dropped this block while        */}
+      {/* rewriting the page. R85i requires the self-hosted path to keep        */}
+      {/* working, and this is the part an operator needs to stand one up.      */}
+      {/* =================================================================== */}
+      <div className="card" style={{ marginBottom: '20px' }}>
+        <h3>{t('Deploy to your own server')}</h3>
+        <span style={{ fontSize: '12px', color: 'var(--text-muted)', display: 'block', marginBottom: '12px' }}>
+          {t('Run this on your Windows dedicated machine (PowerShell as Administrator). It installs Node, WireGuard (10.8.0.1 + peers), builds the app and registers an auto-start service.')}
+        </span>
+        <textarea
+          readOnly
+          value={DEPLOY_COMMAND}
+          rows={4}
+          style={{ width: '100%', fontFamily: 'var(--font-mono)', fontSize: 12 }}
+        />
+        <div style={{ display: 'flex', gap: '8px', marginTop: '12px', flexWrap: 'wrap' }}>
+          <button
+            type="button"
+            className="btn"
+            onClick={() => {
+              void navigator.clipboard?.writeText(DEPLOY_COMMAND);
+            }}
+          >
+            {t('Copy deploy command')}
+          </button>
+          <button
+            type="button"
+            className="btn"
+            onClick={() => window.open(DEPLOY_GUIDE_RU, '_blank')}
+          >
+            {t('Guide (RU)')}
+          </button>
+          <button
+            type="button"
+            className="btn"
+            onClick={() => window.open(DEPLOY_GUIDE_EN, '_blank')}
+          >
+            {t('Guide (EN)')}
+          </button>
+        </div>
+        <p className="hint" style={{ marginTop: '12px', fontSize: 12, color: 'var(--text-muted)' }}>
+          {t('After bootstrap finishes, import peer-*.conf from C:\\antidetect-clients into WireGuard on your devices, then connect here using http://10.8.0.1.')}
+        </p>
       </div>
     </div>
   );

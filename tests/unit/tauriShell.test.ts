@@ -85,3 +85,13 @@ describe('Tauri Desktop Shell', () => {
     }
   });
 });
+
+describe('macOS ad-hoc signing is configured for the shell too', () => {
+  it('sets an ad-hoc signing identity, which arm64 requires to load', () => {
+    // Same reason as the Electron build: unsigned ARM code does not execute on Apple
+    // Silicon. "-" is codesign's ad-hoc identity and needs no certificate.
+    const raw = fs.readFileSync(path.join(__dirname, '../..', 'src-tauri/tauri.conf.json'), 'utf8');
+    const conf = JSON.parse(raw);
+    expect(conf.bundle?.macOS?.signingIdentity).toBe('-');
+  });
+});

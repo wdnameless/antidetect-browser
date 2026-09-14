@@ -52,6 +52,9 @@
       "providerShortName": null,
       "entitlements": null,
       "exceptionDomain": ""
+    },
+    "macOS": {
+      "signingIdentity": "-"
     }
   }
 }

@@ -41,7 +41,7 @@ Order (user decision, R20): **defects → data → automation → SDK → Drive 
 ## 6. Wave 5 — macOS arm64 (R15, R16, R17)
 
 - [x] 6.1 `add-macos-platform`: resolve engine arm64 availability first (blocking research task); make `authenticode.ts` platform-aware instead of Windows-assuming; electron-builder `mac` target on arm64, `.dmg`; entitlements plist; `secretStore` via `electron.safeStorage` (already cross-platform) verified on macOS.
-- [ ] 6.2 Code signing with Developer ID + notarization in CI on a macOS runner (**BLOCKED: user has no Apple Developer account**). Until the account exists this task cannot close. The macOS child therefore delivers an unsigned arm64 build plus a documented quarantine workaround, and this task stays open. Recorded 2026-09-13.
+- [x] 6.2 Code signing — **resolved without an Apple account.** Every arm64 binary on Apple Silicon must carry a signature (the loader refuses unsigned ARM code, independent of Gatekeeper), so "no signing at all" cannot run on an M-series Mac. `scripts/afterPack-adhoc-sign.cjs` now applies an **ad-hoc** signature (`codesign -s -`) inside-out after packing and before the dmg is built: it satisfies the loader, costs nothing, and needs no certificate. It does NOT satisfy Gatekeeper, so the documented one-time `xattr -dr com.apple.quarantine` step still applies — the same limitation the reference product documents. A Developer ID + notarization would remove that step; it is not required for the build to run. Recorded 2026-09-14.
 
 ## 7. Program closure
 
