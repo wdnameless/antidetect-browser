@@ -3,6 +3,43 @@
 All notable changes are documented here. Releases are published on
 [GitHub Releases](https://github.com/wdnameless/antidetect-browser/releases).
 
+## Unreleased — Shell typography, MCP surface, responsive Automation
+
+The interface was asked to look like the ShardX reference — «шрифты, разделы, меню и MCP,
+documentation and automation api» — and the Automation tab was called out as having
+«нет адаптивности».
+
+**Typography.** `--font-sans` had claimed `'Inter'` while no font file existed in the
+repository, so every screen rendered Segoe UI. Inter is now vendored as two woff2 files
+(67KB, latin + cyrillic — the UI ships Russian strings) and loads with no network request.
+Google serves a *variable* Inter, so the four weight URLs are byte-identical; one face per
+subset covers 100–900.
+
+**MCP.** The server was already fully implemented — 47 tools, two tiers, stdio and loopback
+HTTP, RBAC, audit log — and completely invisible: no build script, no endpoint, no UI. It
+now builds (`npm run build:mcp`), runs as a tracked child process, and is driven from a
+sidebar footer panel with live status, start/stop and a copyable client config. The copied
+config was initially wrong in both variants (`/sse` does not exist; the stdio path did not
+exist either) and is now verified against the live server.
+
+**Footer.** An Automation API panel with the real loopback origin and a copyable curl (key
+masked on screen, full value still copied), a Documentation link, and a version pill that
+says "Not checked" rather than claiming "up to date".
+
+**Automation responsiveness.** The renderer had zero `@media` rules and hardcoded panel
+widths. Panels now respond through tokens: below 1100px the inspector becomes an overlay
+drawer with Esc-to-close and focus return, and the palette collapses to a legible rail.
+
+Defects found by looking at the rendered result rather than the diff: all twelve
+`.footer-panel-*` classes were undefined so the panels rendered unstyled; four referenced
+design tokens were never declared; a hardcoded `?? 47` tool count would have claimed a
+healthy server while the endpoint was unreachable; the palette rail printed
+`label.slice(0, 2)` — "Na", "Cl", "Ty" — which is a truncated word, not a label.
+
+Verified in the running app: Inter reported loaded, footer reading `STATUS RUNNING` /
+`47 (T1: 35 / T2: 12)` with the live endpoint, `200 /v1/mcp/start`, no horizontal overflow
+at 1000/1250/1600px, and a blind acceptance pass with all nine audited requirements green.
+
 ## v0.4.0 - Density redesign, the brand mark, and the first shipped build since 0.2.33
 
 The interface was called «слишком нагромажденный» with «много визуальных багов», against the

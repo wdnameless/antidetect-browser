@@ -15,19 +15,19 @@ Status: `open` | `in-spec` | `in-ticket` | `done` | `placeholder` | `deferred` |
 
 | # | Requirement | Verbatim quote | Status |
 |---|---|---|---|
-| R01 | The interface reads like the ShardX reference: typography, spacing, section rhythm | «выголядил вот так» | in-spec |
-| R02 | Inter is the real rendered typeface, self-hosted as woff2 inside the repo — not a CDN request | «шрифты» + «Вшить Inter локально» | in-spec |
-| R03 | The sidebar footer exposes a **MCP panel**: live status, start/stop, and a copyable connection config | «MCP» + «Полноценно: статус + запуск + конфиг» | in-spec |
-| R04 | The sidebar footer exposes an **Automation API panel**: loopback endpoint, copyable, with status | «automation api» | in-spec |
-| R05 | A **Documentation** control exists, opening the GitHub docs | «documentation» + «Ссылка на GitHub» | in-spec |
-| R06 | The sidebar shows the real app version and a genuine update check — «up to date» only when verified | screenshot «v2.0.3 / up to date» + «Показывать реальную версию + проверка обновлений» | in-spec |
-| R07 | Sections and menu match the reference's grouping and ordering | «разделы, меню» | in-spec |
-| R08 | The **Automation** tab is responsive: on a narrow window the inspector becomes a drawer and the palette collapses to icons; on a wide window all three panels show | «сейчас нет адаптивности» + «Гибкие 3 панели» | in-spec |
-| R09 | No hardcoded panel widths remain in Automation; layout responds to available width | «нет адаптивности» | in-spec |
-| R10i | The MCP panel must not claim a running server when it is not running — status reflects the process, not the intent | derived from the honesty law + «статус» | in-spec |
-| R11i | Copying the MCP config yields a config that actually works (correct command, path, transport) | derived from «конфиг для копирования» | in-spec |
-| R12i | Scope is the shell/footer/typography plus Automation responsiveness; FlowCanvas internals and Settings bodies are not re-architected | «Шрифт/оболочка/футер + адаптивность Automation» | in-spec |
-| R13i | Existing capability is preserved: 7 destinations, sub-tabs, dense rows, zero chromatic colours | prior accepted state | in-spec |
+| R01 | The interface reads like the ShardX reference: typography, spacing, section rhythm | «выголядил вот так» | done |
+| R02 | Inter is the real rendered typeface, self-hosted as woff2 inside the repo — not a CDN request | «шрифты» + «Вшить Inter локально» | done |
+| R03 | The sidebar footer exposes a **MCP panel**: live status, start/stop, and a copyable connection config | «MCP» + «Полноценно: статус + запуск + конфиг» | done |
+| R04 | The sidebar footer exposes an **Automation API panel**: loopback endpoint, copyable, with status | «automation api» | done |
+| R05 | A **Documentation** control exists, opening the GitHub docs | «documentation» + «Ссылка на GitHub» | done |
+| R06 | The sidebar shows the real app version and a genuine update check — «up to date» only when verified | screenshot «v2.0.3 / up to date» + «Показывать реальную версию + проверка обновлений» | done |
+| R07 | Sections and menu match the reference's grouping and ordering | «разделы, меню» | done |
+| R08 | The **Automation** tab is responsive: on a narrow window the inspector becomes a drawer and the palette collapses to icons; on a wide window all three panels show | «сейчас нет адаптивности» + «Гибкие 3 панели» | done |
+| R09 | No hardcoded panel widths remain in Automation; layout responds to available width | «нет адаптивности» | done |
+| R10i | The MCP panel must not claim a running server when it is not running — status reflects the process, not the intent | derived from the honesty law + «статус» | done |
+| R11i | Copying the MCP config yields a config that actually works (correct command, path, transport) | derived from «конфиг для копирования» | done |
+| R12i | Scope is the shell/footer/typography plus Automation responsiveness; FlowCanvas internals and Settings bodies are not re-architected | «Шрифт/оболочка/футер + адаптивность Automation» | done |
+| R13i | Existing capability is preserved: 7 destinations, sub-tabs, dense rows, zero chromatic colours | prior accepted state | done |
 
 ## Verified facts gathered before planning (not assumptions)
 
