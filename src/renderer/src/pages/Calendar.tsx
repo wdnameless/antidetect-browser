@@ -122,11 +122,11 @@ export function Calendar() {
         </div>
       </div>
 
-      {error && <div style={{ color: '#f87171', fontSize: 12, marginBottom: 8 }}>{error}</div>}
+      {error && <div style={{ color: 'var(--danger)', fontSize: 12, marginBottom: 8 }}>{error}</div>}
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 4 }}>
         {WEEKDAY_LABELS.map((d) => (
-          <div key={d} style={{ fontSize: 11, color: '#a1a1aa', textAlign: 'center', padding: '4px 0' }}>
+          <div key={d} style={{ fontSize: 11, color: 'var(--text-secondary)', textAlign: 'center', padding: '4px 0' }}>
             {d}
           </div>
         ))}
@@ -144,12 +144,12 @@ export function Calendar() {
                 minHeight: 72,
                 padding: 6,
                 borderRadius: 6,
-                border: '1px solid rgba(255,255,255,0.1)',
-                background: isToday ? 'rgba(255,255,255,0.08)' : 'transparent',
+                border: '1px solid var(--border)',
+                background: isToday ? 'var(--control-bg-hover)' : 'transparent',
                 opacity: inMonth ? 1 : 0.35,
               }}
             >
-              <div style={{ fontSize: 11, color: '#a1a1aa', marginBottom: 4 }}>{cell.getDate()}</div>
+              <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginBottom: 4 }}>{cell.getDate()}</div>
               {visible.map((m, i) => (
                 <button
                   key={`${m.triggerId}-${i}`}
@@ -162,10 +162,10 @@ export function Calendar() {
                     fontSize: 10,
                     padding: '2px 4px',
                     marginBottom: 2,
-                    background: '#141416',
-                    border: '1px solid rgba(255,255,255,0.1)',
+                    background: 'var(--surface-2)',
+                    border: '1px solid var(--border)',
                     borderRadius: 4,
-                    color: '#fafafa',
+                    color: 'var(--text)',
                     cursor: 'pointer',
                     whiteSpace: 'nowrap',
                     overflow: 'hidden',
@@ -176,7 +176,7 @@ export function Calendar() {
                 </button>
               ))}
               {dayMarkers.length > 3 && (
-                <div style={{ fontSize: 10, color: '#71717a' }}>+{dayMarkers.length - 3}</div>
+                <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>+{dayMarkers.length - 3}</div>
               )}
             </div>
           );
@@ -187,7 +187,7 @@ export function Calendar() {
         <div className="modal-backdrop" onClick={() => setSelectedGroup(null)}>
           <div className="modal" onClick={(e) => e.stopPropagation()}>
             <h3>{selectedGroup}</h3>
-            <p style={{ fontSize: 12, color: '#a1a1aa' }}>{i18n.t('calendar.jumpHint')}</p>
+            <p style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{i18n.t('calendar.jumpHint')}</p>
             <button onClick={() => setSelectedGroup(null)}>OK</button>
           </div>
         </div>

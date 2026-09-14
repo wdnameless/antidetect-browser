@@ -1,16 +1,46 @@
-// Guards the noir token layer.
+// Guards the noir token layer across the WHOLE renderer, not just the stylesheet.
 //
-// The redesign's whole point is that no chrome value carries a hue and that every
-// chrome value resolves through tokens. Both are easy to break by accident: a
-// single `#3b82f6` reintroduced "just for the error state", or a `var(--x, #hex)`
-// fallback for a token that was never defined (which silently renders the hex).
-// Neither shows up in a type check, so this test reads the stylesheet directly.
+// The redesign's point is that no chrome value carries a hue and that every chrome
+// value resolves through tokens. Both are easy to break by accident: one `#3b82f6`
+// reintroduced "just for the error state", or a `var(--x, #hex)` fallback for a token
+// that was never defined (which silently renders the hex and defeats any restyle).
+// Neither shows up in a type check, so this test reads the sources directly.
+//
+// Operator data colours (the profile/tag colour pickers) are deliberately exempt:
+// they are data the operator chose, not chrome. The exemption is keyed on the palette
+// that defines them rather than on a filename allowlist, so moving a picker does not
+// silently open a hole.
 import { describe, it, expect } from 'vitest';
 import * as fs from 'fs';
 import * as path from 'path';
 
-const CSS_PATH = path.join(__dirname, '..', '..', 'src', 'renderer', 'src', 'styles.css');
+const RENDERER = path.join(__dirname, '..', '..', 'src', 'renderer', 'src');
+const CSS_PATH = path.join(RENDERER, 'styles.css');
 const css = fs.readFileSync(CSS_PATH, 'utf8');
+
+/** The operator's own colour palette — data, not chrome. */
+const USER_PALETTE_MODULES = ['palette'];
+
+function walk(dir: string, out: string[] = []): string[] {
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      if (entry.name === 'node_modules' || entry.name === 'dist') continue;
+      walk(full, out);
+    } else if (/\.tsx?$/.test(entry.name)) {
+      out.push(full);
+    }
+  }
+  return out;
+}
+
+/** Renderer sources that are NOT the user's own colour data. */
+function chromeSources(): string[] {
+  return walk(RENDERER).filter((f) => {
+    const base = path.basename(f).replace(/\.tsx?$/, '');
+    return !USER_PALETTE_MODULES.includes(base);
+  });
+}
 
 /** The `:root { ... }` block. */
 function rootBlock(): string {
@@ -38,12 +68,11 @@ function declaredTokens(): Set<string> {
 /**
  * True when a colour has no perceptible chroma.
  *
- * Channels are compared with a small tolerance rather than for exact equality:
- * the ramp is the standard zinc scale, whose near-black steps differ by 2-5 of
- * 255 (e.g. #09090b is 9/9/11) — a tint no one can see. The real offenders this
- * must catch are saturated colours like #ef4444 (channel spread 189) or #3b82f6
- * (spread 180). Anything unparseable is reported as coloured so an unknown
- * format cannot slip through.
+ * Channels are compared with a tolerance rather than for exact equality: the ramp is
+ * the standard zinc scale, whose near-black steps differ by 2-5 of 255 (e.g. #09090b
+ * is 9/9/11) — a tint no one can see. The offenders this must catch are saturated
+ * colours like #ef4444 (spread 189) or #3b82f6 (spread 180). Anything unparseable is
+ * reported as coloured so an unknown format cannot slip through.
  */
 const CHROMA_TOLERANCE = 12;
 
@@ -68,12 +97,21 @@ function isGreyscale(value: string): boolean {
   return false;
 }
 
+/** Every coloured literal in a source, with its line number. */
+function hueLiterals(source: string): string[] {
+  const out: string[] = [];
+  for (const m of source.matchAll(/#[0-9a-fA-F]{6}\b|#[0-9a-fA-F]{3}\b|rgba?\([^)]*\)/g)) {
+    if (isGreyscale(m[0])) continue;
+    out.push(`line ${source.slice(0, m.index).split('\n').length}: ${m[0]}`);
+  }
+  return out;
+}
+
 describe('token layer: nothing carries a hue', () => {
   it('every colour token is greyscale', () => {
     const offenders: string[] = [];
     for (const m of rootBlock().matchAll(/(--[\w-]+)\s*:\s*([^;]+);/g)) {
       const [, name, value] = m;
-      // Skip non-colour tokens (fonts, radii, shadows, aliases).
       if (/font|radius|shadow/.test(name)) continue;
       if (/^var\(/.test(value.trim())) continue;
       if (/gradient\(/.test(value)) continue;
@@ -82,15 +120,21 @@ describe('token layer: nothing carries a hue', () => {
     expect(offenders, 'tokens must be greyscale — the palette is monochrome').toEqual([]);
   });
 
-  it('no hue-bearing literal remains anywhere in the stylesheet', () => {
+  it('the stylesheet contains no hue-bearing literal', () => {
+    expect(hueLiterals(css), 'chrome must contain no hue').toEqual([]);
+  });
+
+  it('no renderer source contains a hue-bearing literal', () => {
+    // This is the guard the page sweep exists to satisfy: it covers every page and
+    // component, so a reintroduced colour fails the build wherever it lands.
     const offenders: string[] = [];
-    for (const m of css.matchAll(/#[0-9a-fA-F]{6}\b|#[0-9a-fA-F]{3}\b|rgba?\([^)]*\)/g)) {
-      const value = m[0];
-      if (isGreyscale(value)) continue;
-      const line = css.slice(0, m.index).split('\n').length;
-      offenders.push(`line ${line}: ${value}`);
+    for (const file of chromeSources()) {
+      const rel = path.relative(RENDERER, file);
+      for (const hit of hueLiterals(fs.readFileSync(file, 'utf8'))) {
+        offenders.push(`${rel} ${hit}`);
+      }
     }
-    expect(offenders, 'chrome must contain no hue').toEqual([]);
+    expect(offenders, 'page and component chrome must contain no hue').toEqual([]);
   });
 });
 
@@ -98,19 +142,23 @@ describe('token layer: no orphan references', () => {
   it('every var(--x) reference resolves to a declared token', () => {
     const declared = declaredTokens();
     const orphans = new Set<string>();
-    for (const m of css.matchAll(/var\((--[\w-]+)/g)) {
-      if (!declared.has(m[1])) orphans.add(m[1]);
+    for (const file of chromeSources()) {
+      for (const m of fs.readFileSync(file, 'utf8').matchAll(/var\((--[\w-]+)/g)) {
+        if (!declared.has(m[1])) orphans.add(`${path.relative(RENDERER, file)}: ${m[1]}`);
+      }
     }
     expect([...orphans], 'a var() referencing an undefined token silently renders its fallback').toEqual([]);
   });
 
-  it('no var() carries a colour fallback', () => {
+  it('no var() anywhere carries a colour fallback', () => {
     // The old dialect was `var(--bg-secondary, #1e1e24)` where the token never
     // existed — the fallback silently became the real value and the theme broke.
     const offenders: string[] = [];
-    for (const m of css.matchAll(/var\(\s*--[\w-]+\s*,[^)]*\)/g)) {
-      const line = css.slice(0, m.index).split('\n').length;
-      offenders.push(`line ${line}: ${m[0].slice(0, 60)}`);
+    for (const file of chromeSources()) {
+      const source = fs.readFileSync(file, 'utf8');
+      for (const m of source.matchAll(/var\(\s*--[\w-]+\s*,\s*[^)]*\)/g)) {
+        offenders.push(`${path.relative(RENDERER, file)} line ${source.slice(0, m.index).split('\n').length}`);
+      }
     }
     expect(offenders, 'tokens must be defined, not defaulted inline').toEqual([]);
   });

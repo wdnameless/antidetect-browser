@@ -12,8 +12,8 @@ interface CardSpec {
 }
 
 function statusColor(status: 'ok' | 'warn' | null): string {
-  if (status === 'ok') return 'var(--ok, #22c55e)';
-  if (status === 'warn') return '#eab308';
+  if (status === 'ok') return 'var(--ok)';
+  if (status === 'warn') return 'var(--warn)';
   return 'var(--text-muted)';
 }
 
@@ -168,8 +168,8 @@ export function Diagnostics() {
       {error ? <div className="error-banner">{error}</div> : null}
 
       {notRunning ? (
-        <div className="endpoint-banner" style={{ borderColor: '#eab308' }}>
-          <span style={{ color: '#eab308', fontSize: 13 }}>
+        <div className="endpoint-banner" style={{ borderColor: 'var(--warn)' }}>
+          <span style={{ color: 'var(--warn)', fontSize: 13 }}>
             {t('Profile is not running — start it first to run diagnostics.')}
           </span>
         </div>
@@ -228,7 +228,7 @@ export function Diagnostics() {
             <span
               style={{
                 width: 9, height: 9, borderRadius: '50%',
-                background: preflight.overall === 'pass' ? statusColor('ok') : preflight.overall === 'warn' ? statusColor('warn') : '#ef4444',
+                background: preflight.overall === 'pass' ? statusColor('ok') : preflight.overall === 'warn' ? statusColor('warn') : 'var(--danger)',
                 display: 'inline-block',
               }}
             />

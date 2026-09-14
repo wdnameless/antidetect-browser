@@ -102,8 +102,8 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onSuccess }) => {
         minHeight: '100vh',
         alignItems: 'center',
         justifyContent: 'center',
-        backgroundColor: 'var(--bg-primary, #0a0a0a)',
-        color: 'var(--text-primary, #ededed)',
+        backgroundColor: 'var(--bg-app)',
+        color: 'var(--text)',
       }}
     >
       <div
@@ -113,15 +113,16 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onSuccess }) => {
           maxWidth: '400px',
           margin: '1.5rem',
           padding: '2rem',
-          borderRadius: '8px',
-          border: '1px solid var(--border-color, #222)',
-          backgroundColor: 'var(--bg-secondary, #141414)',
+          // No box border: the surface step separates it from the app ground, the
+          // same rule the rest of the chrome follows.
+          borderRadius: 'var(--radius-lg)',
+          backgroundColor: 'var(--surface-1)',
         }}
       >
         <h2 style={{ marginTop: 0, marginBottom: '0.5rem', fontSize: '1.25rem', fontWeight: 600 }}>
           {isSetup ? 'Initial Setup' : 'Sign In'}
         </h2>
-        <p style={{ marginTop: 0, marginBottom: '1.5rem', fontSize: '0.875rem', color: 'var(--text-secondary, #888)' }}>
+        <p style={{ marginTop: 0, marginBottom: '1.5rem', fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
           {isSetup
             ? 'Set the administrator credentials for this instance.'
             : 'Enter credentials to access the browser workspace.'}
@@ -133,10 +134,13 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onSuccess }) => {
             style={{
               marginBottom: '1rem',
               padding: '0.75rem',
-              backgroundColor: 'rgba(255, 0, 0, 0.1)',
-              border: '1px solid rgba(255, 0, 0, 0.3)',
-              borderRadius: '4px',
-              color: '#ff6b6b',
+              // A failed sign-in must still read as a failure without hue, so the
+              // distinction is a stronger background step plus a left rule rather
+              // than a red tint.
+              backgroundColor: 'var(--control-bg-selected)',
+              borderLeft: '3px solid var(--text)',
+              borderRadius: 'var(--radius-sm)',
+              color: 'var(--text)',
               fontSize: '0.875rem',
             }}
           >

@@ -154,9 +154,9 @@ const INITIAL_EDGES: CanvasEdgeState[] = [
 ];
 
 const pickerButtonStyle: React.CSSProperties = {
-  background: '#141416',
-  border: '1px solid rgba(255,255,255,0.1)',
-  color: '#e4e4e7',
+  background: 'var(--surface-2)',
+  border: '1px solid var(--border)',
+  color: 'var(--text)',
   fontSize: 12,
   padding: '6px 10px',
   borderRadius: 6,
@@ -1088,8 +1088,8 @@ export function FlowCanvas() {
         width: '100%',
         height: '100%',
         position: 'relative',
-        background: '#09090b',
-        color: '#fafafa',
+        background: 'var(--bg-app)',
+        color: 'var(--text)',
         overflow: 'hidden',
         userSelect: 'none',
       }}
@@ -1102,20 +1102,20 @@ export function FlowCanvas() {
         data-testid="node-palette"
         style={{
           width: 260,
-          borderRight: '1px solid rgba(255,255,255,0.08)',
-          background: '#0c0c0e',
+          borderRight: '1px solid var(--border)',
+          background: 'var(--panel)',
           display: 'flex',
           flexDirection: 'column',
           zIndex: 10,
           flexShrink: 0,
         }}
       >
-        <div style={{ padding: '16px 14px 12px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+        <div style={{ padding: '16px 14px 12px', borderBottom: '1px solid var(--divider)' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-            <span style={{ fontSize: 13, fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', color: '#a1a1aa' }}>
+            <span style={{ fontSize: 13, fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--text-secondary)' }}>
               Nodes Palette
             </span>
-            <span style={{ fontSize: 11, background: 'rgba(255,255,255,0.08)', padding: '2px 6px', borderRadius: 4, color: '#d4d4d8' }}>
+            <span style={{ fontSize: 11, background: 'var(--control-bg-hover)', padding: '2px 6px', borderRadius: 'var(--radius-sm)', color: 'var(--text-secondary)' }}>
               {NODE_PALETTE.length}
             </span>
           </div>
@@ -1129,10 +1129,10 @@ export function FlowCanvas() {
               width: '100%',
               padding: '6px 10px',
               fontSize: 12,
-              background: '#141416',
-              border: '1px solid rgba(255,255,255,0.1)',
+              background: 'var(--surface-2)',
+              border: '1px solid var(--border)',
               borderRadius: 6,
-              color: '#fafafa',
+              color: 'var(--text)',
               outline: 'none',
             }}
           />
@@ -1149,8 +1149,8 @@ export function FlowCanvas() {
               style={{
                 padding: '10px 12px',
                 borderRadius: 8,
-                background: '#141416',
-                border: '1px solid rgba(255,255,255,0.07)',
+                background: 'var(--surface-2)',
+                border: '1px solid var(--border)',
                 cursor: 'grab',
                 transition: 'all 0.15s ease',
                 display: 'flex',
@@ -1158,19 +1158,19 @@ export function FlowCanvas() {
                 gap: 3,
               }}
               onMouseEnter={e => {
-                (e.currentTarget as HTMLElement).style.borderColor = 'rgba(255,255,255,0.25)';
-                (e.currentTarget as HTMLElement).style.background = '#1a1a1e';
+                (e.currentTarget as HTMLElement).style.borderColor = 'var(--border-focus)';
+                (e.currentTarget as HTMLElement).style.background = 'var(--surface-3)';
               }}
               onMouseLeave={e => {
-                (e.currentTarget as HTMLElement).style.borderColor = 'rgba(255,255,255,0.07)';
-                (e.currentTarget as HTMLElement).style.background = '#141416';
+                (e.currentTarget as HTMLElement).style.borderColor = 'var(--border)';
+                (e.currentTarget as HTMLElement).style.background = 'var(--surface-2)';
               }}
             >
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <span style={{ fontSize: 13, fontWeight: 600, color: '#f4f4f5' }}>{item.label}</span>
-                <span style={{ fontSize: 10, color: '#71717a', textTransform: 'uppercase', fontWeight: 600 }}>{item.category}</span>
+                <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>{item.label}</span>
+                <span style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600 }}>{item.category}</span>
               </div>
-              <span style={{ fontSize: 11, color: '#a1a1aa', lineHeight: 1.3 }}>{item.description}</span>
+              <span style={{ fontSize: 11, color: 'var(--text-secondary)', lineHeight: 1.3 }}>{item.description}</span>
             </div>
           ))}
         </div>
@@ -1180,8 +1180,8 @@ export function FlowCanvas() {
           data-testid="palette-validation-summary"
           style={{
             padding: '12px 14px',
-            borderTop: '1px solid rgba(255,255,255,0.06)',
-            background: validation.valid ? 'rgba(34, 197, 94, 0.06)' : 'rgba(239, 68, 68, 0.08)',
+            borderTop: '1px solid var(--divider)',
+            background: validation.valid ? 'var(--control-bg)' : 'var(--control-bg-active)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
@@ -1193,11 +1193,11 @@ export function FlowCanvas() {
                 width: 8,
                 height: 8,
                 borderRadius: '50%',
-                background: validation.valid ? '#22c55e' : '#ef4444',
-                boxShadow: validation.valid ? '0 0 8px #22c55e' : '0 0 8px #ef4444',
+                background: validation.valid ? 'var(--ok)' : 'var(--text-muted)',
+                boxShadow: validation.valid ? 'var(--shadow-sm)' : 'none',
               }}
             />
-            <span style={{ fontSize: 12, fontWeight: 600, color: validation.valid ? '#86efac' : '#fca5a5' }}>
+            <span style={{ fontSize: 12, fontWeight: 600, color: validation.valid ? 'var(--text)' : 'var(--text-secondary)' }}>
               {validation.valid ? 'Flow Valid' : `${validation.errors.length} Issue(s)`}
             </span>
           </div>
@@ -1209,7 +1209,7 @@ export function FlowCanvas() {
               padding: '2px 6px',
               borderRadius: 4,
               background: 'rgba(255,255,255,0.1)',
-              color: '#d4d4d8',
+              color: 'var(--text-secondary)',
               border: 'none',
             }}
           >
@@ -1232,7 +1232,7 @@ export function FlowCanvas() {
           overflow: 'hidden',
           cursor: isPanning ? 'grabbing' : 'default',
           backgroundImage:
-            'radial-gradient(circle, rgba(255,255,255,0.07) 1px, transparent 1px)',
+            'radial-gradient(circle, var(--divider) 1px, transparent 1px)',
           backgroundSize: '24px 24px',
           backgroundPosition: `${pan.x}px ${pan.y}px`,
         }}
@@ -1247,9 +1247,9 @@ export function FlowCanvas() {
             display: 'flex',
             alignItems: 'center',
             gap: 8,
-            background: 'rgba(18, 18, 20, 0.85)',
+            background: 'var(--panel)',
             backdropFilter: 'blur(12px)',
-            border: '1px solid rgba(255,255,255,0.1)',
+            border: '1px solid var(--border)',
             borderRadius: 8,
             padding: '6px 12px',
           }}
@@ -1262,15 +1262,15 @@ export function FlowCanvas() {
             style={{
               background: 'transparent',
               border: 'none',
-              color: '#fafafa',
+              color: 'var(--text)',
               fontSize: 13,
               fontWeight: 600,
               outline: 'none',
               width: 180,
             }}
           />
-          <div style={{ width: 1, height: 16, background: 'rgba(255,255,255,0.12)' }} />
-          <span style={{ fontSize: 11, color: '#a1a1aa' }}>
+          <div style={{ width: 1, height: 16, background: 'var(--divider)' }} />
+          <span style={{ fontSize: 11, color: 'var(--text-secondary)' }}>
             {nodes.length} nodes, {edges.length} edges
           </span>
           <button
@@ -1279,7 +1279,7 @@ export function FlowCanvas() {
             style={{
               background: 'rgba(255,255,255,0.08)',
               border: 'none',
-              color: '#d4d4d8',
+              color: 'var(--text-secondary)',
               fontSize: 11,
               padding: '3px 8px',
               borderRadius: 4,
@@ -1288,7 +1288,7 @@ export function FlowCanvas() {
           >
             Reset View
           </button>
-          <div style={{ width: 1, height: 16, background: 'rgba(255,255,255,0.12)' }} />
+          <div style={{ width: 1, height: 16, background: 'var(--divider)' }} />
           {/* Profile picker & Run action */}
           {profiles.length > 0 && (
             <select
@@ -1296,8 +1296,8 @@ export function FlowCanvas() {
               value={selectedProfileId}
               onChange={e => setSelectedProfileId(e.target.value)}
               style={{
-                background: '#18181b',
-                color: '#e4e4e7',
+                background: 'var(--surface-2)',
+                color: 'var(--text)',
                 border: '1px solid rgba(255,255,255,0.12)',
                 borderRadius: 4,
                 fontSize: 11,
@@ -1327,8 +1327,8 @@ export function FlowCanvas() {
               }}
               title={t('Select profiles for a fleet run')}
               style={{
-                background: '#18181b',
-                color: '#e4e4e7',
+                background: 'var(--surface-2)',
+                color: 'var(--text)',
                 border: '1px solid rgba(255,255,255,0.12)',
                 borderRadius: 4,
                 fontSize: 11,
@@ -1352,7 +1352,7 @@ export function FlowCanvas() {
               alignItems: 'center',
               gap: 4,
               fontSize: 10,
-              color: '#a1a1aa',
+              color: 'var(--text-secondary)',
             }}
           >
             {t('Concurrency')}
@@ -1365,8 +1365,8 @@ export function FlowCanvas() {
               onChange={e => setConcurrency(Math.max(1, parseInt(e.target.value, 10) || 1))}
               style={{
                 width: 42,
-                background: '#18181b',
-                color: '#e4e4e7',
+                background: 'var(--surface-2)',
+                color: 'var(--text)',
                 border: '1px solid rgba(255,255,255,0.12)',
                 borderRadius: 4,
                 fontSize: 11,
@@ -1384,7 +1384,7 @@ export function FlowCanvas() {
               alignItems: 'center',
               gap: 4,
               fontSize: 10,
-              color: recorderHuman ? '#fbbf24' : '#71717a',
+              color: recorderHuman ? 'var(--text)' : 'var(--text-muted)',
               cursor: 'pointer',
             }}
           >
@@ -1401,8 +1401,8 @@ export function FlowCanvas() {
               data-testid="btn-stop-recording"
               onClick={handleStopRecording}
               style={{
-                background: '#ef4444',
-                color: '#fff',
+                background: 'var(--text)',
+                color: 'var(--bg-app)',
                 fontWeight: 700,
                 border: 'none',
                 fontSize: 11,
@@ -1420,8 +1420,8 @@ export function FlowCanvas() {
                   width: 8,
                   height: 8,
                   borderRadius: '50%',
-                  background: '#fff',
-                  boxShadow: '0 0 6px #fff',
+                  background: 'var(--bg-app)',
+                  boxShadow: '0 0 6px var(--bg-app)',
                 }}
               />
               {t('Stop Recording')}
@@ -1431,9 +1431,9 @@ export function FlowCanvas() {
               data-testid="btn-start-recording"
               onClick={handleStartRecording}
               style={{
-                background: 'rgba(239, 68, 68, 0.15)',
-                border: '1px solid rgba(239, 68, 68, 0.35)',
-                color: '#fca5a5',
+                background: 'var(--control-bg-active)',
+                border: '1px solid var(--border-focus)',
+                color: 'var(--text-secondary)',
                 fontWeight: 700,
                 fontSize: 11,
                 padding: '4px 10px',
@@ -1450,9 +1450,9 @@ export function FlowCanvas() {
             disabled={isRecording}
             title={t('Pick element')}
             style={{
-              background: pickerOpen ? 'rgba(59, 130, 246, 0.2)' : 'rgba(255,255,255,0.08)',
-              border: pickerOpen ? '1px solid rgba(59, 130, 246, 0.4)' : 'none',
-              color: pickerOpen ? '#60a5fa' : '#d4d4d8',
+              background: pickerOpen ? 'var(--control-bg-selected)' : 'var(--control-bg)',
+              border: pickerOpen ? '1px solid var(--border-focus)' : '1px solid var(--border)',
+              color: pickerOpen ? 'var(--text)' : 'var(--text-secondary)',
               fontSize: 11,
               padding: '4px 8px',
               borderRadius: 4,
@@ -1467,8 +1467,7 @@ export function FlowCanvas() {
               data-testid="recorder-error"
               style={{
                 fontSize: 10,
-                color: '#ef4444',
-                background: 'rgba(239, 68, 68, 0.12)',
+                color: 'var(--text)', background: 'var(--control-bg-active)',
                 padding: '2px 8px',
                 borderRadius: 4,
               }}
@@ -1481,8 +1480,7 @@ export function FlowCanvas() {
             onClick={handleRunFlow}
             disabled={isRunning}
             style={{
-              background: isRunning ? '#3f3f46' : '#22c55e',
-              color: '#09090b',
+              background: isRunning ? 'var(--control-bg-selected)' : 'var(--accent)', color: isRunning ? 'var(--text-secondary)' : 'var(--bg-app)',
               fontWeight: 700,
               border: 'none',
               fontSize: 11,
@@ -1504,14 +1502,14 @@ export function FlowCanvas() {
             style={{
               background:
                 isRunning || (fleetState?.profiles.some(p => p.status === 'queued' || p.status === 'working') ?? false)
-                  ? '#3f3f46'
-                  : 'rgba(99, 102, 241, 0.25)',
+                  ? 'var(--control-bg)'
+                  : 'var(--control-bg-active)',
               color:
                 isRunning || (fleetState?.profiles.some(p => p.status === 'queued' || p.status === 'working') ?? false)
-                  ? '#71717a'
-                  : '#e4e4e7',
+                  ? 'var(--text-muted)'
+                  : 'var(--text)',
               fontWeight: 700,
-              border: '1px solid rgba(99, 102, 241, 0.5)',
+              border: '1px solid var(--border)',
               fontSize: 11,
               padding: '4px 10px',
               borderRadius: 4,
@@ -1530,9 +1528,9 @@ export function FlowCanvas() {
             data-testid="btn-toggle-live-run"
             onClick={() => setShowLiveRun(v => !v)}
             style={{
-              background: showLiveRun ? 'rgba(59, 130, 246, 0.2)' : 'rgba(255,255,255,0.08)',
-              color: showLiveRun ? '#60a5fa' : '#d4d4d8',
-              border: showLiveRun ? '1px solid rgba(59, 130, 246, 0.4)' : 'none',
+              background: showLiveRun ? 'var(--control-bg-selected)' : 'var(--control-bg)',
+              color: showLiveRun ? 'var(--text)' : 'var(--text-secondary)',
+              border: showLiveRun ? '1px solid var(--border-focus)' : '1px solid var(--border)',
               fontSize: 11,
               padding: '4px 8px',
               borderRadius: 4,
@@ -1566,7 +1564,7 @@ export function FlowCanvas() {
               markerHeight="6"
               orient="auto-start-reverse"
             >
-              <path d="M 0 1 L 10 5 L 0 9 z" fill="#a1a1aa" />
+              <path d="M 0 1 L 10 5 L 0 9 z" style={{ fill: 'var(--text-muted)' }} />
             </marker>
             <marker
               id="arrow-selected"
@@ -1577,7 +1575,7 @@ export function FlowCanvas() {
               markerHeight="6"
               orient="auto-start-reverse"
             >
-              <path d="M 0 1 L 10 5 L 0 9 z" fill="#ffffff" />
+              <path d="M 0 1 L 10 5 L 0 9 z" style={{ fill: 'var(--text)' }} />
             </marker>
             <marker
               id="arrow-error"
@@ -1588,7 +1586,7 @@ export function FlowCanvas() {
               markerHeight="6"
               orient="auto-start-reverse"
             >
-              <path d="M 0 1 L 10 5 L 0 9 z" fill="#ef4444" />
+              <path d="M 0 1 L 10 5 L 0 9 z" style={{ fill: 'var(--text-secondary)' }} />
             </marker>
           </defs>
 
@@ -1630,13 +1628,16 @@ export function FlowCanvas() {
                   data-testid={`edge-${edge.id}`}
                   d={pathData}
                   fill="none"
-                  stroke={hasError ? '#ef4444' : isSelected ? '#ffffff' : '#71717a'}
+                  style={{
+                    stroke: hasError ? 'var(--text-secondary)' : isSelected ? 'var(--text)' : 'var(--text-muted)',
+                    cursor: 'pointer',
+                    transition: 'stroke 0.15s ease',
+                  }}
                   strokeWidth={isSelected ? 2.5 : 1.5}
                   strokeDasharray={edge.branch !== 'default' ? '4 3' : undefined}
                   markerEnd={
                     hasError ? 'url(#arrow-error)' : isSelected ? 'url(#arrow-selected)' : 'url(#arrow-default)'
                   }
-                  style={{ cursor: 'pointer', transition: 'stroke 0.15s ease' }}
                   onClick={e => {
                     e.stopPropagation();
                     setSelectedEdgeId(edge.id);
@@ -1648,10 +1649,8 @@ export function FlowCanvas() {
                   <text
                     x={(sx + tx) / 2}
                     y={(sy + ty) / 2 - 8}
-                    fill="#d4d4d8"
+                    style={{ fill: 'var(--text)', background: 'var(--panel)', padding: '2px 4px' }}
                     fontSize="10"
-                    textAnchor="middle"
-                    style={{ background: '#111', padding: '2px 4px' }}
                   >
                     {edge.branch}
                   </text>
@@ -1676,7 +1675,7 @@ export function FlowCanvas() {
                   data-testid="active-connecting-edge"
                   d={pathData}
                   fill="none"
-                  stroke="#3b82f6"
+                  style={{ stroke: 'var(--text-secondary)' }}
                   strokeWidth="2"
                   strokeDasharray="4 4"
                 />
@@ -1704,12 +1703,8 @@ export function FlowCanvas() {
                 top: node.y + pan.y,
                 width: 200,
                 borderRadius: 10,
-                background: isSelected ? '#18181b' : '#121214',
-                border: hasError
-                  ? '1.5px solid #ef4444'
-                  : isSelected
-                  ? '1.5px solid #ffffff'
-                  : '1px solid rgba(255,255,255,0.1)',
+                background: isSelected ? 'var(--surface-3)' : 'var(--surface-1)',
+                border: hasError ? '1.5px dashed var(--border-focus)' : isSelected ? '1.5px solid var(--text)' : '1px solid var(--border)',
                 boxShadow: isSelected
                   ? '0 8px 24px rgba(0,0,0,0.7), 0 0 0 1px rgba(255,255,255,0.2)'
                   : '0 4px 14px rgba(0,0,0,0.5)',
@@ -1730,19 +1725,19 @@ export function FlowCanvas() {
                   width: 14,
                   height: 14,
                   borderRadius: '50%',
-                  background: '#09090b',
-                  border: '2px solid #a1a1aa',
+                  background: 'var(--bg-app)',
+                  border: '2px solid var(--text-muted)',
                   cursor: 'pointer',
                   zIndex: 20,
                   transition: 'transform 0.15s ease, border-color 0.15s ease',
                 }}
                 onMouseEnter={e => {
                   (e.currentTarget as HTMLElement).style.transform = 'scale(1.25)';
-                  (e.currentTarget as HTMLElement).style.borderColor = '#ffffff';
+                  (e.currentTarget as HTMLElement).style.borderColor = 'var(--text)';
                 }}
                 onMouseLeave={e => {
                   (e.currentTarget as HTMLElement).style.transform = 'scale(1)';
-                  (e.currentTarget as HTMLElement).style.borderColor = '#a1a1aa';
+                  (e.currentTarget as HTMLElement).style.borderColor = 'var(--text-muted)';
                 }}
               />
 
@@ -1750,7 +1745,7 @@ export function FlowCanvas() {
               <div
                 style={{
                   padding: '10px 12px 8px',
-                  borderBottom: '1px solid rgba(255,255,255,0.06)',
+                  borderBottom: '1px solid var(--divider)',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'space-between',
@@ -1763,7 +1758,7 @@ export function FlowCanvas() {
                       style={{
                         fontSize: 9,
                         background: 'rgba(255,255,255,0.12)',
-                        color: '#fafafa',
+                        color: 'var(--text)',
                         fontWeight: 700,
                         padding: '1px 5px',
                         borderRadius: 3,
@@ -1773,7 +1768,7 @@ export function FlowCanvas() {
                       Start
                     </span>
                   )}
-                  <span style={{ fontSize: 11, color: '#a1a1aa', textTransform: 'uppercase', fontWeight: 600 }}>
+                  <span style={{ fontSize: 11, color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 600 }}>
                     {node.type}
                   </span>
                 </div>
@@ -1790,8 +1785,8 @@ export function FlowCanvas() {
                         width: 16,
                         height: 16,
                         borderRadius: '50%',
-                        background: '#ef4444',
-                        color: '#fff',
+                        background: 'var(--text)',
+                        color: 'var(--bg-app)',
                         fontSize: 10,
                         fontWeight: 700,
                       }}
@@ -1809,14 +1804,14 @@ export function FlowCanvas() {
                     style={{
                       background: 'none',
                       border: 'none',
-                      color: '#71717a',
+                      color: 'var(--text-muted)',
                       fontSize: 13,
                       cursor: 'pointer',
                       padding: '2px 4px',
                       borderRadius: 4,
                     }}
-                    onMouseEnter={e => ((e.currentTarget as HTMLElement).style.color = '#ef4444')}
-                    onMouseLeave={e => ((e.currentTarget as HTMLElement).style.color = '#71717a')}
+                    onMouseEnter={e => ((e.currentTarget as HTMLElement).style.color = 'var(--text)')}
+                    onMouseLeave={e => ((e.currentTarget as HTMLElement).style.color = 'var(--text-muted)')}
                   >
                     ×
                   </button>
@@ -1825,14 +1820,14 @@ export function FlowCanvas() {
 
               {/* Node Body */}
               <div style={{ padding: '8px 12px 10px' }}>
-                <div style={{ fontSize: 13, fontWeight: 600, color: '#f4f4f5', marginBottom: 4 }}>
+                <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', marginBottom: 4 }}>
                   {node.name}
                 </div>
                 <div
                   style={{
                     fontSize: 11,
-                    color: '#71717a',
-                    fontFamily: 'var(--font-mono, monospace)',
+                    color: 'var(--text-muted)',
+                    fontFamily: 'var(--font-mono)',
                     whiteSpace: 'nowrap',
                     overflow: 'hidden',
                     textOverflow: 'ellipsis',
@@ -1860,9 +1855,9 @@ export function FlowCanvas() {
                       marginTop: 6,
                       padding: '4px 6px',
                       borderRadius: 4,
-                      background: 'rgba(239, 68, 68, 0.12)',
-                      border: '1px solid rgba(239, 68, 68, 0.3)',
-                      color: '#fca5a5',
+                      background: 'var(--control-bg-active)',
+                      border: '1px solid var(--border)',
+                      color: 'var(--text-secondary)',
                       fontSize: 10,
                       lineHeight: 1.2,
                     }}
@@ -1884,19 +1879,19 @@ export function FlowCanvas() {
                   width: 14,
                   height: 14,
                   borderRadius: '50%',
-                  background: '#09090b',
-                  border: '2px solid #a1a1aa',
+                  background: 'var(--bg-app)',
+                  border: '2px solid var(--text-muted)',
                   cursor: 'crosshair',
                   zIndex: 20,
                   transition: 'transform 0.15s ease, border-color 0.15s ease',
                 }}
                 onMouseEnter={e => {
                   (e.currentTarget as HTMLElement).style.transform = 'scale(1.25)';
-                  (e.currentTarget as HTMLElement).style.borderColor = '#ffffff';
+                  (e.currentTarget as HTMLElement).style.borderColor = 'var(--text)';
                 }}
                 onMouseLeave={e => {
                   (e.currentTarget as HTMLElement).style.transform = 'scale(1)';
-                  (e.currentTarget as HTMLElement).style.borderColor = '#a1a1aa';
+                  (e.currentTarget as HTMLElement).style.borderColor = 'var(--text-muted)';
                 }}
               />
 
@@ -1909,9 +1904,9 @@ export function FlowCanvas() {
                     style={{
                       fontSize: 9,
                       padding: '2px 5px',
-                      background: 'rgba(34, 197, 94, 0.15)',
-                      border: '1px solid rgba(34, 197, 94, 0.3)',
-                      color: '#86efac',
+                      background: 'var(--control-bg-active)',
+                      border: '1px solid var(--border)',
+                      color: 'var(--text)',
                       borderRadius: 4,
                       cursor: 'crosshair',
                     }}
@@ -1924,9 +1919,9 @@ export function FlowCanvas() {
                     style={{
                       fontSize: 9,
                       padding: '2px 5px',
-                      background: 'rgba(239, 68, 68, 0.15)',
-                      border: '1px solid rgba(239, 68, 68, 0.3)',
-                      color: '#fca5a5',
+                      background: 'var(--control-bg-active)',
+                      border: '1px solid var(--border)',
+                      color: 'var(--text-secondary)',
                       borderRadius: 4,
                       cursor: 'crosshair',
                     }}
@@ -1946,16 +1941,16 @@ export function FlowCanvas() {
         data-testid="config-inspector"
         style={{
           width: 320,
-          borderLeft: '1px solid rgba(255,255,255,0.08)',
-          background: '#0c0c0e',
+          borderLeft: '1px solid var(--border)',
+          background: 'var(--panel)',
           display: 'flex',
           flexDirection: 'column',
           zIndex: 10,
           flexShrink: 0,
         }}
       >
-        <div style={{ padding: '16px 16px 12px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-          <span style={{ fontSize: 13, fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', color: '#a1a1aa' }}>
+        <div style={{ padding: '16px 16px 12px', borderBottom: '1px solid var(--divider)' }}>
+          <span style={{ fontSize: 13, fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--text-secondary)' }}>
             Inspector & Config
           </span>
         </div>
@@ -1964,14 +1959,14 @@ export function FlowCanvas() {
           {selectedEdge && (
             <div data-testid="edge-config-form" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <span style={{ fontSize: 14, fontWeight: 600, color: '#f4f4f5' }}>Connection Edge</span>
+                <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)' }}>Connection Edge</span>
                 <button
                   data-testid="btn-delete-selected-edge"
                   onClick={() => handleDeleteEdge(selectedEdge.id)}
                   style={{
-                    background: 'rgba(239, 68, 68, 0.15)',
-                    border: '1px solid rgba(239, 68, 68, 0.3)',
-                    color: '#fca5a5',
+                    background: 'var(--control-bg-active)',
+                    border: '1px solid var(--border)',
+                    color: 'var(--text-secondary)',
                     fontSize: 11,
                     padding: '3px 8px',
                     borderRadius: 4,
@@ -1983,7 +1978,7 @@ export function FlowCanvas() {
               </div>
 
               <div>
-                <label style={{ fontSize: 11, color: '#a1a1aa', display: 'block', marginBottom: 4 }}>
+                <label style={{ fontSize: 11, color: 'var(--text-secondary)', display: 'block', marginBottom: 4 }}>
                   Source Node
                 </label>
                 <input
@@ -1994,16 +1989,16 @@ export function FlowCanvas() {
                     width: '100%',
                     padding: '6px 10px',
                     fontSize: 12,
-                    background: '#141416',
-                    border: '1px solid rgba(255,255,255,0.1)',
+                    background: 'var(--surface-2)',
+                    border: '1px solid var(--border)',
                     borderRadius: 6,
-                    color: '#71717a',
+                    color: 'var(--text-muted)',
                   }}
                 />
               </div>
 
               <div>
-                <label style={{ fontSize: 11, color: '#a1a1aa', display: 'block', marginBottom: 4 }}>
+                <label style={{ fontSize: 11, color: 'var(--text-secondary)', display: 'block', marginBottom: 4 }}>
                   Target Node
                 </label>
                 <input
@@ -2014,16 +2009,16 @@ export function FlowCanvas() {
                     width: '100%',
                     padding: '6px 10px',
                     fontSize: 12,
-                    background: '#141416',
-                    border: '1px solid rgba(255,255,255,0.1)',
+                    background: 'var(--surface-2)',
+                    border: '1px solid var(--border)',
                     borderRadius: 6,
-                    color: '#71717a',
+                    color: 'var(--text-muted)',
                   }}
                 />
               </div>
 
               <div>
-                <label style={{ fontSize: 11, color: '#a1a1aa', display: 'block', marginBottom: 4 }}>
+                <label style={{ fontSize: 11, color: 'var(--text-secondary)', display: 'block', marginBottom: 4 }}>
                   Branch Condition
                 </label>
                 <select
@@ -2039,10 +2034,10 @@ export function FlowCanvas() {
                     width: '100%',
                     padding: '6px 10px',
                     fontSize: 12,
-                    background: '#141416',
-                    border: '1px solid rgba(255,255,255,0.1)',
+                    background: 'var(--surface-2)',
+                    border: '1px solid var(--border)',
                     borderRadius: 6,
-                    color: '#fafafa',
+                    color: 'var(--text)',
                   }}
                 >
                   <option value="default">Default / Next</option>
@@ -2058,7 +2053,7 @@ export function FlowCanvas() {
             <div data-testid="node-config-form" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
               {/* Header & Delete */}
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <span style={{ fontSize: 14, fontWeight: 600, color: '#f4f4f5' }}>
+                <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)' }}>
                   Node: {selectedNode.type}
                 </span>
                 <div style={{ display: 'flex', gap: 6 }}>
@@ -2069,7 +2064,7 @@ export function FlowCanvas() {
                       style={{
                         background: 'rgba(255,255,255,0.08)',
                         border: '1px solid rgba(255,255,255,0.15)',
-                        color: '#d4d4d8',
+                        color: 'var(--text-secondary)',
                         fontSize: 11,
                         padding: '3px 8px',
                         borderRadius: 4,
@@ -2083,9 +2078,9 @@ export function FlowCanvas() {
                     data-testid="btn-delete-inspected-node"
                     onClick={() => handleDeleteNode(selectedNode.id)}
                     style={{
-                      background: 'rgba(239, 68, 68, 0.15)',
-                      border: '1px solid rgba(239, 68, 68, 0.3)',
-                      color: '#fca5a5',
+                      background: 'var(--control-bg-active)',
+                      border: '1px solid var(--border)',
+                      color: 'var(--text-secondary)',
                       fontSize: 11,
                       padding: '3px 8px',
                       borderRadius: 4,
@@ -2099,7 +2094,7 @@ export function FlowCanvas() {
 
               {/* Node ID */}
               <div>
-                <label style={{ fontSize: 11, color: '#a1a1aa', display: 'block', marginBottom: 4 }}>Node ID</label>
+                <label style={{ fontSize: 11, color: 'var(--text-secondary)', display: 'block', marginBottom: 4 }}>Node ID</label>
                 <input
                   type="text"
                   disabled
@@ -2108,17 +2103,17 @@ export function FlowCanvas() {
                     width: '100%',
                     padding: '6px 10px',
                     fontSize: 12,
-                    background: '#141416',
-                    border: '1px solid rgba(255,255,255,0.1)',
+                    background: 'var(--surface-2)',
+                    border: '1px solid var(--border)',
                     borderRadius: 6,
-                    color: '#71717a',
+                    color: 'var(--text-muted)',
                   }}
                 />
               </div>
 
               {/* Node Label / Name */}
               <div>
-                <label style={{ fontSize: 11, color: '#a1a1aa', display: 'block', marginBottom: 4 }}>Display Name</label>
+                <label style={{ fontSize: 11, color: 'var(--text-secondary)', display: 'block', marginBottom: 4 }}>Display Name</label>
                 <input
                   type="text"
                   data-testid="input-node-name"
@@ -2128,23 +2123,23 @@ export function FlowCanvas() {
                     width: '100%',
                     padding: '6px 10px',
                     fontSize: 12,
-                    background: '#141416',
-                    border: '1px solid rgba(255,255,255,0.1)',
+                    background: 'var(--surface-2)',
+                    border: '1px solid var(--border)',
                     borderRadius: 6,
-                    color: '#fafafa',
+                    color: 'var(--text)',
                   }}
                 />
               </div>
 
               {/* Dynamic Type-specific Form Controls Bound to Schema */}
-              <div style={{ height: 1, background: 'rgba(255,255,255,0.08)', margin: '4px 0' }} />
-              <span style={{ fontSize: 12, fontWeight: 600, color: '#e4e4e7' }}>Step Parameters</span>
+              <div style={{ height: 1, background: 'var(--divider)', margin: '4px 0' }} />
+              <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text)' }}>Step Parameters</span>
 
               {/* NAVIGATE CONFIG */}
               {selectedNode.type === 'navigate' && (
                 <>
                   <div>
-                    <label style={{ fontSize: 11, color: '#a1a1aa', display: 'block', marginBottom: 4 }}>Target URL</label>
+                    <label style={{ fontSize: 11, color: 'var(--text-secondary)', display: 'block', marginBottom: 4 }}>Target URL</label>
                     <input
                       type="text"
                       data-testid="config-url"
@@ -2155,15 +2150,15 @@ export function FlowCanvas() {
                         width: '100%',
                         padding: '6px 10px',
                         fontSize: 12,
-                        background: '#141416',
-                        border: '1px solid rgba(255,255,255,0.1)',
+                        background: 'var(--surface-2)',
+                        border: '1px solid var(--border)',
                         borderRadius: 6,
-                        color: '#fafafa',
+                        color: 'var(--text)',
                       }}
                     />
                   </div>
                   <div>
-                    <label style={{ fontSize: 11, color: '#a1a1aa', display: 'block', marginBottom: 4 }}>Timeout (ms)</label>
+                    <label style={{ fontSize: 11, color: 'var(--text-secondary)', display: 'block', marginBottom: 4 }}>Timeout (ms)</label>
                     <input
                       type="number"
                       data-testid="config-timeoutMs"
@@ -2173,10 +2168,10 @@ export function FlowCanvas() {
                         width: '100%',
                         padding: '6px 10px',
                         fontSize: 12,
-                        background: '#141416',
-                        border: '1px solid rgba(255,255,255,0.1)',
+                        background: 'var(--surface-2)',
+                        border: '1px solid var(--border)',
                         borderRadius: 6,
-                        color: '#fafafa',
+                        color: 'var(--text)',
                       }}
                     />
                   </div>
@@ -2187,7 +2182,7 @@ export function FlowCanvas() {
               {selectedNode.type === 'click' && (
                 <>
                   <div>
-                    <label style={{ fontSize: 11, color: '#a1a1aa', display: 'block', marginBottom: 4 }}>CSS Selector</label>
+                    <label style={{ fontSize: 11, color: 'var(--text-secondary)', display: 'block', marginBottom: 4 }}>CSS Selector</label>
                     <input
                       type="text"
                       data-testid="config-selector"
@@ -2198,15 +2193,15 @@ export function FlowCanvas() {
                         width: '100%',
                         padding: '6px 10px',
                         fontSize: 12,
-                        background: '#141416',
-                        border: '1px solid rgba(255,255,255,0.1)',
+                        background: 'var(--surface-2)',
+                        border: '1px solid var(--border)',
                         borderRadius: 6,
-                        color: '#fafafa',
+                        color: 'var(--text)',
                       }}
                     />
                   </div>
                   <div>
-                    <label style={{ fontSize: 11, color: '#a1a1aa', display: 'block', marginBottom: 4 }}>Click Count</label>
+                    <label style={{ fontSize: 11, color: 'var(--text-secondary)', display: 'block', marginBottom: 4 }}>Click Count</label>
                     <input
                       type="number"
                       data-testid="config-clickCount"
@@ -2216,10 +2211,10 @@ export function FlowCanvas() {
                         width: '100%',
                         padding: '6px 10px',
                         fontSize: 12,
-                        background: '#141416',
-                        border: '1px solid rgba(255,255,255,0.1)',
+                        background: 'var(--surface-2)',
+                        border: '1px solid var(--border)',
                         borderRadius: 6,
-                        color: '#fafafa',
+                        color: 'var(--text)',
                       }}
                     />
                   </div>
@@ -2230,7 +2225,7 @@ export function FlowCanvas() {
               {selectedNode.type === 'type' && (
                 <>
                   <div>
-                    <label style={{ fontSize: 11, color: '#a1a1aa', display: 'block', marginBottom: 4 }}>Input Selector</label>
+                    <label style={{ fontSize: 11, color: 'var(--text-secondary)', display: 'block', marginBottom: 4 }}>Input Selector</label>
                     <input
                       type="text"
                       data-testid="config-selector"
@@ -2240,15 +2235,15 @@ export function FlowCanvas() {
                         width: '100%',
                         padding: '6px 10px',
                         fontSize: 12,
-                        background: '#141416',
-                        border: '1px solid rgba(255,255,255,0.1)',
+                        background: 'var(--surface-2)',
+                        border: '1px solid var(--border)',
                         borderRadius: 6,
-                        color: '#fafafa',
+                        color: 'var(--text)',
                       }}
                     />
                   </div>
                   <div>
-                    <label style={{ fontSize: 11, color: '#a1a1aa', display: 'block', marginBottom: 4 }}>Text Content</label>
+                    <label style={{ fontSize: 11, color: 'var(--text-secondary)', display: 'block', marginBottom: 4 }}>Text Content</label>
                     <textarea
                       rows={3}
                       data-testid="config-text"
@@ -2258,11 +2253,11 @@ export function FlowCanvas() {
                         width: '100%',
                         padding: '6px 10px',
                         fontSize: 12,
-                        background: '#141416',
-                        border: '1px solid rgba(255,255,255,0.1)',
+                        background: 'var(--surface-2)',
+                        border: '1px solid var(--border)',
                         borderRadius: 6,
-                        color: '#fafafa',
-                        fontFamily: 'var(--font-mono, monospace)',
+                        color: 'var(--text)',
+                        fontFamily: 'var(--font-mono)',
                       }}
                     />
                   </div>
@@ -2273,7 +2268,7 @@ export function FlowCanvas() {
               {selectedNode.type === 'human_click' && (
                 <>
                   <div>
-                    <label style={{ fontSize: 11, color: '#a1a1aa', display: 'block', marginBottom: 4 }}>Target Selector</label>
+                    <label style={{ fontSize: 11, color: 'var(--text-secondary)', display: 'block', marginBottom: 4 }}>Target Selector</label>
                     <input
                       type="text"
                       data-testid="config-selector"
@@ -2283,15 +2278,15 @@ export function FlowCanvas() {
                         width: '100%',
                         padding: '6px 10px',
                         fontSize: 12,
-                        background: '#141416',
-                        border: '1px solid rgba(255,255,255,0.1)',
+                        background: 'var(--surface-2)',
+                        border: '1px solid var(--border)',
                         borderRadius: 6,
-                        color: '#fafafa',
+                        color: 'var(--text)',
                       }}
                     />
                   </div>
                   <div>
-                    <label style={{ fontSize: 11, color: '#a1a1aa', display: 'block', marginBottom: 4 }}>Target Width (px, feeds Fitts's law)</label>
+                    <label style={{ fontSize: 11, color: 'var(--text-secondary)', display: 'block', marginBottom: 4 }}>Target Width (px, feeds Fitts's law)</label>
                     <input
                       type="number"
                       data-testid="config-targetWidth"
@@ -2301,10 +2296,10 @@ export function FlowCanvas() {
                         width: '100%',
                         padding: '6px 10px',
                         fontSize: 12,
-                        background: '#141416',
-                        border: '1px solid rgba(255,255,255,0.1)',
+                        background: 'var(--surface-2)',
+                        border: '1px solid var(--border)',
                         borderRadius: 6,
-                        color: '#fafafa',
+                        color: 'var(--text)',
                       }}
                     />
                   </div>
@@ -2315,7 +2310,7 @@ export function FlowCanvas() {
               {selectedNode.type === 'human_type' && (
                 <>
                   <div>
-                    <label style={{ fontSize: 11, color: '#a1a1aa', display: 'block', marginBottom: 4 }}>Input Selector</label>
+                    <label style={{ fontSize: 11, color: 'var(--text-secondary)', display: 'block', marginBottom: 4 }}>Input Selector</label>
                     <input
                       type="text"
                       data-testid="config-selector"
@@ -2325,15 +2320,15 @@ export function FlowCanvas() {
                         width: '100%',
                         padding: '6px 10px',
                         fontSize: 12,
-                        background: '#141416',
-                        border: '1px solid rgba(255,255,255,0.1)',
+                        background: 'var(--surface-2)',
+                        border: '1px solid var(--border)',
                         borderRadius: 6,
-                        color: '#fafafa',
+                        color: 'var(--text)',
                       }}
                     />
                   </div>
                   <div>
-                    <label style={{ fontSize: 11, color: '#a1a1aa', display: 'block', marginBottom: 4 }}>Text Content</label>
+                    <label style={{ fontSize: 11, color: 'var(--text-secondary)', display: 'block', marginBottom: 4 }}>Text Content</label>
                     <textarea
                       rows={3}
                       data-testid="config-text"
@@ -2343,16 +2338,16 @@ export function FlowCanvas() {
                         width: '100%',
                         padding: '6px 10px',
                         fontSize: 12,
-                        background: '#141416',
-                        border: '1px solid rgba(255,255,255,0.1)',
+                        background: 'var(--surface-2)',
+                        border: '1px solid var(--border)',
                         borderRadius: 6,
-                        color: '#fafafa',
-                        fontFamily: 'var(--font-mono, monospace)',
+                        color: 'var(--text)',
+                        fontFamily: 'var(--font-mono)',
                       }}
                     />
                   </div>
                   <div>
-                    <label style={{ fontSize: 11, color: '#a1a1aa', display: 'block', marginBottom: 4 }}>Allow Typos (human typo model)</label>
+                    <label style={{ fontSize: 11, color: 'var(--text-secondary)', display: 'block', marginBottom: 4 }}>Allow Typos (human typo model)</label>
                     <select
                       data-testid="config-allowTypos"
                       value={selectedNode.config.allowTypos ? 'true' : 'false'}
@@ -2361,10 +2356,10 @@ export function FlowCanvas() {
                         width: '100%',
                         padding: '6px 10px',
                         fontSize: 12,
-                        background: '#141416',
-                        border: '1px solid rgba(255,255,255,0.1)',
+                        background: 'var(--surface-2)',
+                        border: '1px solid var(--border)',
                         borderRadius: 6,
-                        color: '#fafafa',
+                        color: 'var(--text)',
                       }}
                     >
                       <option value="false">No — type exactly</option>
@@ -2378,7 +2373,7 @@ export function FlowCanvas() {
               {selectedNode.type === 'wait' && (
                 <>
                   <div>
-                    <label style={{ fontSize: 11, color: '#a1a1aa', display: 'block', marginBottom: 4 }}>Wait Mode</label>
+                    <label style={{ fontSize: 11, color: 'var(--text-secondary)', display: 'block', marginBottom: 4 }}>Wait Mode</label>
                     <select
                       data-testid="config-mode"
                       value={String(selectedNode.config.mode || 'time')}
@@ -2387,10 +2382,10 @@ export function FlowCanvas() {
                         width: '100%',
                         padding: '6px 10px',
                         fontSize: 12,
-                        background: '#141416',
-                        border: '1px solid rgba(255,255,255,0.1)',
+                        background: 'var(--surface-2)',
+                        border: '1px solid var(--border)',
                         borderRadius: 6,
-                        color: '#fafafa',
+                        color: 'var(--text)',
                       }}
                     >
                       <option value="time">Duration (ms)</option>
@@ -2400,7 +2395,7 @@ export function FlowCanvas() {
                   </div>
                   {selectedNode.config.mode === 'selector' ? (
                     <div>
-                      <label style={{ fontSize: 11, color: '#a1a1aa', display: 'block', marginBottom: 4 }}>Selector to Wait For</label>
+                      <label style={{ fontSize: 11, color: 'var(--text-secondary)', display: 'block', marginBottom: 4 }}>Selector to Wait For</label>
                       <input
                         type="text"
                         data-testid="config-selector"
@@ -2410,16 +2405,16 @@ export function FlowCanvas() {
                           width: '100%',
                           padding: '6px 10px',
                           fontSize: 12,
-                          background: '#141416',
-                          border: '1px solid rgba(255,255,255,0.1)',
+                          background: 'var(--surface-2)',
+                          border: '1px solid var(--border)',
                           borderRadius: 6,
-                          color: '#fafafa',
+                          color: 'var(--text)',
                         }}
                       />
                     </div>
                   ) : (
                     <div>
-                      <label style={{ fontSize: 11, color: '#a1a1aa', display: 'block', marginBottom: 4 }}>Duration (ms)</label>
+                      <label style={{ fontSize: 11, color: 'var(--text-secondary)', display: 'block', marginBottom: 4 }}>Duration (ms)</label>
                       <input
                         type="number"
                         data-testid="config-durationMs"
@@ -2429,10 +2424,10 @@ export function FlowCanvas() {
                           width: '100%',
                           padding: '6px 10px',
                           fontSize: 12,
-                          background: '#141416',
-                          border: '1px solid rgba(255,255,255,0.1)',
+                          background: 'var(--surface-2)',
+                          border: '1px solid var(--border)',
                           borderRadius: 6,
-                          color: '#fafafa',
+                          color: 'var(--text)',
                         }}
                       />
                     </div>
@@ -2444,7 +2439,7 @@ export function FlowCanvas() {
               {selectedNode.type === 'condition' && (
                 <>
                   <div>
-                    <label style={{ fontSize: 11, color: '#a1a1aa', display: 'block', marginBottom: 4 }}>JavaScript Expression</label>
+                    <label style={{ fontSize: 11, color: 'var(--text-secondary)', display: 'block', marginBottom: 4 }}>JavaScript Expression</label>
                     <input
                       type="text"
                       data-testid="config-expression"
@@ -2455,11 +2450,11 @@ export function FlowCanvas() {
                         width: '100%',
                         padding: '6px 10px',
                         fontSize: 12,
-                        background: '#141416',
-                        border: '1px solid rgba(255,255,255,0.1)',
+                        background: 'var(--surface-2)',
+                        border: '1px solid var(--border)',
                         borderRadius: 6,
-                        color: '#fafafa',
-                        fontFamily: 'var(--font-mono, monospace)',
+                        color: 'var(--text)',
+                        fontFamily: 'var(--font-mono)',
                       }}
                     />
                   </div>
@@ -2470,7 +2465,7 @@ export function FlowCanvas() {
               {selectedNode.type === 'loop' && (
                 <>
                   <div>
-                    <label style={{ fontSize: 11, color: '#a1a1aa', display: 'block', marginBottom: 4 }}>Iterations Count</label>
+                    <label style={{ fontSize: 11, color: 'var(--text-secondary)', display: 'block', marginBottom: 4 }}>Iterations Count</label>
                     <input
                       type="number"
                       data-testid="config-count"
@@ -2480,15 +2475,15 @@ export function FlowCanvas() {
                         width: '100%',
                         padding: '6px 10px',
                         fontSize: 12,
-                        background: '#141416',
-                        border: '1px solid rgba(255,255,255,0.1)',
+                        background: 'var(--surface-2)',
+                        border: '1px solid var(--border)',
                         borderRadius: 6,
-                        color: '#fafafa',
+                        color: 'var(--text)',
                       }}
                     />
                   </div>
                   <div>
-                    <label style={{ fontSize: 11, color: '#a1a1aa', display: 'block', marginBottom: 4 }}>Index Variable Name</label>
+                    <label style={{ fontSize: 11, color: 'var(--text-secondary)', display: 'block', marginBottom: 4 }}>Index Variable Name</label>
                     <input
                       type="text"
                       data-testid="config-loopVariable"
@@ -2498,10 +2493,10 @@ export function FlowCanvas() {
                         width: '100%',
                         padding: '6px 10px',
                         fontSize: 12,
-                        background: '#141416',
-                        border: '1px solid rgba(255,255,255,0.1)',
+                        background: 'var(--surface-2)',
+                        border: '1px solid var(--border)',
                         borderRadius: 6,
-                        color: '#fafafa',
+                        color: 'var(--text)',
                       }}
                     />
                   </div>
@@ -2512,7 +2507,7 @@ export function FlowCanvas() {
               {selectedNode.type === 'extract' && (
                 <>
                   <div>
-                    <label style={{ fontSize: 11, color: '#a1a1aa', display: 'block', marginBottom: 4 }}>Selector</label>
+                    <label style={{ fontSize: 11, color: 'var(--text-secondary)', display: 'block', marginBottom: 4 }}>Selector</label>
                     <input
                       type="text"
                       data-testid="config-selector"
@@ -2522,15 +2517,15 @@ export function FlowCanvas() {
                         width: '100%',
                         padding: '6px 10px',
                         fontSize: 12,
-                        background: '#141416',
-                        border: '1px solid rgba(255,255,255,0.1)',
+                        background: 'var(--surface-2)',
+                        border: '1px solid var(--border)',
                         borderRadius: 6,
-                        color: '#fafafa',
+                        color: 'var(--text)',
                       }}
                     />
                   </div>
                   <div>
-                    <label style={{ fontSize: 11, color: '#a1a1aa', display: 'block', marginBottom: 4 }}>Target Variable</label>
+                    <label style={{ fontSize: 11, color: 'var(--text-secondary)', display: 'block', marginBottom: 4 }}>Target Variable</label>
                     <input
                       type="text"
                       data-testid="config-targetVariable"
@@ -2540,10 +2535,10 @@ export function FlowCanvas() {
                         width: '100%',
                         padding: '6px 10px',
                         fontSize: 12,
-                        background: '#141416',
-                        border: '1px solid rgba(255,255,255,0.1)',
+                        background: 'var(--surface-2)',
+                        border: '1px solid var(--border)',
                         borderRadius: 6,
-                        color: '#fafafa',
+                        color: 'var(--text)',
                       }}
                     />
                   </div>
@@ -2554,7 +2549,7 @@ export function FlowCanvas() {
               {selectedNode.type === 'eval' && (
                 <>
                   <div>
-                    <label style={{ fontSize: 11, color: '#a1a1aa', display: 'block', marginBottom: 4 }}>JavaScript Code</label>
+                    <label style={{ fontSize: 11, color: 'var(--text-secondary)', display: 'block', marginBottom: 4 }}>JavaScript Code</label>
                     <textarea
                       rows={5}
                       data-testid="config-code"
@@ -2564,11 +2559,11 @@ export function FlowCanvas() {
                         width: '100%',
                         padding: '6px 10px',
                         fontSize: 12,
-                        background: '#141416',
-                        border: '1px solid rgba(255,255,255,0.1)',
+                        background: 'var(--surface-2)',
+                        border: '1px solid var(--border)',
                         borderRadius: 6,
-                        color: '#fafafa',
-                        fontFamily: 'var(--font-mono, monospace)',
+                        color: 'var(--text)',
+                        fontFamily: 'var(--font-mono)',
                       }}
                     />
                   </div>
@@ -2579,7 +2574,7 @@ export function FlowCanvas() {
               {selectedNode.type === 'screenshot' && (
                 <>
                   <div>
-                    <label style={{ fontSize: 11, color: '#a1a1aa', display: 'block', marginBottom: 4 }}>Save Path</label>
+                    <label style={{ fontSize: 11, color: 'var(--text-secondary)', display: 'block', marginBottom: 4 }}>Save Path</label>
                     <input
                       type="text"
                       data-testid="config-path"
@@ -2589,10 +2584,10 @@ export function FlowCanvas() {
                         width: '100%',
                         padding: '6px 10px',
                         fontSize: 12,
-                        background: '#141416',
-                        border: '1px solid rgba(255,255,255,0.1)',
+                        background: 'var(--surface-2)',
+                        border: '1px solid var(--border)',
                         borderRadius: 6,
-                        color: '#fafafa',
+                        color: 'var(--text)',
                       }}
                     />
                   </div>
@@ -2603,7 +2598,7 @@ export function FlowCanvas() {
               {(selectedNode.type as string) === 'subflow' && (
                 <>
                   <div>
-                    <label style={{ fontSize: 11, color: '#a1a1aa', display: 'block', marginBottom: 4 }}>Target Flow ID</label>
+                    <label style={{ fontSize: 11, color: 'var(--text-secondary)', display: 'block', marginBottom: 4 }}>Target Flow ID</label>
                     <input
                       type="text"
                       data-testid="config-flowId"
@@ -2613,10 +2608,10 @@ export function FlowCanvas() {
                         width: '100%',
                         padding: '6px 10px',
                         fontSize: 12,
-                        background: '#141416',
-                        border: '1px solid rgba(255,255,255,0.1)',
+                        background: 'var(--surface-2)',
+                        border: '1px solid var(--border)',
                         borderRadius: 6,
-                        color: '#fafafa',
+                        color: 'var(--text)',
                       }}
                     />
                   </div>
@@ -2630,16 +2625,16 @@ export function FlowCanvas() {
                   style={{
                     padding: 10,
                     borderRadius: 6,
-                    background: 'rgba(239, 68, 68, 0.1)',
-                    border: '1px solid rgba(239, 68, 68, 0.25)',
+                    background: 'var(--control-bg-active)',
+                    border: '1px solid var(--border)',
                     display: 'flex',
                     flexDirection: 'column',
                     gap: 6,
                   }}
                 >
-                  <span style={{ fontSize: 11, fontWeight: 700, color: '#ef4444' }}>Configuration Issues:</span>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text)' }}>Configuration Issues:</span>
                   {errorsByNode.get(selectedNode.id)?.map((err, idx) => (
-                    <div key={idx} style={{ fontSize: 11, color: '#fca5a5', lineHeight: 1.3 }}>
+                    <div key={idx} style={{ fontSize: 11, color: 'var(--text-secondary)', lineHeight: 1.3 }}>
                       • {err.message}
                     </div>
                   ))}
@@ -2649,7 +2644,7 @@ export function FlowCanvas() {
           )}
 
           {!selectedEdge && !selectedNode && (
-            <div style={{ color: '#71717a', fontSize: 12, textAlign: 'center', marginTop: 40 }}>
+            <div style={{ color: 'var(--text-muted)', fontSize: 12, textAlign: 'center', marginTop: 40 }}>
               Select a node or connection line on the canvas to edit its properties.
             </div>
           )}
@@ -2666,7 +2661,7 @@ export function FlowCanvas() {
             right: 336,
             zIndex: 60,
             width: 260,
-            background: 'rgba(18, 18, 20, 0.96)',
+            background: 'var(--panel)',
             backdropFilter: 'blur(12px)',
             border: '1px solid rgba(255,255,255,0.14)',
             borderRadius: 10,
@@ -2678,11 +2673,11 @@ export function FlowCanvas() {
           }}
         >
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <span style={{ fontSize: 12, fontWeight: 700, color: '#fafafa' }}>{t('Element picker')}</span>
+            <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)' }}>{t('Element picker')}</span>
             <button
               data-testid="btn-close-picker"
               onClick={closePicker}
-              style={{ background: 'none', border: 'none', color: '#a1a1aa', fontSize: 13, cursor: 'pointer' }}
+              style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', fontSize: 13, cursor: 'pointer' }}
             >
               ✕
             </button>
@@ -2694,11 +2689,11 @@ export function FlowCanvas() {
                 style={{
                   padding: 8,
                   borderRadius: 6,
-                  background: '#141416',
+                  background: 'var(--surface-2)',
                   border: '1px solid rgba(255,255,255,0.08)',
                   fontSize: 11,
-                  color: '#a1a1aa',
-                  fontFamily: 'var(--font-mono, monospace)',
+                  color: 'var(--text-secondary)',
+                  fontFamily: 'var(--font-mono)',
                   wordBreak: 'break-all',
                   lineHeight: 1.4,
                 }}
@@ -2706,7 +2701,7 @@ export function FlowCanvas() {
                 {pickerElement.tag ? `<${pickerElement.tag}> ` : ''}
                 {pickerElement.selector ?? 'no stable selector'}
               </div>
-              <span style={{ fontSize: 11, color: '#71717a' }}>{t('Choose an action for this element')}</span>
+              <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{t('Choose an action for this element')}</span>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                 <button data-testid="pick-action-click" onClick={() => handlePickedAction('click')} style={pickerButtonStyle}>
                   {t('Click')}
@@ -2729,7 +2724,7 @@ export function FlowCanvas() {
               </div>
             </>
           ) : (
-            <span data-testid="picker-waiting" style={{ fontSize: 11, color: '#71717a' }}>
+            <span data-testid="picker-waiting" style={{ fontSize: 11, color: 'var(--text-muted)' }}>
               {t('Pick element on the page')}
             </span>
           )}
@@ -2744,7 +2739,7 @@ export function FlowCanvas() {
           style={{
             height: 240,
             borderTop: '1px solid rgba(255,255,255,0.12)',
-            background: '#0d0d10',
+            background: 'var(--panel)',
             display: 'flex',
             flexDirection: 'column',
             zIndex: 40,
@@ -2754,15 +2749,15 @@ export function FlowCanvas() {
           <div
             style={{
               padding: '6px 16px',
-              borderBottom: '1px solid rgba(255,255,255,0.08)',
+              borderBottom: '1px solid var(--divider)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
-              background: 'rgba(255,255,255,0.02)',
+              background: 'transparent',
             }}
           >
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <span style={{ fontSize: 12, fontWeight: 700, color: '#fafafa' }}>Live Run Stream</span>
+              <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)' }}>Live Run Stream</span>
               {/* Status Chip */}
               <span
                 data-testid="live-run-status-chip"
@@ -2774,50 +2769,49 @@ export function FlowCanvas() {
                   borderRadius: 12,
                   background:
                     runStatus === 'running'
-                      ? 'rgba(59, 130, 246, 0.2)'
+                      ? 'var(--control-bg-active)'
                       : runStatus === 'finished'
-                      ? 'rgba(34, 197, 94, 0.2)'
+                      ? 'var(--control-bg-selected)'
                       : runStatus === 'error'
-                      ? 'rgba(239, 68, 68, 0.2)'
-                      : 'rgba(255,255,255,0.08)',
+                      ? 'var(--control-bg)'
+                      : 'var(--control-bg)',
                   color:
                     runStatus === 'running'
-                      ? '#60a5fa'
+                      ? 'var(--text)'
                       : runStatus === 'finished'
-                      ? '#4ade80'
+                      ? 'var(--text)'
                       : runStatus === 'error'
-                      ? '#f87171'
-                      : '#a1a1aa',
+                      ? 'var(--text-secondary)'
+                      : 'var(--text-muted)',
                   border: `1px solid ${
                     runStatus === 'running'
-                      ? 'rgba(59, 130, 246, 0.3)'
+                      ? 'var(--border-focus)'
                       : runStatus === 'finished'
-                      ? 'rgba(34, 197, 94, 0.3)'
+                      ? 'var(--border)'
                       : runStatus === 'error'
-                      ? 'rgba(239, 68, 68, 0.3)'
-                      : 'rgba(255,255,255,0.1)'
+                      ? 'var(--border)'
+                      : 'var(--border)'
                   }`,
                 }}
               >
                 {runStatus}
               </span>
               {activeTaskUuid && (
-                <span style={{ fontSize: 10, color: '#71717a', fontFamily: 'monospace' }}>
+                <span style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: 'monospace' }}>
                   task: {activeTaskUuid.slice(0, 8)}…
                 </span>
               )}
               {/* Timings summary */}
               {Object.keys(nodeTimings).length > 0 && (
                 <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                  <span style={{ fontSize: 10, color: '#71717a' }}>Node timings:</span>
+                  <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>Node timings:</span>
                   {Object.entries(nodeTimings).map(([nid, ms]) => (
                     <span
                       key={nid}
                       data-testid={`node-timing-${nid}`}
                       style={{
                         fontSize: 10,
-                        color: '#38bdf8',
-                        background: 'rgba(56, 189, 248, 0.1)',
+                        color: 'var(--text-secondary)', background: 'var(--control-bg)',
                         padding: '1px 5px',
                         borderRadius: 4,
                       }}
@@ -2834,9 +2828,9 @@ export function FlowCanvas() {
                   data-testid="btn-resume-autoscroll"
                   onClick={() => setIsScrolledUp(false)}
                   style={{
-                    background: '#27272a',
-                    border: '1px solid rgba(255,255,255,0.1)',
-                    color: '#e4e4e7',
+                    background: 'var(--surface-2)',
+                    border: '1px solid var(--border)',
+                    color: 'var(--text)',
                     fontSize: 10,
                     padding: '2px 8px',
                     borderRadius: 4,
@@ -2852,7 +2846,7 @@ export function FlowCanvas() {
                 style={{
                   background: 'transparent',
                   border: 'none',
-                  color: '#71717a',
+                  color: 'var(--text-muted)',
                   fontSize: 11,
                   cursor: 'pointer',
                 }}
@@ -2865,7 +2859,7 @@ export function FlowCanvas() {
                 style={{
                   background: 'transparent',
                   border: 'none',
-                  color: '#a1a1aa',
+                  color: 'var(--text-secondary)',
                   fontSize: 12,
                   cursor: 'pointer',
                 }}
@@ -2891,16 +2885,16 @@ export function FlowCanvas() {
               fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
               fontSize: 11,
               lineHeight: 1.5,
-              color: '#d4d4d8',
+              color: 'var(--text-secondary)',
             }}
           >
             {runError && (
-              <div style={{ color: '#ef4444', marginBottom: 6 }}>
+              <div style={{ color: 'var(--text)', fontWeight: 600, marginBottom: 6 }}>
                 [ERROR] {runError}
               </div>
             )}
             {runLogs.length === 0 && !runError && (
-              <div style={{ color: '#52525b', fontStyle: 'italic' }}>
+              <div style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>
                 {isRunning ? 'Waiting for log stream...' : 'No logs yet. Click "Run Flow" to start.'}
               </div>
             )}
@@ -2915,12 +2909,12 @@ export function FlowCanvas() {
                     flexDirection: 'column',
                     gap: 4,
                     padding: '2px 0',
-                    borderBottom: '1px solid rgba(255,255,255,0.02)',
+                    borderBottom: '1px solid var(--divider)',
                   }}
                 >
                   <div style={{ display: 'flex', gap: 8 }}>
                     {log.created_at && (
-                      <span style={{ color: '#52525b', flexShrink: 0 }}>
+                      <span style={{ color: 'var(--text-muted)', flexShrink: 0 }}>
                         {new Date(log.created_at).toLocaleTimeString()}
                       </span>
                     )}
@@ -2933,8 +2927,8 @@ export function FlowCanvas() {
                         margin: '4px 0 4px 20px',
                         padding: 6,
                         borderRadius: 4,
-                        background: '#18181b',
-                        border: '1px solid rgba(255,255,255,0.1)',
+                        background: 'var(--surface-2)',
+                        border: '1px solid var(--border)',
                         maxWidth: 400,
                       }}
                     >
@@ -2945,7 +2939,7 @@ export function FlowCanvas() {
                           style={{ width: '100%', maxHeight: 180, objectFit: 'contain', borderRadius: 2 }}
                         />
                       ) : (
-                        <div style={{ fontSize: 10, color: '#38bdf8' }}>
+                        <div style={{ fontSize: 10, color: 'var(--text-secondary)' }}>
                           🖼️ Screenshot: {screenshot}
                         </div>
                       )}
@@ -2965,18 +2959,18 @@ export function FlowCanvas() {
               style={{
                 height: 300,
                 borderTop: '1px solid rgba(255,255,255,0.12)',
-                background: '#0d0d10',
+                background: 'var(--panel)',
                 zIndex: 41,
               }}
             >
               {fleetRunError && (
                 <div
                   style={{
-                    color: '#ef4444',
+                    color: 'var(--text)',
                     fontSize: 11,
                     padding: '4px 12px',
-                    background: 'rgba(239, 68, 68, 0.1)',
-                    borderBottom: '1px solid rgba(239, 68, 68, 0.2)',
+                    background: 'var(--control-bg-active)',
+                    borderBottom: '1px solid var(--border)',
                   }}
                 >
                   [ERROR] {fleetRunError}

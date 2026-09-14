@@ -1,4 +1,5 @@
 ﻿import { useCallback, useEffect, useState } from 'react';
+import { EmptyState } from '../components/EmptyState';
 import {
   api,
   type ProfileListItem,
@@ -179,7 +180,7 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
   const [selectedTagFilter, setSelectedTagFilter] = useState<string>('');
   const [profileTagMap, setProfileTagMap] = useState<Record<string, ProfileTagBinding[]>>({});
   const [showTagModal, setShowTagModal] = useState(false);
-  const [tagForm, setTagForm] = useState<{ id: string | null; name: string; color: string }>({ id: null, name: '', color: '#6b7280' });
+  const [tagForm, setTagForm] = useState<{ id: string | null; name: string; color: string }>({ id: null, name: '', color: '#71717a' });
 
   const loadTags = useCallback(async () => {
     try {
@@ -831,7 +832,7 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
         ? await api.tagUpdate(tagForm.id, { name: tagForm.name.trim(), color: tagForm.color })
         : await api.tagCreate(tagForm.name.trim(), tagForm.color);
       if (res.code === 0) {
-        setTagForm({ id: null, name: '', color: '#6b7280' });
+        setTagForm({ id: null, name: '', color: '#71717a' });
         await loadTags();
         await loadProfiles();
       } else {
@@ -1287,7 +1288,7 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
             <FolderIcon size={14} />
             <span>Groups</span>
           </button>
-          <button className="btn" onClick={() => { setTagForm({ id: null, name: '', color: '#6b7280' }); setShowTagModal(true); }}>
+          <button className="btn" onClick={() => { setTagForm({ id: null, name: '', color: '#71717a' }); setShowTagModal(true); }}>
             <ProxiesIcon size={14} />
             <span>Tags</span>
           </button>
@@ -1298,7 +1299,7 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
             style={{
               borderColor: blockOnFail ? 'var(--accent)' : undefined,
               color: blockOnFail ? 'var(--accent)' : undefined,
-              background: blockOnFail ? 'rgba(59, 130, 246, 0.1)' : undefined,
+              background: blockOnFail ? 'var(--control-bg-active)' : undefined,
             }}
           >
             <ShieldCheckIcon size={14} />
@@ -1370,23 +1371,26 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
           </thead>
           <tbody>
             {filteredProfiles.length === 0 ? (
-              <tr>
-                <td colSpan={8} className="empty-cell">
-                  {searchQuery ? (
-                    t('No profiles match your search criteria.')
-                  ) : (
-                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, padding: '24px 0' }}>
-                      <ProfilesIcon size={32} style={{ opacity: 0.3 }} />
-                      <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-secondary)' }}>
-                        {t('No profiles yet')}
-                      </div>
-                      <p style={{ fontSize: 12, color: 'var(--text-muted)', maxWidth: 420, margin: 0 }}>
-                        {t('Create your first browser profile — each profile gets a unique fingerprint, device, and proxy. Click')} <strong>{t('+ New Profile')}</strong> {t('to get started.')}
-                      </p>
-                    </div>
-                  )}
-                </td>
-              </tr>
+              searchQuery ? (
+                <tr>
+                  <td colSpan={8} className="empty-cell">
+                    {t('No profiles match your search criteria.')}
+                  </td>
+                </tr>
+              ) : (
+                <EmptyState
+                  colSpan={8}
+                  icon={<ProfilesIcon size={32} />}
+                  title={t('No profiles yet')}
+                  description={t('Create your first browser profile — each profile gets a unique fingerprint, device, and proxy. Click + New Profile to get started.')}
+                  action={
+                    <button className="btn btn-sm primary" onClick={openCreateModal}>
+                      <PlusIcon size={13} />
+                      <span>{t('+ New Profile')}</span>
+                    </button>
+                  }
+                />
+              )
             ) : (
               filteredProfiles.map((p) => (
                 <tr key={p.user_id} className={selectedIds.has(p.user_id) ? 'selected-row' : ''}>
@@ -2565,7 +2569,7 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
                     {tagForm.id ? t('Save') : t('Create')}
                   </button>
                   {tagForm.id ? (
-                    <button className="btn" onClick={() => setTagForm({ id: null, name: '', color: '#6b7280' })}>
+                    <button className="btn" onClick={() => setTagForm({ id: null, name: '', color: '#71717a' })}>
                       {t('Cancel')}
                     </button>
                   ) : null}
@@ -2590,7 +2594,7 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
                     </span>
                     <button
                       className="btn btn-sm"
-                      onClick={() => setTagForm({ id: tg.id, name: tg.name, color: tg.color || '#6b7280' })}
+                      onClick={() => setTagForm({ id: tg.id, name: tg.name, color: tg.color || '#71717a' })}
                       disabled={busy}
                     >
                       {t('Edit')}

@@ -35,7 +35,7 @@ export function LogLineList({ logs, emptyLabel }: { logs: SseLogEntry[]; emptyLa
   if (logs.length === 0) {
     if (!emptyLabel) return null;
     return (
-      <div style={{ color: '#52525b', fontStyle: 'italic' }}>{emptyLabel}</div>
+      <div style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>{emptyLabel}</div>
     );
   }
   return (
@@ -51,12 +51,12 @@ export function LogLineList({ logs, emptyLabel }: { logs: SseLogEntry[]; emptyLa
               flexDirection: 'column',
               gap: 4,
               padding: '2px 0',
-              borderBottom: '1px solid rgba(255,255,255,0.02)',
+              borderBottom: '1px solid var(--surface-2)',
             }}
           >
             <div style={{ display: 'flex', gap: 8 }}>
               {log.created_at && (
-                <span style={{ color: '#52525b', flexShrink: 0 }}>
+                <span style={{ color: 'var(--text-muted)', flexShrink: 0 }}>
                   {new Date(log.created_at).toLocaleTimeString()}
                 </span>
               )}
@@ -69,8 +69,8 @@ export function LogLineList({ logs, emptyLabel }: { logs: SseLogEntry[]; emptyLa
                   margin: '4px 0 4px 20px',
                   padding: 6,
                   borderRadius: 4,
-                  background: '#18181b',
-                  border: '1px solid rgba(255,255,255,0.1)',
+                  background: 'var(--surface-1)',
+                  border: '1px solid var(--border)',
                   maxWidth: 400,
                 }}
               >
@@ -81,7 +81,7 @@ export function LogLineList({ logs, emptyLabel }: { logs: SseLogEntry[]; emptyLa
                     style={{ width: '100%', maxHeight: 180, objectFit: 'contain', borderRadius: 2 }}
                   />
                 ) : (
-                  <div style={{ fontSize: 10, color: '#38bdf8' }}>
+                  <div style={{ fontSize: 10, color: 'var(--text-secondary)' }}>
                     🖼️ Screenshot: {screenshot}
                   </div>
                 )}
@@ -130,16 +130,16 @@ export function FleetPanel({
       <div
         style={{
           padding: '6px 16px',
-          borderBottom: '1px solid rgba(255,255,255,0.08)',
+          borderBottom: '1px solid var(--divider)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          background: 'rgba(255,255,255,0.02)',
+          background: 'var(--surface-2)',
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <span style={{ fontSize: 12, fontWeight: 700, color: '#fafafa' }}>{t('Fleet Progress')}</span>
-          <span style={{ fontSize: 10, color: '#71717a' }}>
+          <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)' }}>{t('Fleet Progress')}</span>
+          <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>
             {profiles.length} profile{profiles.length === 1 ? '' : 's'}
           </span>
         </div>
@@ -148,9 +148,9 @@ export function FleetPanel({
           onClick={onStop}
           disabled={!running || !anyBusy}
           style={{
-            background: running && anyBusy ? 'rgba(239, 68, 68, 0.15)' : 'rgba(255,255,255,0.05)',
-            border: running && anyBusy ? '1px solid rgba(239, 68, 68, 0.35)' : '1px solid rgba(255,255,255,0.08)',
-            color: running && anyBusy ? '#fca5a5' : '#71717a',
+            background: running && anyBusy ? 'var(--danger-bg)' : 'var(--control-bg)',
+            border: running && anyBusy ? '1px solid var(--border-focus)' : '1px solid var(--border)',
+            color: running && anyBusy ? 'var(--danger)' : 'var(--text-muted)',
             fontSize: 11,
             padding: '3px 10px',
             borderRadius: 4,
@@ -169,13 +169,13 @@ export function FleetPanel({
           style={{
             width: 280,
             flexShrink: 0,
-            borderRight: '1px solid rgba(255,255,255,0.08)',
+            borderRight: '1px solid var(--divider)',
             overflowY: 'auto',
             padding: '6px',
           }}
         >
           {profiles.length === 0 && (
-            <div style={{ color: '#52525b', fontStyle: 'italic', fontSize: 11, padding: 8 }}>
+            <div style={{ color: 'var(--text-muted)', fontStyle: 'italic', fontSize: 11, padding: 8 }}>
               {t('Select profile...')}
             </div>
           )}
@@ -197,8 +197,8 @@ export function FleetPanel({
                   borderRadius: 6,
                   cursor: 'pointer',
                   marginBottom: 4,
-                  background: isSelected ? 'rgba(59, 130, 246, 0.12)' : 'rgba(255,255,255,0.03)',
-                  border: `1px solid ${isSelected ? 'rgba(59, 130, 246, 0.35)' : 'rgba(255,255,255,0.06)'}`,
+                  background: isSelected ? 'var(--control-bg-selected)' : 'var(--control-bg)',
+                  border: isSelected ? '1px solid var(--border-focus)' : '1px solid transparent',
                   // Queued rows are deliberately muted so they read as
                   // "not started yet" rather than actively working.
                   opacity: isQueued && !isSelected ? 0.62 : 1,
@@ -209,7 +209,7 @@ export function FleetPanel({
                     style={{
                       fontSize: 11,
                       fontWeight: 600,
-                      color: '#e4e4e7',
+                      color: 'var(--text)',
                       whiteSpace: 'nowrap',
                       overflow: 'hidden',
                       textOverflow: 'ellipsis',
@@ -238,7 +238,7 @@ export function FleetPanel({
                   <span
                     style={{
                       fontSize: 10,
-                      color: '#71717a',
+                      color: 'var(--text-muted)',
                       fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
                       whiteSpace: 'nowrap',
                       overflow: 'hidden',
@@ -255,7 +255,7 @@ export function FleetPanel({
                       flex: 1,
                       height: 4,
                       borderRadius: 2,
-                      background: 'rgba(255,255,255,0.08)',
+                      background: 'var(--surface-2)',
                       overflow: 'hidden',
                     }}
                   >
@@ -265,22 +265,16 @@ export function FleetPanel({
                         height: '100%',
                         borderRadius: 2,
                         background:
-                          p.status === 'error'
-                            ? '#ef4444'
-                            : p.status === 'finished'
-                            ? '#4ade80'
-                            : p.status === 'stopped'
-                            ? '#a1a1aa'
-                            : '#60a5fa',
+                          p.status === 'error' ? 'var(--danger)' : p.status === 'finished' ? 'var(--ok)' : p.status === 'stopped' ? 'var(--text-muted)' : 'var(--text)',
                       }}
                     />
                   </div>
-                  <span style={{ fontSize: 9, color: '#71717a', flexShrink: 0 }}>
+                  <span style={{ fontSize: 9, color: 'var(--text-muted)', flexShrink: 0 }}>
                     {progress.completed}/{progress.total}
                   </span>
                 </div>
                 {p.error && (
-                  <div style={{ color: '#ef4444', fontSize: 10, marginTop: 4, wordBreak: 'break-all' }}>
+                  <div style={{ color: 'var(--danger)', fontSize: 10, marginTop: 4, wordBreak: 'break-all' }}>
                     {p.error}
                   </div>
                 )}
@@ -301,7 +295,7 @@ export function FleetPanel({
             fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
             fontSize: 11,
             lineHeight: 1.5,
-            color: '#d4d4d8',
+            color: 'var(--text)',
           }}
         >
           {selected ? (
@@ -314,7 +308,7 @@ export function FleetPanel({
               }
             />
           ) : (
-            <div style={{ color: '#52525b', fontStyle: 'italic' }}>
+            <div style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>
               {t('Select profile...')}
             </div>
           )}

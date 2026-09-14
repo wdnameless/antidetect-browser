@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api, type ProxyItem } from '../api';
 import { ProxiesIcon, PlusIcon, TrashIcon, RefreshIcon, CheckIcon } from '../icons';
+import { EmptyState } from '../components/EmptyState';
 import { useI18n } from '../i18n';
 
 export function Proxies() {
@@ -159,10 +160,8 @@ export function Proxies() {
       <div className="page-header-actions">
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <ProxiesIcon size={20} style={{ color: 'var(--text-secondary)' }} />
-          <h2 style={{ fontSize: 16, fontWeight: 700 }}>{t('Proxy Manager')}</h2>
           <span className="hint" style={{ margin: 0 }}>({t('proxies configured')}: {proxies.length})</span>
         </div>
-
         <div style={{ display: 'flex', gap: 8 }}>
           <button className="btn" onClick={() => setShowImport(true)}>
             {t('Import List')}
@@ -319,20 +318,18 @@ export function Proxies() {
           </thead>
           <tbody>
             {proxies.length === 0 ? (
-              <tr>
-                <td colSpan={5} className="empty-cell">
-                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, padding: '24px 0' }}>
-                    <ProxiesIcon size={32} style={{ opacity: 0.3 }} />
-                    <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-secondary)' }}>
-                      {t('No proxies configured yet')}
-                    </div>
-                    <p style={{ fontSize: 12, color: 'var(--text-muted)', maxWidth: 440, margin: 0 }}>
-                      {t('Proxies give each profile its own IP address — essential for running many accounts safely.')}
-                      Click <strong>+ Add Proxy</strong> to configure one.
-                    </p>
-                  </div>
-                </td>
-              </tr>
+              <EmptyState
+                colSpan={5}
+                icon={<ProxiesIcon size={32} />}
+                title={t('No proxies configured yet')}
+                description={t('Proxies give each profile its own IP address — essential for running many accounts safely.')}
+                action={
+                  <button className="btn btn-sm primary" onClick={() => setShowModal(true)}>
+                    <PlusIcon size={13} />
+                    <span>{t('Add Proxy')}</span>
+                  </button>
+                }
+              />
             ) : (
               proxies.map((p) => {
                 const res = checkResult[p.proxy_id];

@@ -119,7 +119,7 @@ export function SyncSettings() {
               width: 8,
               height: 8,
               borderRadius: '50%',
-              background: status?.connected ? 'var(--ok, #3fa34d)' : 'var(--warn, #c0392b)',
+              background: status?.connected ? 'var(--ok)' : 'var(--warn)',
             }}
           />
           <span style={{ fontSize: 13 }}>

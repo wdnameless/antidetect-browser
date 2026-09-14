@@ -3,6 +3,48 @@
 All notable changes are documented here. Releases are published on
 [GitHub Releases](https://github.com/wdnameless/antidetect-browser/releases).
 
+## v0.3.3 - NullTrace noir: pages swept onto tokens
+
+Every page and component now resolves through the token layer. The renderer contains
+**zero chrome colour literals and zero orphan token references**, enforced by a test
+that reads every source file rather than only the stylesheet.
+
+| File | before | after |
+|---|---|---|
+| `pages/FlowCanvas.tsx` | 192 literals | 0 |
+| `pages/Email.tsx` | 51 literals, 20 orphan `var(--x, #hex)` | 0 |
+| `components/FleetPanel.tsx` | 18 literals | 0 |
+| `pages/Profiles.tsx` | 8 | 0 |
+| `pages/Calendar.tsx` | 8 | 0 |
+| `pages/Diagnostics.tsx` | 5 + 1 orphan | 0 |
+| `pages/SecuritySettings.tsx`, `SyncSettings.tsx`, `Extensions.tsx`, `LoginScreen.tsx` | 8 + 2 orphans | 0 |
+
+- **Flow Canvas** was the bulk of it, and most of its 192 were neutral greys that only
+  needed to become tokens. The ~25 that carried meaning were handled differently: the
+  validation indicator and the live-run state kept their boolean branches and changed
+  only their appearance; SVG edge markers, whose presentation attributes cannot read a
+  CSS variable, were switched to token-driven `style` values.
+- **Meaning survived.** Where colour used to carry it — valid vs invalid, running vs
+  stopped, healthy/warn/failed on Diagnostics, node kinds on the canvas — the states
+  remain distinguishable by background step, weight, border style or glyph. A change
+  that made them indistinguishable would have been a regression, not a redesign.
+- **The orphan dialect is gone.** `var(--bg-secondary, #1e1e24)`-style references to
+  tokens that never existed silently rendered the fallback and defeated any restyle.
+  None remain anywhere in the renderer.
+- **Operator data colours are untouched.** Profile and tag colours the operator chose
+  are data, not chrome; the guard exempts them by identifying the palette's source
+  rather than by a filename allowlist that would rot.
+
+### Also fixed
+- **Duplicate page titles**: `Proxies` and `Extensions` rendered their own `h2` while
+  the shell already rendered one, so both pages showed the title twice.
+- **One shared empty state** (`components/EmptyState.tsx`), adopted by Profiles,
+  Proxies and Extensions, replacing three inline variants that each looked slightly
+  different.
+- **`LoginScreen`** still used the pre-token dialect and a red error tint; it now uses
+  tokens, and the sign-in failure is distinguished by a stronger background step and a
+  left rule rather than by hue.
+
 ## v0.3.2 - NullTrace noir: grouped shell, no boxes, frameless window
 
 The interface is rebuilt in ShardX's shape and strictly monochrome. Verified by
