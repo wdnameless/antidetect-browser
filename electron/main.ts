@@ -179,6 +179,7 @@ function createWindow(): void {
     width: 1280,
     height: 800,
     title: 'NullTrace',
+    frame: false,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -310,6 +311,30 @@ function initAutoUpdater(): void {
     autoUpdater.quitAndInstall(true, true);
   });
 }
+  Menu.setApplicationMenu(null);
+
+  // Window control IPC for frameless window
+  ipcMain.on('window:minimize', (event) => {
+    const win = BrowserWindow.fromWebContents(event.sender);
+    win?.minimize();
+  });
+
+  ipcMain.on('window:toggle-maximize', (event) => {
+    const win = BrowserWindow.fromWebContents(event.sender);
+    if (win) {
+      if (win.isMaximized()) {
+        win.unmaximize();
+      } else {
+        win.maximize();
+      }
+    }
+  });
+
+  ipcMain.on('window:close', (event) => {
+    const win = BrowserWindow.fromWebContents(event.sender);
+    win?.close();
+  });
+
 app.whenReady().then(() => {
   createWindow();
   // Screen-capture protection + idle auto-lock (parity program):
@@ -352,6 +377,7 @@ app.on('before-quit', () => {
     } catch {
       // ignore
     }
+
     try {
       const { flushDb } = await import('../src/main/db');
       flushDb();

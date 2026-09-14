@@ -48,27 +48,42 @@ interface NavItem {
   key: Page;
   label: string;
   icon: React.ComponentType<{ size?: number; style?: React.CSSProperties }>;
+  group: NavGroup;
 }
 
+/**
+ * Navigation groups, in the order they render. ShardX's shape: the things you work
+ * with, the things you keep, and the things you configure.
+ */
+type NavGroup = 'WORKSPACE' | 'LIBRARY' | 'SYSTEM';
+
+const NAV_GROUP_ORDER: NavGroup[] = ['WORKSPACE', 'LIBRARY', 'SYSTEM'];
+
 const NAV: NavItem[] = [
-  { key: 'profiles', label: 'Profiles', icon: ProfilesIcon },
-  { key: 'groups', label: 'Groups', icon: FolderIcon },
-  { key: 'proxies', label: 'Proxies', icon: ProxiesIcon },
-  { key: 'devices', label: 'Devices', icon: DevicesIcon },
-  { key: 'extensions', label: 'Extensions', icon: ExtensionsIcon },
-  { key: 'email', label: 'Email', icon: ShieldIcon },
-  { key: 'diagnostics', label: 'Diagnostics', icon: KeyIcon },
-  { key: 'trash', label: 'Trash', icon: TrashIcon },
-  { key: 'flows', label: 'Flow Canvas', icon: FlowIcon },
-  { key: 'calendar', label: 'Calendar', icon: CalendarIcon },
-  { key: 'catalog', label: 'Catalog', icon: CookieIcon },
-  { key: 'teams', label: 'Teams', icon: UsersIcon },
-  { key: 'cloud', label: 'Cloud Sync', icon: CloudIcon },
-  { key: 'settings', label: 'Settings', icon: SettingsIcon },
+  { key: 'profiles', label: 'Profiles', icon: ProfilesIcon, group: 'WORKSPACE' },
+  { key: 'groups', label: 'Groups', icon: FolderIcon, group: 'WORKSPACE' },
+  { key: 'proxies', label: 'Proxies', icon: ProxiesIcon, group: 'WORKSPACE' },
+  { key: 'devices', label: 'Devices', icon: DevicesIcon, group: 'WORKSPACE' },
+  { key: 'extensions', label: 'Extensions', icon: ExtensionsIcon, group: 'WORKSPACE' },
+  { key: 'flows', label: 'Flow Canvas', icon: FlowIcon, group: 'WORKSPACE' },
+  // `scripts` was in the Page union and rendered, but missing from NAV, so the page
+  // was unreachable by clicking. Restored here with its own group placement.
+  { key: 'scripts', label: 'Automation', icon: FlowIcon, group: 'WORKSPACE' },
+  { key: 'email', label: 'Email', icon: ShieldIcon, group: 'LIBRARY' },
+  { key: 'calendar', label: 'Calendar', icon: CalendarIcon, group: 'LIBRARY' },
+  { key: 'catalog', label: 'Catalog', icon: CookieIcon, group: 'LIBRARY' },
+  { key: 'teams', label: 'Teams', icon: UsersIcon, group: 'LIBRARY' },
+  { key: 'diagnostics', label: 'Diagnostics', icon: KeyIcon, group: 'SYSTEM' },
+  { key: 'trash', label: 'Trash', icon: TrashIcon, group: 'SYSTEM' },
+  { key: 'cloud', label: 'Cloud Sync', icon: CloudIcon, group: 'SYSTEM' },
+  { key: 'settings', label: 'Settings', icon: SettingsIcon, group: 'SYSTEM' },
 ];
 
 export function App() {
   const { t } = useI18n();
+  // The frameless window controls belong to the Electron shell. A browser client
+  // has no bridge, so we detect it once rather than rendering dead buttons.
+  const hasNativeWindow = typeof window !== 'undefined' && Boolean(window.antidetect?.window);
   const [ready, setReady] = useState(false);
   const [authenticated, setAuthenticated] = useState<boolean>(false);
   const [page, setPage] = useState<Page>('profiles');
@@ -178,40 +193,51 @@ export function App() {
           </div>
 
           <nav className="nav" aria-label="Main navigation">
-            {NAV.map((item) => {
-              const Icon = item.icon;
-              const active = item.key === page;
-              const isProfiles = item.key === 'profiles';
-              const isCloud = item.key === 'cloud';
-              const itemLabel = t(item.label);
-
+            {NAV_GROUP_ORDER.map((groupKey) => {
+              const items = NAV.filter((n) => n.group === groupKey);
+              if (items.length === 0) return null;
               return (
-                <button
-                  key={item.key}
-                  type="button"
-                  className={`nav-item ${active ? 'active' : ''}`}
-                  data-tooltip={itemLabel}
-                  aria-label={itemLabel}
-                  title={sidebarCollapsed ? itemLabel : undefined}
-                  onClick={() => {
-                    if (item.key !== 'profiles') setSelectedGroupId(null);
-                    setPage(item.key);
-                  }}
-                >
-                  <div className="nav-item-icon-wrapper">
-                    <Icon size={16} />
-                    {isCloud && syncConnected && <span className="sync-dot" title="Cloud connected" />}
-                    {isProfiles && runningCount > 0 && sidebarCollapsed && (
-                      <span className="nav-badge" title={`${runningCount} ${t('running')}`}>
-                        {runningCount}
-                      </span>
-                    )}
+                <div className="nav-group" key={groupKey}>
+                  <div className={`nav-group-label ${sidebarCollapsed ? 'collapsed' : ''}`}>
+                    {sidebarCollapsed ? '' : groupKey}
                   </div>
-                  <span className="nav-label">{itemLabel}</span>
-                  {isProfiles && runningCount > 0 && !sidebarCollapsed && (
-                    <span className="nav-badge">{runningCount}</span>
-                  )}
-                </button>
+                  {items.map((item) => {
+                    const Icon = item.icon;
+                    const active = item.key === page;
+                    const isProfiles = item.key === 'profiles';
+                    const isCloud = item.key === 'cloud';
+                    const itemLabel = t(item.label);
+
+                    return (
+                      <button
+                        key={item.key}
+                        type="button"
+                        className={`nav-item ${active ? 'active' : ''}`}
+                        data-tooltip={itemLabel}
+                        aria-label={itemLabel}
+                        title={sidebarCollapsed ? itemLabel : undefined}
+                        onClick={() => {
+                          if (item.key !== 'profiles') setSelectedGroupId(null);
+                          setPage(item.key);
+                        }}
+                      >
+                        <div className="nav-item-icon-wrapper">
+                          <Icon size={16} />
+                          {isCloud && syncConnected && <span className="sync-dot" title="Cloud connected" />}
+                          {isProfiles && runningCount > 0 && sidebarCollapsed && (
+                            <span className="nav-badge" title={`${runningCount} ${t('running')}`}>
+                              {runningCount}
+                            </span>
+                          )}
+                        </div>
+                        <span className="nav-label">{itemLabel}</span>
+                        {isProfiles && runningCount > 0 && !sidebarCollapsed && (
+                          <span className="nav-badge">{runningCount}</span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
               );
             })}
           </nav>
@@ -254,6 +280,43 @@ export function App() {
       <div className="main">
         <header className="topbar">
           <h2 className="page-title">{activeNav ? t(activeNav.label) : 'Dashboard'}</h2>
+          {hasNativeWindow ? (
+            <div className="window-controls">
+              <button
+                type="button"
+                className="window-control"
+                onClick={() => window.antidetect?.window?.minimize()}
+                aria-label={t('Minimize')}
+                title={t('Minimize')}
+              >
+                <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
+                  <path d="M0 5h10" stroke="currentColor" strokeWidth="1" />
+                </svg>
+              </button>
+              <button
+                type="button"
+                className="window-control"
+                onClick={() => window.antidetect?.window?.toggleMaximize()}
+                aria-label={t('Maximize')}
+                title={t('Maximize')}
+              >
+                <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
+                  <rect x="0.5" y="0.5" width="9" height="9" fill="none" stroke="currentColor" strokeWidth="1" />
+                </svg>
+              </button>
+              <button
+                type="button"
+                className="window-control window-control-close"
+                onClick={() => window.antidetect?.window?.close()}
+                aria-label={t('Close')}
+                title={t('Close')}
+              >
+                <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
+                  <path d="M0 0l10 10M10 0L0 10" stroke="currentColor" strokeWidth="1" />
+                </svg>
+              </button>
+            </div>
+          ) : null}
         </header>
 
         <main className="content">

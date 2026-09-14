@@ -3,6 +3,60 @@
 All notable changes are documented here. Releases are published on
 [GitHub Releases](https://github.com/wdnameless/antidetect-browser/releases).
 
+## v0.3.2 - NullTrace noir: grouped shell, no boxes, frameless window
+
+The interface is rebuilt in ShardX's shape and strictly monochrome. Verified by
+looking at it in a browser, not by reading the diff.
+
+### Frames removed
+- **Full-perimeter borders and elevation come off** containers, controls, chips and
+  row-action buttons: `.table-container`, `.panel`, inputs, buttons, selects, search,
+  segmented control, badges, platform tags, group/tag/proxy chips and the per-row
+  icon buttons. Surfaces are separated by a background step and spacing instead.
+- **Hairline dividers are kept** — table rows, section breaks, modal head/foot,
+  sidebar edges. That is the line between "no boxes" and "no structure": losing them
+  would run rows and sections together. A test asserts at least four survive.
+- The modal keeps its shadow. It is an overlay, not an inline container, and the
+  shadow is what tells the operator it sits above the page.
+
+### Grouped navigation
+- Navigation is grouped under labelled sections, as in the reference:
+  **WORKSPACE** (Profiles, Groups, Proxies, Devices, Extensions, Flow Canvas,
+  Automation) · **LIBRARY** (Email, Calendar, Catalog, Teams) ·
+  **SYSTEM** (Diagnostics, Trash, Cloud Sync, Settings).
+- **`scripts` was unreachable.** It existed in the `Page` union and rendered, but was
+  missing from the navigation, so no click could get there. Restored, and a test now
+  asserts every page in the union is reachable — the class of bug rather than the one
+  instance.
+- Collapse (Ctrl/Cmd+B, `sidebar.collapsed`) still works; group labels hide when
+  collapsed.
+
+### Frameless window
+- The native title bar and the `File/Edit/View/Window` menu are gone. The app supplies
+  a draggable header (`-webkit-app-region: drag`, with interactive children opting out)
+  and its own minimise / maximise / close controls.
+- The controls render **only** when the Electron bridge exists. A browser-served client
+  has no such bridge, so it gets no dead buttons.
+- Tray behaviour and close-to-tray are preserved — an unmovable or unclosable window
+  would have been a hard failure, so that path was checked, not assumed.
+
+### Monochrome
+- The token layer gained surface steps (`--surface-1/2/3`), `--divider`, control
+  backgrounds and a rationalised radius scale, replacing nine ad-hoc radius values.
+- **Zero hue remains.** The last 14 saturated literals, all in the preflight/proxy
+  blocks, are gone; `FleetPanel`'s `STATUS_COLORS` hex map became tokens.
+- States that were told apart by colour now use weight, background step and shape, so
+  they survive without hue.
+- Operator-chosen data colours (profile/tag pickers) are untouched — they are data,
+  not chrome.
+
+### Guards
+`tests/unit/noirTokens.test.ts` and `tests/unit/shellGroups.test.ts` make the direction
+enforceable: no hue anywhere in chrome, no `var()` referencing an undefined token (the
+old dialect silently rendered its fallback), no box border or elevation on inline
+containers, structural dividers still present, every navigable page reachable, and the
+window-control bridge detected rather than assumed.
+
 ## v0.3.1 - NullTrace Portable: no installer, one file
 
 The product ships as a file you run, not an installer. Verified end-to-end: the

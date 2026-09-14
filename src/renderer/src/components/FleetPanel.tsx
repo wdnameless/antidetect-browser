@@ -19,11 +19,11 @@ export interface FleetPanelProps {
 }
 
 const STATUS_COLORS: Record<FleetProfileStatus, { bg: string; fg: string; border: string }> = {
-  queued: { bg: 'rgba(161, 161, 170, 0.15)', fg: '#a1a1aa', border: 'rgba(161, 161, 170, 0.25)' },
-  working: { bg: 'rgba(59, 130, 246, 0.2)', fg: '#60a5fa', border: 'rgba(59, 130, 246, 0.3)' },
-  finished: { bg: 'rgba(34, 197, 94, 0.2)', fg: '#4ade80', border: 'rgba(34, 197, 94, 0.3)' },
-  error: { bg: 'rgba(239, 68, 68, 0.2)', fg: '#f87171', border: 'rgba(239, 68, 68, 0.3)' },
-  stopped: { bg: 'rgba(255, 255, 255, 0.08)', fg: '#a1a1aa', border: 'rgba(255, 255, 255, 0.1)' },
+  queued: { bg: 'var(--control-bg)', fg: 'var(--text-muted)', border: 'transparent' },
+  working: { bg: 'var(--control-bg-hover)', fg: 'var(--text)', border: 'transparent' },
+  finished: { bg: 'var(--control-bg-selected)', fg: 'var(--ok)', border: 'transparent' },
+  error: { bg: 'var(--danger-bg)', fg: 'var(--danger)', border: 'transparent' },
+  stopped: { bg: 'var(--control-bg)', fg: 'var(--text-secondary)', border: 'transparent' },
 };
 
 /**
