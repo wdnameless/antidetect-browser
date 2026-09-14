@@ -3,6 +3,10 @@ name: CI
 on:
   push:
     branches: [main]
+    # The release job below is gated on `refs/tags/v*`. Without this trigger that gate
+    # can never be true, so no tag has ever produced a release — v0.3.0 through v0.3.4
+    # were documented in the changelog and never shipped. A tag push starts the workflow.
+    tags: ['v*']
   pull_request:
 
 jobs:
@@ -76,10 +80,20 @@ jobs:
 
   release:
     # Build and publish installer-free artefacts when a v* tag is pushed.
-    # Linux and macOS artefacts cannot be produced on Windows, so each platform
-    # builds on its own runner. No signing credentials are required or expected:
-    # the macOS artefact ships unsigned (we have no Apple Developer account), so
-    # the job must not fail for lack of them.
+    #
+    # Windows only, and that is a deliberate, recorded limitation rather than an
+    # oversight. The build scripts are Windows-hardcoded in three places:
+    #   - scripts/ensure-chromedriver.mjs fetches `win64/chromedriver-win64.zip`
+    #   - scripts/ensure-kernel.mjs pins `ungoogled-chromium_..._windows_x64.zip` and its
+    #     SHA256, so any other platform fails the digest check
+    #   - src/main/config.ts looks for `chrome.exe` and only falls back to
+    #     `Google\Chrome\Application\chrome.exe`
+    # Upstream does publish Linux and macOS kernels, so this is fixable — but it cannot be
+    # verified from here (no Linux or macOS runner in this workspace), and shipping an
+    # unverified platform build is worse than not shipping one. Linux/macOS stay in the
+    # matrix comment, not in the build, until they can be built and checked.
+    #
+    # No signing credentials are required or expected.
     if: startsWith(github.ref, 'refs/tags/v')
     needs: [test, sdk]
     strategy:
@@ -89,12 +103,14 @@ jobs:
           - os: windows-latest
             platform: win
             artifact: NullTrace-portable-win-x64
-          - os: ubuntu-latest
-            platform: linux
-            artifact: NullTrace-portable-linux-x64
-          - os: macos-14
-            platform: mac
-            artifact: NullTrace-portable-mac-arm64
+          # Tracked as a gap, not enabled: adding `linux`/`mac` here today produces a
+          # build that fails on the pinned Windows kernel digest.
+          # - os: ubuntu-latest
+          #   platform: linux
+          #   artifact: NullTrace-portable-linux-x64
+          # - os: macos-14
+          #   platform: mac
+          #   artifact: NullTrace-portable-mac-arm64
     runs-on: ${{ matrix.os }}
     permissions:
       contents: write
@@ -117,8 +133,26 @@ jobs:
       - name: Unit tests
         run: npm test
 
+      # The kernel/chromedriver fetch must run explicitly. npm only fires `pre<name>` for
+      # the exact script name, and we no longer call `dist:win`, so `predist:win` would
+      # never run — and a build without the kernel silently falls back to system Chrome,
+      # which is the defect this release exists to fix.
+      - name: Prepare kernel and driver
+        run: npm run predist:${{ matrix.platform }}
+
+      # `dist/` is gitignored, so a fresh checkout has no bundle at all. Compile it before
+      # packaging — main and renderer both.
+      - name: Build application bundle
+        run: npm run build
+
+      # electron-builder auto-detects CI and attempts its own GitHub publish, which then
+      # fails because it looks for GH_TOKEN — killing the build step before the artefact
+      # exists, even though softprops/action-gh-release below does the publishing.
+      # `--publish never` makes the build stop at the artefact. Verified: a CI=true pack
+      # exits 0 with this flag and aborts with "GitHub Personal Access Token is not set"
+      # without it.
       - name: Build portable artefact for ${{ matrix.platform }}
-        run: npm run dist:${{ matrix.platform }}
+        run: npx electron-builder --${{ matrix.platform }} --publish never
 
       - name: Upload artefact
         uses: actions/upload-artifact@v4

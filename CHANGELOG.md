@@ -3,7 +3,7 @@
 All notable changes are documented here. Releases are published on
 [GitHub Releases](https://github.com/wdnameless/antidetect-browser/releases).
 
-## Unreleased - Density redesign and the brand mark
+## v0.4.0 - Density redesign, the brand mark, and the first shipped build since 0.2.33
 
 The interface was called «слишком нагромажденный» with «много визуальных багов», against the
 ShardX reference, with one hard constraint: «не урезать функционал».
@@ -40,6 +40,26 @@ wrong, and what changed:
 Verified on the running app, not only in tests: 7 nav items, sub-tabs switch, measured row
 height exactly 52px with a single distinct height across 71 rows, actions at `opacity: 0`,
 chromatic colour count 0, and a blind acceptance pass over all 11 criteria.
+
+### Not in this release
+
+- **Linux and macOS builds.** The build scripts are Windows-hardcoded in three places —
+  `ensure-chromedriver.mjs` fetches `win64/…`, `ensure-kernel.mjs` pins the
+  `windows_x64` archive and its SHA256, and `config.ts` searches for `chrome.exe`. Upstream
+  publishes Linux and macOS kernels, so this is fixable, but it cannot be verified from
+  this workspace. The release workflow builds Windows only and records the gap rather than
+  shipping an unverified platform binary.
+- **Signed macOS builds** — still no Apple Developer account; the ad-hoc signing path is in
+  place for when a macOS build is produced.
+
+### Fixed in the release pipeline itself
+
+No tag had ever produced a release. The workflow gated its release job on
+`refs/tags/v*` while declaring only `push: branches: [main]` as a trigger, so the condition
+could never be true — v0.3.0 through v0.3.4 were documented in this changelog and never
+shipped. Tag pushes now start the workflow. The build step also passes `--publish never`,
+because electron-builder auto-detects CI, tries to publish on its own, and aborts the build
+when no `GH_TOKEN` is present.
 
 ## v0.3.4 - SDKs, Google Drive, macOS, Tauri shell
 
