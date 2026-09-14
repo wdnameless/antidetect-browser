@@ -691,6 +691,70 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ user_ids: user_ids ?? null }),
     }),
+  // ---- Google Drive Sync (nulltrace-gdrive) ----
+  gdriveStatus: () =>
+    request<{
+      configured: boolean;
+      connected: boolean;
+      userEmail: string | null;
+      folderId: string | null;
+      lastPushTimestamp: number | null;
+      lastPullTimestamp: number | null;
+    }>('/api/v1/cloud/gdrive/status'),
+  gdriveSaveCredentials: (clientId: string, clientSecret?: string) =>
+    request<Record<string, unknown>>('/api/v1/cloud/gdrive/credentials', {
+      method: 'POST',
+      body: JSON.stringify({ clientId, clientSecret }),
+    }),
+  gdriveStartDeviceAuth: () =>
+    request<{
+      userCode: string;
+      verificationUrl: string;
+      deviceCode: string;
+      expiresIn: number;
+      interval: number;
+    }>('/api/v1/cloud/gdrive/auth/device-code', { method: 'POST' }),
+  gdrivePollDeviceAuth: (deviceCode: string) =>
+    request<{
+      status: string;
+      email?: string;
+    }>('/api/v1/cloud/gdrive/auth/poll', {
+      method: 'POST',
+      body: JSON.stringify({ deviceCode }),
+    }),
+  gdriveDisconnect: () =>
+    request<Record<string, unknown>>('/api/v1/cloud/gdrive/disconnect', { method: 'POST' }),
+  gdrivePush: () =>
+    request<{ pushedProfiles: number; pushedScripts: number; timestamp: number }>(
+      '/api/v1/cloud/gdrive/push',
+      { method: 'POST' }
+    ),
+  gdriveInspectPull: () =>
+    request<{
+      remoteTimestamp: number;
+      profileCount: number;
+      scriptCount: number;
+      newProfiles: number;
+      newScripts: number;
+      conflicts: Array<{
+        type: 'profile' | 'script';
+        id: string;
+        name: string;
+        localUpdatedAt: number;
+        remoteUpdatedAt: number;
+      }>;
+      unchanged: boolean;
+    }>('/api/v1/cloud/gdrive/inspect-pull'),
+  gdrivePull: (conflictResolution?: 'keep_local' | 'overwrite_remote' | 'cancel') =>
+    request<{
+      pulledProfiles: number;
+      pulledScripts: number;
+      appliedSettings: boolean;
+      timestamp: number;
+    }>('/api/v1/cloud/gdrive/pull', {
+      method: 'POST',
+      body: JSON.stringify({ conflictResolution }),
+    }),
   // ---- Teams / RBAC (Pro) ----
   teamsList: () =>
     request<{ list: TeamItem[]; active_workspace: string }>('/api/v1/teams'),

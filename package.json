@@ -160,6 +160,9 @@
       "icon": "resources/icon.png",
       "category": "public.app-category.developer-tools",
       "identity": null,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist",
+      "hardenedRuntime": false,
       "target": [
         {
           "target": "dmg",
