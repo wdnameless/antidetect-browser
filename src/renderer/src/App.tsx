@@ -33,7 +33,7 @@ import {
   DevicesIcon,
   ExtensionsIcon,
   SettingsIcon,
-  ShieldIcon,
+  BrandMark,
   CloudIcon,
   UsersIcon,
   KeyIcon,
@@ -250,7 +250,7 @@ export function App() {
         <div>
           <div className="brand" title={`${PRODUCT_NAME} PRO`}>
             <div className="brand-icon">
-              <ShieldIcon size={20} />
+              <BrandMark size={20} />
             </div>
             <div className="brand-title">{PRODUCT_NAME}</div>
             <span className="brand-version">PRO</span>

@@ -4,6 +4,50 @@ interface IconProps extends React.SVGProps<SVGSVGElement> {
   size?: number;
 }
 
+/**
+ * The brand mark — the visor mask.
+ *
+ * Same geometry as `scripts/generate-app-icon.mjs` and `scripts/generate-icons.py`
+ * (1024-unit source, scaled here to a 24-unit viewBox by dividing by 42.667), so the
+ * sidebar mark and the application icon cannot drift apart. Uses `currentColor` so it
+ * inherits the theme, and `fillRule="evenodd"` so the visor slit and eye cutouts are
+ * real holes rather than white shapes that would break on any non-black background.
+ */
+export function BrandMark({ size = 20, ...props }: IconProps) {
+  const s = 1024 / 24; // source units per viewBox unit
+  const poly = (pts: ReadonlyArray<readonly [number, number]>): string =>
+    `M ${pts.map(([x, y]) => `${(x / s).toFixed(2)},${(y / s).toFixed(2)}`).join(' L ')} Z`;
+
+  const SILHOUETTE: ReadonlyArray<readonly [number, number]> = [
+    [512, 340], [450, 250], [360, 120], [290, 230], [235, 330], [195, 415], [180, 425],
+    [260, 480], [185, 510], [280, 545], [200, 585], [300, 620], [220, 665],
+    [325, 705], [245, 750], [350, 790], [280, 840],
+    [340, 895], [420, 940], [512, 955], [605, 940], [685, 895], [755, 830],
+    [810, 745], [835, 645], [830, 555], [800, 495], [965, 445], [790, 400],
+    [760, 305], [710, 215], [685, 155], [595, 255],
+  ];
+  const CUT_WEDGE: ReadonlyArray<readonly [number, number]> = [[175, 420], [300, 442], [180, 465]];
+  const CUT_EYE_L: ReadonlyArray<readonly [number, number]> = [[360, 442], [455, 415], [445, 465]];
+  const CUT_EYE_R: ReadonlyArray<readonly [number, number]> = [[545, 415], [640, 442], [555, 465]];
+
+  // The small pupil dot, as a polygon so `evenodd` cuts it out of the silhouette the same
+  // way the eye wedges are cut. A <circle fill="none"> would draw nothing at all.
+  const DOT: ReadonlyArray<readonly [number, number]> = Array.from({ length: 12 }, (_, i) => {
+    const a = (i / 12) * Math.PI * 2;
+    return [685 + 16 * Math.cos(a), 442 + 16 * Math.sin(a)] as const;
+  });
+
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" {...props}>
+      <path
+        fillRule="evenodd"
+        clipRule="evenodd"
+        d={`${poly(SILHOUETTE)} ${poly(CUT_WEDGE)} ${poly(CUT_EYE_L)} ${poly(CUT_EYE_R)} ${poly(DOT)}`}
+      />
+    </svg>
+  );
+}
+
 export function ProfilesIcon({ size = 18, ...props }: IconProps) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>

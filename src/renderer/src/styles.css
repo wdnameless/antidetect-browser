@@ -1005,6 +1005,15 @@ input, textarea {
   min-width: 0;
 }
 
+/* The row is a ONE-LINE contract: a long profile name must truncate, not wrap onto a
+   second line, or the row silently grows past --row-h and density is lost. */
+.row-dense__lead > strong {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
 .row-dense__meta {
   color: var(--text-muted);
   font-size: var(--text-xs);
