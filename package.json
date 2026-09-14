@@ -58,7 +58,10 @@
     "dist:mac": "npm run build && electron-builder --mac",
     "publish": "npm run build && electron-builder --win --publish always",
     "test:sync-server": "vitest run packages/sync-server",
-    "openapi:check": "vitest run tests/unit/sdk/conformance.test.ts"
+    "openapi:check": "vitest run tests/unit/sdk/conformance.test.ts",
+    "predist:win": "npm run icon:generate && npm run ensure-kernel && npm run ensure-chromedriver",
+    "predist:linux": "npm run icon:generate && npm run ensure-kernel && npm run ensure-chromedriver",
+    "predist:mac": "npm run icon:generate && npm run ensure-kernel && npm run ensure-chromedriver"
   },
   "dependencies": {
     "@types/adm-zip": "^0.5.8",
@@ -128,6 +131,10 @@
         "filter": [
           "chromedriver.exe"
         ]
+      },
+      {
+        "from": "data/chromium/fingerprint-chromium",
+        "to": "kernel/fingerprint-chromium"
       }
     ],
     "asar": true,
@@ -160,7 +167,6 @@
       "icon": "resources/icon.png",
       "category": "public.app-category.developer-tools",
       "identity": null,
-      "afterPack": "scripts/afterPack-adhoc-sign.cjs",
       "entitlements": "build/entitlements.mac.plist",
       "entitlementsInherit": "build/entitlements.mac.plist",
       "hardenedRuntime": false,
@@ -174,6 +180,7 @@
       ],
       "artifactName": "NullTrace-${version}-portable-mac-arm64.${ext}"
     },
+    "afterPack": "scripts/afterPack-adhoc-sign.cjs",
     "publish": {
       "provider": "github",
       "owner": "wdnameless",

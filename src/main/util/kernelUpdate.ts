@@ -5,21 +5,24 @@
 import fetch from 'node-fetch';
 import * as fs from 'fs';
 import * as path from 'path';
-import { CHROMIUM_DIR } from '../config';
+import { kernelBaseDirs } from '../config';
 
 const UPSTREAM_API = 'https://api.github.com/repos/adryfish/fingerprint-chromium/releases/latest';
 
 /** Extract the installed kernel version (e.g. "148.0.7778.215") from the folder name. */
 export function getInstalledKernelVersion(): string | null {
-  const base = path.join(CHROMIUM_DIR, 'fingerprint-chromium');
-  try {
-    for (const entry of fs.readdirSync(base, { withFileTypes: true })) {
-      if (!entry.isDirectory()) continue;
-      const m = entry.name.match(/(\d+\.\d+\.\d+\.\d+)/);
-      if (m) return m[1];
+  // A packaged build keeps the kernel under resources/kernel, not the data dir, so
+  // checking only the data dir reported "not installed" for a working packaged app.
+  for (const base of kernelBaseDirs()) {
+    try {
+      for (const entry of fs.readdirSync(base, { withFileTypes: true })) {
+        if (!entry.isDirectory()) continue;
+        const m = entry.name.match(/(\d+\.\d+\.\d+\.\d+)/);
+        if (m) return m[1];
+      }
+    } catch {
+      // kernel dir missing here — try the next candidate
     }
-  } catch {
-    // kernel dir missing
   }
   return null;
 }

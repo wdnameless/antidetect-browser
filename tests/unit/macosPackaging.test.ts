@@ -97,7 +97,10 @@ describe('macOS arm64 signing without an Apple account', () => {
     // Unsigned ARM code does not execute on M-series Macs. Ad-hoc signing costs
     // nothing and needs no certificate, so it is the only way to ship a runnable
     // arm64 build without an account.
-    expect(pkg.build.mac.afterPack).toBe('scripts/afterPack-adhoc-sign.cjs');
+    // afterPack is a top-level build hook, not a `mac` option — putting it under
+    // `mac` makes electron-builder reject the whole config at startup.
+    expect(pkg.build.afterPack).toBe('scripts/afterPack-adhoc-sign.cjs');
+    expect(pkg.build.mac.afterPack).toBeUndefined();
     const hook = fs.readFileSync(path.join(root, 'scripts/afterPack-adhoc-sign.cjs'), 'utf8');
     expect(hook).toContain("'/usr/bin/codesign'");
     expect(hook).toContain("'--sign'");
