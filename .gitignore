@@ -18,3 +18,7 @@ packages/sdk-node/src/*.d.ts.map
 .opencode/
 .codebase-index/
 profiles/
+
+# Rust build output — never commit compiled artefacts.
+target/
+**/target/

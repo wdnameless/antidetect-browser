@@ -138,3 +138,27 @@ jobs:
             release/*.AppImage
             release/*.dmg
           fail_on_unmatched_files: false
+
+  tauri:
+    name: Tauri Desktop Shell (Additive / Non-blocking)
+    runs-on: windows-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Verify Tauri shell test
+        run: npx vitest run tests/unit/tauriShell.test.ts
+
+      - name: Test sidecar lifecycle module
+        run: cargo test --manifest-path src-tauri/Cargo.toml

@@ -10,6 +10,16 @@ from .models import (
     ProxyCheckResult,
     ProxyItem,
 )
+from .engine import ensure_engine, ensureEngine
+from .standalone import (
+    StandaloneFingerprintConfig,
+    StandaloneLaunchConfig,
+    StandaloneProfileInstance,
+    build_standalone_args,
+    buildStandaloneArgs,
+    launch_standalone_profile,
+    launchStandaloneProfile,
+)
 
 __all__ = [
     "AntidetectClient",
@@ -23,4 +33,14 @@ __all__ = [
     "ProfileListResult",
     "ProxyCheckResult",
     "ProxyItem",
+    "ProxyItem",
+    "ensure_engine",
+    "ensureEngine",
+    "launch_standalone_profile",
+    "launchStandaloneProfile",
+    "build_standalone_args",
+    "buildStandaloneArgs",
+    "StandaloneFingerprintConfig",
+    "StandaloneLaunchConfig",
+    "StandaloneProfileInstance",
 ]

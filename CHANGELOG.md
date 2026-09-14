@@ -3,6 +3,62 @@
 All notable changes are documented here. Releases are published on
 [GitHub Releases](https://github.com/wdnameless/antidetect-browser/releases).
 
+## v0.3.4 - SDKs, Google Drive, macOS, Tauri shell
+
+The open items from the parity program, closed. Every claim below was verified by
+running the code, not by reading the diff — and three of them were wrong until it was.
+
+### Standalone SDKs (Node, Python, Rust)
+- **Node**: `ensureEngine()` fetches the patched Chromium, verifies SHA256, extracts and
+  caches it; `launchStandaloneProfile()` spawns an isolated profile and returns a CDP
+  endpoint. **Proven end-to-end** — a live launch an independent `puppeteer-core` client
+  connects to and drives.
+- **Python**: the same public surface (`ensure_engine`, `launch_standalone_profile`,
+  `build_standalone_args`) with the same caching and digest refusal.
+- **Rust**: `packages/sdk-rust` was a bare `cargo new` stub whose only function was
+  `add(a, b)`. Replaced with a real crate — streaming SHA-256 verification that deletes
+  a mismatched payload, isolation-flag launch, and `DevToolsActivePort` polling. 17
+  tests, all offline.
+- **Both existing SDKs shipped invented values.** The engine repository was
+  `nulltrace/antidetect-chromium`, which does not exist, and all three SHA256 digests
+  were fabricated — so any download would have 404'd or failed verification. Pointed at
+  the real upstream with the digests the application already pins.
+
+### Google Drive sync
+- Operator-supplied OAuth client; we ship none. Credentials and the refresh token go
+  through the secret store — never `settings.json`, never a response, never a log.
+- Folder locate-or-create with the id persisted so a second machine reuses it; push and
+  pull of profiles, scripts and settings; a pull refuses to overwrite local data without
+  an explicit conflict rule. The existing self-hosted sync is untouched.
+- **Six real defects** were exposed by making the tests exercise the real API rather
+  than the API the agent assumed: `listProfiles()` called without its required paging
+  arguments; a `SELECT` naming three columns the `scripts` table does not have; profile
+  rows read as `id`/`updated_at` from a projection that has `user_id` and no timestamp;
+  `updateProfile()` handed a `geolocation` field it does not accept; three imports
+  pulled from the wrong module plus one import of a function that does not exist; and a
+  `state.authenticated` read where the field is `authorized`.
+
+### macOS
+- `build/entitlements.mac.plist` with the four entitlements a frameless Electron app
+  needs to spawn its browser child under the hardened runtime, each one justified in a
+  comment.
+- The build stays **unsigned** — there is no Apple Developer account — and the README
+  says so, together with the fact that macOS is the one platform that cannot be a single
+  file.
+
+### Tauri shell
+- A thin Rust shell over the **already working** served interface: it opens a webview on
+  the backend and starts/awaits/stops the Node backend as a sidecar. It reimplements
+  nothing, and the window points at the served UI rather than bundling a second renderer.
+- Sidecar lifecycle is isolated and tested in Rust: readiness observed by polling rather
+  than by a fixed delay, a legible failure when the backend dies, and teardown on every
+  exit path so no orphaned process is left holding the port.
+- **Recorded plainly:** this does **not** remove installation. A Tauri app is still an
+  installed `.app`/`.dmg`/`.msi`. What removed installation was serving the renderer over
+  HTTP, and that shipped two releases ago. The shell is a smaller native alternative,
+  and it is additive — Electron remains the supported desktop build until this is proven
+  on all three platforms.
+
 ## v0.3.3 - NullTrace noir: pages swept onto tokens
 
 Every page and component now resolves through the token layer. The renderer contains
