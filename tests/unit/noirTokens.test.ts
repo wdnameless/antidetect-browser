@@ -97,6 +97,36 @@ function isGreyscale(value: string): boolean {
   return false;
 }
 
+/**
+ * True when a token's value cannot express a colour at all, so the greyscale rule
+ * does not apply to it.
+ *
+ * This deliberately judges the VALUE, not the token name. Two agents in a row answered
+ * a new non-colour token by appending its name to an exclusion list, and a name list is
+ * exactly how a real colour slips through: `--text-muted` looks like `--text-2xs` but is
+ * a colour, and `--sidebar-w` looks like `--sidebar-bg` but is a width. A measurement is
+ * identifiable by its shape — a number with a unit, a unitless number, or a bare keyword —
+ * so it needs no allowlist and no maintenance.
+ */
+function isNonColourValue(value: string): boolean {
+  const v = value.trim().toLowerCase();
+  // Lengths, times, angles, percentages, unitless numbers.
+  if (/^-?[\d.]+(px|rem|em|%|s|ms|deg|vw|vh|fr|ch|ex)?$/.test(v)) return true;
+  // Bare keywords that are never colours, plus anything that parses as a font stack.
+  if (/^(normal|bold|italic|none|inherit|initial|unset|auto|swap|block|flex|grid|nowrap|wrap|uppercase|lowercase|capitalize|break-word|ellipsis|tabular-nums)$/.test(v)) return true;
+  // Cubic-bezier / step timing functions used by transitions.
+  if (/^(cubic-bezier|steps)\(/.test(v)) return true;
+  // Composite shadows: offsets, blur, spread and a colour INSIDE one declaration. The
+  // colour is a shadow tint that must be neutral, so verify that part separately rather
+  // than skipping the whole value.
+  if (/^-?[\d.]+(px)?\s+-?[\d.]+(px)?/.test(v) && /rgba?\(/.test(v)) {
+    return [...v.matchAll(/rgba?\(([^)]+)\)/g)].every((m) => isGreyscale(`rgba(${m[1]})`));
+  }
+  // A font stack: quoted names and/or comma-separated identifiers, no colour functions.
+  if (/^[^()]*$/.test(v) && /[a-z]/i.test(v) && !/#|rgb|hsl|oklch|lab|color\(/.test(v)) return true;
+  return false;
+}
+
 /** Every coloured literal in a source, with its line number. */
 function hueLiterals(source: string): string[] {
   const out: string[] = [];
@@ -112,11 +142,11 @@ describe('token layer: nothing carries a hue', () => {
     const offenders: string[] = [];
     for (const m of rootBlock().matchAll(/(--[\w-]+)\s*:\s*([^;]+);/g)) {
       const [, name, value] = m;
-      // Skip only tokens whose VALUES cannot be colours: measurements, type, geometry.
-      // Excluding by name alone is how a colour token slips past — `--text-muted`,
-      // `--control-bg` and `--sidebar-*` all carry colours despite matching earlier
-      // name lists. A colour-valued token must be judged by its value.
-      if (/font|radius|shadow|leading|space|row-h|control-h|sidebar-w|topbar-h|text-(xs|sm|base|lg|xl)$/.test(name)) continue;
+      // Judge the VALUE, never the name. A name allowlist is how a real colour slips
+      // through: `--text-muted` and `--text-2xs` are indistinguishable by name, but one
+      // is a colour and the other a size. Anything that parses as a measurement or a
+      // keyword is skipped automatically; everything else must prove it has no chroma.
+      if (isNonColourValue(value)) continue;
       if (/^var\(/.test(value.trim())) continue;
       if (/gradient\(/.test(value)) continue;
       if (!isGreyscale(value)) offenders.push(`${name}: ${value.trim()}`);

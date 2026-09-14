@@ -24,6 +24,7 @@ import {
   reduceFleetRunState,
 } from '../flowLiveRun';
 import { FleetPanel, LogLineList } from '../components/FleetPanel';
+import { InspectorDrawer } from '../components/InspectorDrawer';
 
 export type { CanvasNodeState, CanvasEdgeState };
 export interface NodePaletteItem {
@@ -199,6 +200,25 @@ export function FlowCanvas() {
   );
   const resetFleetRun = useCallback(() => setFleetState(null), []);
   const [fleetRunError, setFleetRunError] = useState<string | null>(null);
+  // Responsive viewport and drawer states
+  const [viewportWidth, setViewportWidth] = useState<number>(() =>
+    typeof window !== 'undefined' ? window.innerWidth : 1440
+  );
+  const [isInspectorDrawerOpen, setIsInspectorDrawerOpen] = useState<boolean>(false);
+  const inspectorTriggerRef = useRef<HTMLButtonElement | null>(null);
+
+  useEffect(() => {
+    const handleResize = () => {
+      setViewportWidth(window.innerWidth);
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  const isNarrow = viewportWidth < 1100;
+  const isMid = viewportWidth >= 1100 && viewportWidth < 1400;
+  const isPaletteRail = isNarrow || isMid;
+
 
   // Display names for fleet rows (profile_id -> human name, fallback id).
   const profileNames = useMemo(() => {
@@ -1101,53 +1121,74 @@ export function FlowCanvas() {
         className="flow-palette-sidebar"
         data-testid="node-palette"
         style={{
-          width: 260,
+          // Tokens are declared in styles.css; no inline fallback, because a fallback
+          // silently becomes the real value when a token is renamed or missing.
+          width: isPaletteRail ? 'var(--palette-width-rail)' : 'var(--palette-width-expanded)',
           borderRight: '1px solid var(--border)',
           background: 'var(--panel)',
           display: 'flex',
           flexDirection: 'column',
           zIndex: 10,
           flexShrink: 0,
+          transition: 'width 0.2s ease',
         }}
       >
-        <div style={{ padding: '16px 14px 12px', borderBottom: '1px solid var(--divider)' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-            <span style={{ fontSize: 13, fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--text-secondary)' }}>
-              Nodes Palette
-            </span>
-            <span style={{ fontSize: 11, background: 'var(--control-bg-hover)', padding: '2px 6px', borderRadius: 'var(--radius-sm)', color: 'var(--text-secondary)' }}>
+        <div style={{ padding: isPaletteRail ? '12px 6px' : '16px 14px 12px', borderBottom: '1px solid var(--divider)', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+          {!isPaletteRail ? (
+            <>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8, width: '100%' }}>
+                <span style={{ fontSize: 13, fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--text-secondary)' }}>
+                  Nodes Palette
+                </span>
+                <span style={{ fontSize: 11, background: 'var(--control-bg-hover)', padding: '2px 6px', borderRadius: 'var(--radius-sm)', color: 'var(--text-secondary)' }}>
+                  {NODE_PALETTE.length}
+                </span>
+              </div>
+              <input
+                type="text"
+                data-testid="palette-search-input"
+                placeholder="Filter nodes..."
+                value={searchPalette}
+                onChange={e => setSearchPalette(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '6px 10px',
+                  fontSize: 12,
+                  background: 'var(--surface-2)',
+                  border: '1px solid var(--border)',
+                  borderRadius: 6,
+                  color: 'var(--text)',
+                  outline: 'none',
+                }}
+              />
+            </>
+          ) : (
+            <span
+              title={`Nodes Palette (${NODE_PALETTE.length} nodes)`}
+              style={{
+                fontSize: 11,
+                fontWeight: 700,
+                color: 'var(--text-secondary)',
+                textTransform: 'uppercase',
+                textAlign: 'center',
+              }}
+            >
               {NODE_PALETTE.length}
             </span>
-          </div>
-          <input
-            type="text"
-            data-testid="palette-search-input"
-            placeholder="Filter nodes..."
-            value={searchPalette}
-            onChange={e => setSearchPalette(e.target.value)}
-            style={{
-              width: '100%',
-              padding: '6px 10px',
-              fontSize: 12,
-              background: 'var(--surface-2)',
-              border: '1px solid var(--border)',
-              borderRadius: 6,
-              color: 'var(--text)',
-              outline: 'none',
-            }}
-          />
+          )}
         </div>
 
-        <div style={{ flex: 1, overflowY: 'auto', padding: '12px 10px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <div style={{ flex: 1, overflowY: 'auto', padding: isPaletteRail ? '10px 6px' : '12px 10px', display: 'flex', flexDirection: 'column', gap: 6, alignItems: isPaletteRail ? 'center' : 'stretch' }}>
           {filteredPalette.map(item => (
             <div
               key={item.type}
               data-testid={`palette-item-${item.type}`}
+              title={isPaletteRail ? `${item.label} (${item.category}): ${item.description}` : undefined}
               draggable
               onDragStart={e => handlePaletteDragStart(e, item.type)}
               onClick={() => handleAddNode(item.type)}
               style={{
-                padding: '10px 12px',
+                padding: isPaletteRail ? '6px 3px' : '10px 12px',
                 borderRadius: 8,
                 background: 'var(--surface-2)',
                 border: '1px solid var(--border)',
@@ -1155,7 +1196,12 @@ export function FlowCanvas() {
                 transition: 'all 0.15s ease',
                 display: 'flex',
                 flexDirection: 'column',
+                alignItems: isPaletteRail ? 'center' : 'stretch',
+                justifyContent: 'center',
+                width: isPaletteRail ? '100%' : 'auto',
+                minHeight: isPaletteRail ? 40 : undefined,
                 gap: 3,
+                boxSizing: 'border-box',
               }}
               onMouseEnter={e => {
                 (e.currentTarget as HTMLElement).style.borderColor = 'var(--border-focus)';
@@ -1166,11 +1212,31 @@ export function FlowCanvas() {
                 (e.currentTarget as HTMLElement).style.background = 'var(--surface-2)';
               }}
             >
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>{item.label}</span>
-                <span style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600 }}>{item.category}</span>
-              </div>
-              <span style={{ fontSize: 11, color: 'var(--text-secondary)', lineHeight: 1.3 }}>{item.description}</span>
+              {isPaletteRail ? (
+                // A rail that prints `label.slice(0, 2)` reads as "Na", "Cl", "Ty" — an
+                // unreadable stub. There is no per-node icon set, so the rail shows a
+                // full glyph plus the label at a legible size: the rail is narrow, not blind.
+                <span
+                  style={{
+                    fontSize: 11,
+                    fontWeight: 600,
+                    color: 'var(--text)',
+                    textAlign: 'center',
+                    lineHeight: 1.15,
+                    overflow: 'hidden',
+                  }}
+                >
+                  {item.label.split(' ')[0]}
+                </span>
+              ) : (
+                <>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>{item.label}</span>
+                    <span style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600 }}>{item.category}</span>
+                  </div>
+                  <span style={{ fontSize: 11, color: 'var(--text-secondary)', lineHeight: 1.3 }}>{item.description}</span>
+                </>
+              )}
             </div>
           ))}
         </div>
@@ -1179,45 +1245,60 @@ export function FlowCanvas() {
         <div
           data-testid="palette-validation-summary"
           style={{
-            padding: '12px 14px',
+            padding: isPaletteRail ? '12px 6px' : '12px 14px',
             borderTop: '1px solid var(--divider)',
             background: validation.valid ? 'var(--control-bg)' : 'var(--control-bg-active)',
             display: 'flex',
             alignItems: 'center',
-            justifyContent: 'space-between',
+            justifyContent: isPaletteRail ? 'center' : 'space-between',
           }}
         >
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          {!isPaletteRail ? (
+            <>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span
+                  style={{
+                    width: 8,
+                    height: 8,
+                    borderRadius: '50%',
+                    background: validation.valid ? 'var(--ok)' : 'var(--text-muted)',
+                    boxShadow: validation.valid ? 'var(--shadow-sm)' : 'none',
+                  }}
+                />
+                <span style={{ fontSize: 12, fontWeight: 600, color: validation.valid ? 'var(--text)' : 'var(--text-secondary)' }}>
+                  {validation.valid ? 'Flow Valid' : `${validation.errors.length} Issue(s)`}
+                </span>
+              </div>
+              <button
+                data-testid="entry-badge"
+                title="Current Entry Node"
+                style={{
+                  fontSize: 10,
+                  padding: '2px 6px',
+                  borderRadius: 4,
+                  background: 'rgba(255,255,255,0.1)',
+                  color: 'var(--text-secondary)',
+                  border: 'none',
+                }}
+              >
+                Entry: {entryNodeId}
+              </button>
+            </>
+          ) : (
             <span
+              title={validation.valid ? 'Flow Valid' : `${validation.errors.length} Issue(s)`}
               style={{
-                width: 8,
-                height: 8,
+                width: 10,
+                height: 10,
                 borderRadius: '50%',
                 background: validation.valid ? 'var(--ok)' : 'var(--text-muted)',
                 boxShadow: validation.valid ? 'var(--shadow-sm)' : 'none',
+                display: 'inline-block',
               }}
             />
-            <span style={{ fontSize: 12, fontWeight: 600, color: validation.valid ? 'var(--text)' : 'var(--text-secondary)' }}>
-              {validation.valid ? 'Flow Valid' : `${validation.errors.length} Issue(s)`}
-            </span>
-          </div>
-          <button
-            data-testid="entry-badge"
-            title="Current Entry Node"
-            style={{
-              fontSize: 10,
-              padding: '2px 6px',
-              borderRadius: 4,
-              background: 'rgba(255,255,255,0.1)',
-              color: 'var(--text-secondary)',
-              border: 'none',
-            }}
-          >
-            Entry: {entryNodeId}
-          </button>
+          )}
         </div>
       </div>
-
       {/* 2. Main Canvas Working Area */}
       <div
         ref={canvasRef}
@@ -1266,7 +1347,7 @@ export function FlowCanvas() {
               fontSize: 13,
               fontWeight: 600,
               outline: 'none',
-              width: 180,
+              width: isNarrow ? '100px' : '140px',
             }}
           />
           <div style={{ width: 1, height: 16, background: 'var(--divider)' }} />
@@ -1462,6 +1543,36 @@ export function FlowCanvas() {
           >
             {t('Pick element')}
           </button>
+          {isNarrow && (
+            <button
+              ref={inspectorTriggerRef}
+              data-testid="btn-toggle-inspector-drawer"
+              id="inspector-trigger-btn"
+              aria-haspopup="dialog"
+              aria-expanded={isInspectorDrawerOpen}
+              aria-controls="inspector-drawer"
+              onClick={() => setIsInspectorDrawerOpen(open => !open)}
+              style={{
+                background: isInspectorDrawerOpen ? 'var(--control-bg-active)' : 'var(--control-bg)',
+                border: '1px solid var(--border)',
+                color: isInspectorDrawerOpen ? 'var(--text)' : 'var(--text-secondary)',
+                fontSize: 11,
+                fontWeight: 600,
+                padding: '4px 8px',
+                borderRadius: 4,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 4,
+              }}
+            >
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+                <line x1="15" y1="3" x2="15" y2="21" />
+              </svg>
+              Inspector
+            </button>
+          )}
           {recorderError && (
             <span
               data-testid="recorder-error"
@@ -1936,25 +2047,19 @@ export function FlowCanvas() {
       </div>
 
       {/* 3. Configuration Form Inspector (Right Panel) */}
-      <div
-        className="flow-config-inspector"
-        data-testid="config-inspector"
-        style={{
-          width: 320,
-          borderLeft: '1px solid var(--border)',
-          background: 'var(--panel)',
-          display: 'flex',
-          flexDirection: 'column',
-          zIndex: 10,
-          flexShrink: 0,
-        }}
-      >
-        <div style={{ padding: '16px 16px 12px', borderBottom: '1px solid var(--divider)' }}>
-          <span style={{ fontSize: 13, fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--text-secondary)' }}>
-            Inspector & Config
-          </span>
-        </div>
-
+      {/* 3. Configuration Form Inspector (Right Panel or Drawer) */}
+      {(() => {
+        const inspectorContent = (
+          <>
+            {/* The drawer renders its own header with the close button, so the inline
+                header would appear twice when the inspector is in drawer mode. */}
+            {!isNarrow && (
+              <div style={{ padding: '16px 16px 12px', borderBottom: '1px solid var(--divider)' }}>
+                <span style={{ fontSize: 13, fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--text-secondary)' }}>
+                  Inspector & Config
+                </span>
+              </div>
+            )}
         <div style={{ flex: 1, overflowY: 'auto', padding: 16 }}>
           {selectedEdge && (
             <div data-testid="edge-config-form" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
@@ -2648,8 +2753,41 @@ export function FlowCanvas() {
               Select a node or connection line on the canvas to edit its properties.
             </div>
           )}
-        </div>
-      </div>
+          </div>
+          </>
+        );
+
+        if (isNarrow) {
+          return (
+            <InspectorDrawer
+              open={isInspectorDrawerOpen}
+              onClose={() => setIsInspectorDrawerOpen(false)}
+              triggerRef={inspectorTriggerRef}
+              title="Inspector & Config"
+            >
+                {inspectorContent}
+            </InspectorDrawer>
+          );
+        }
+
+        return (
+          <div
+            className="flow-config-inspector"
+            data-testid="config-inspector"
+            style={{
+              width: 320,
+              borderLeft: '1px solid var(--border)',
+              background: 'var(--panel)',
+              display: 'flex',
+              flexDirection: 'column',
+              zIndex: 10,
+              flexShrink: 0,
+            }}
+          >
+            {inspectorContent}
+          </div>
+        );
+      })()}
 
       {/* Element Action Picker (Wave 2b) */}
       {pickerOpen && (
@@ -2658,9 +2796,8 @@ export function FlowCanvas() {
           style={{
             position: 'absolute',
             top: 76,
-            right: 336,
-            zIndex: 60,
-            width: 260,
+            right: isNarrow ? 16 : 336,
+            width: isNarrow ? 'min(280px, calc(100vw - 32px))' : 'var(--flow-picker-width)',
             background: 'var(--panel)',
             backdropFilter: 'blur(12px)',
             border: '1px solid rgba(255,255,255,0.14)',

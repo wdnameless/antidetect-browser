@@ -1,3 +1,42 @@
+/**
+ * Inter, self-hosted.
+ *
+ * The token block below has claimed `--font-sans: 'Inter'` for a long time, but no
+ * @font-face ever existed and no font file was vendored, so the app rendered Segoe UI
+ * while the code said Inter. The user asked for the reference's typography, and the
+ * reference uses real Inter.
+ *
+ * Why vendored rather than a CDN: this is a privacy tool. A `fonts.googleapis.com` link is
+ * an outbound request on every launch that identifies the machine and its timing. The two
+ * files below are 67KB total and resolve through a RELATIVE url() so they work inside the
+ * packaged app.asar with no network access at all.
+ *
+ * Google serves a VARIABLE Inter: requesting weights 400/500/600/700 returns byte-identical
+ * files (verified by md5), so one face per subset with `font-weight: 100 900` covers every
+ * weight — four copies of each file would have been 261KB of the same font.
+ */
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url('../assets/fonts/Inter-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC,
+    U+0304, U+0308, U+0329, U+2000-206F, U+2074, U+20AC, U+2122, U+2191, U+2193, U+2212,
+    U+2215, U+FEFF, U+FFFD;
+}
+
+/* Cyrillic is REQUIRED, not optional: the interface ships Russian strings. Omitting this
+   subset is why Russian text would fall back to a different face mid-sentence. */
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url('../assets/fonts/Inter-cyrillic.woff2') format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+
 :root {
   color-scheme: dark;
   /* Premium noir monochrome palette */
@@ -82,14 +121,46 @@
   --sidebar-w-collapsed: 52px;
   --topbar-h: 48px;
 
-  /* Type scale */
+  /* Type scale.
+     `--text-2xs` is for ALL-CAPS section labels only, and it MUST be paired with
+     `--tracking-wide`: uppercase without letter-spacing is a checked craft failure. */
+  --text-2xs: 10px;
   --text-xs: 11px;
   --text-sm: 12px;
   --text-base: 13px;
+  --text-md: 14px;
   --text-lg: 15px;
   --text-xl: 18px;
+  --text-2xl: 22px;
   --leading-tight: 1.25;
   --leading-normal: 1.45;
+
+  /* Inter reads loose at its default spacing, so body and headings want a slight negative
+     track while small caps labels need positive. Named so no component guesses a value. */
+  --tracking-tight: -0.011em;
+  --tracking-normal: 0em;
+  --tracking-wide: 0.06em;
+
+  --weight-normal: 400;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+  --weight-bold: 700;
+
+  /* Responsive breakpoints, declared once so the Automation panels and the shell agree.
+     Consumed by FlowCanvas (palette rail, inspector drawer) as well as any @media rule. */
+  --bp-narrow: 1100px;
+  --bp-mid: 1400px;
+
+  /* Automation panel widths. FlowCanvas previously hardcoded `width: 260` and `width: 180`
+     inline; these replace them so the panels respond to available width instead of
+     overflowing on a narrow window. The rail is what the palette collapses to at --bp-mid.
+
+     The rail is 84px, not 56px: at 56px the tile is too narrow for a node label and the
+     palette becomes unreadable stubs. A rail must stay legible, otherwise collapsing it
+     loses information rather than space. */
+  --palette-width-expanded: 260px;
+  --palette-width-rail: 84px;
+  --flow-picker-width: 180px;
 }
 * {
   box-sizing: border-box;
@@ -106,9 +177,23 @@ body {
   background: var(--bg-app);
   color: var(--text);
   line-height: 1.5;
+  /* Inter reads loose at its default spacing; a slight negative track is what makes the
+     reference's UI look set rather than defaulted. */
+  letter-spacing: var(--tracking-tight);
   -webkit-font-smoothing: antialiased;
   overflow: hidden;
   user-select: none;
+}
+
+/* Table figures line up only with tabular numerals — proportional digits make a column of
+   numbers ragged, which is exactly what the reference avoids. */
+table,
+.tabular,
+code,
+kbd,
+samp,
+pre {
+  font-variant-numeric: tabular-nums;
 }
 
 /* App Shell Layout */
@@ -205,9 +290,9 @@ body {
 }
 
 .nav-group-label {
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.06em;
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-semibold);
+  letter-spacing: var(--tracking-wide);
   color: var(--text-muted);
   padding: 8px 12px 4px 12px;
   text-transform: uppercase;
@@ -630,9 +715,9 @@ body {
 }
 
 .page-title {
-  font-size: 17px;
-  font-weight: 700;
-  letter-spacing: -0.3px;
+  font-size: var(--text-2xl);
+  font-weight: var(--weight-semibold);
+  letter-spacing: var(--tracking-tight);
   color: var(--text);
 }
 
