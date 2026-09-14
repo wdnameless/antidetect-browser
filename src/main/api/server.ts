@@ -96,12 +96,7 @@ export function createApp(): Express {
     res.json({ code: 0, msg: 'success', data: { status: 'ok', version: '0.0.1' } });
   });
 
-  const rendererDir = [
-    path.resolve(process.cwd(), 'dist/renderer'),
-    path.resolve(__dirname, '../../../dist/renderer'),
-    path.resolve(__dirname, '../../dist/renderer'),
-    path.resolve(__dirname, '../renderer'),
-  ].find((p) => fs.existsSync(p)) || path.resolve(process.cwd(), 'dist/renderer');
+  const rendererDir = resolveRendererDir(__dirname);
 
   const brandFaviconPath = [
     path.resolve(process.cwd(), 'assets/brand/favicon.ico'),
@@ -234,6 +229,43 @@ app.use(motionRouter);
     res.status(500).json({ code: -1, msg: err?.message ?? 'internal error', data: {} });
   });
   return app;
+}
+
+/**
+ * Locate the built renderer directory.
+ *
+ * `__dirname` moves depending on how this process was started: the service compiles
+ * to <root>/dist/src/main/api, so the renderer sits several levels ABOVE it, and in a
+ * packaged app those levels live inside app.asar. Enumerating relative paths by hand
+ * got the depth wrong, so a packaged build could not find index.html and answered 401
+ * on every SPA route instead of serving the UI. Walking upward finds the renderer in
+ * both the dev and the packaged layout.
+ *
+ * Exported so the resolution is tested against real directory layouts rather than by
+ * reading this file.
+ */
+export function resolveRendererDir(fromDir: string): string {
+  const hasIndex = (d: string): boolean => {
+    try {
+      return fs.existsSync(path.join(d, 'index.html'));
+    } catch {
+      return false;
+    }
+  };
+  // Walk upward from the code's own location FIRST: that follows the actual layout and
+  // works identically in dev and inside app.asar. The cwd-based guess goes last, since
+  // the process's working directory is unrelated to where the bundle was installed —
+  // checking it first let a stray dist/renderer elsewhere on disk win.
+  const fallback = path.resolve(process.cwd(), 'dist/renderer');
+  const candidates: string[] = [];
+  let dir = fromDir;
+  for (let depth = 0; depth < 6; depth += 1) {
+    candidates.push(path.join(dir, 'renderer'));
+    candidates.push(path.join(dir, 'dist', 'renderer'));
+    dir = path.dirname(dir);
+  }
+  candidates.push(fallback);
+  return candidates.find(hasIndex) ?? fallback;
 }
 
 export function startApi(): Promise<void> {
