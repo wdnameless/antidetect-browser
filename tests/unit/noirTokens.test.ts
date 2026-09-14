@@ -112,7 +112,11 @@ describe('token layer: nothing carries a hue', () => {
     const offenders: string[] = [];
     for (const m of rootBlock().matchAll(/(--[\w-]+)\s*:\s*([^;]+);/g)) {
       const [, name, value] = m;
-      if (/font|radius|shadow/.test(name)) continue;
+      // Skip only tokens whose VALUES cannot be colours: measurements, type, geometry.
+      // Excluding by name alone is how a colour token slips past — `--text-muted`,
+      // `--control-bg` and `--sidebar-*` all carry colours despite matching earlier
+      // name lists. A colour-valued token must be judged by its value.
+      if (/font|radius|shadow|leading|space|row-h|control-h|sidebar-w|topbar-h|text-(xs|sm|base|lg|xl)$/.test(name)) continue;
       if (/^var\(/.test(value.trim())) continue;
       if (/gradient\(/.test(value)) continue;
       if (!isGreyscale(value)) offenders.push(`${name}: ${value.trim()}`);

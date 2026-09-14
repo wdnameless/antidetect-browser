@@ -1353,20 +1353,22 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
           <thead>
             <tr>
               <th style={{ width: 40, textAlign: 'center' }}>
-                <input
-                  type="checkbox"
-                  checked={selectedIds.size === filteredProfiles.length && filteredProfiles.length > 0}
-                  onChange={toggleSelectAll}
-                  style={{ cursor: 'pointer' }}
-                />
+                <span className="row-dense__check">
+                  <input
+                    type="checkbox"
+                    checked={selectedIds.size === filteredProfiles.length && filteredProfiles.length > 0}
+                    onChange={toggleSelectAll}
+                    style={{ cursor: 'pointer' }}
+                  />
+                </span>
               </th>
-              <th style={{ width: '22%' }}>{t('Profile Name')}</th>
+              <th style={{ width: '24%' }}>{t('Profile Name')}</th>
               <th style={{ width: '18%' }}>{t('Proxy')}</th>
-              <th style={{ width: '13%' }}>{t('Device / OS')}</th>
+              <th style={{ width: '12%' }}>{t('Device / OS')}</th>
               <th style={{ width: '13%' }}>{t('Fingerprint')}</th>
-              <th style={{ width: '12%' }}>{t('Preflight')}</th>
+              <th style={{ width: '11%' }}>{t('Preflight')}</th>
               <th style={{ width: '8%' }}>{t('Status')}</th>
-              <th style={{ width: '16%', textAlign: 'right' }}>{t('Actions')}</th>
+              <th style={{ width: '14%', textAlign: 'right' }}>{t('Actions')}</th>
             </tr>
           </thead>
           <tbody>
@@ -1393,76 +1395,77 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
               )
             ) : (
               filteredProfiles.map((p) => (
-                <tr key={p.user_id} className={selectedIds.has(p.user_id) ? 'selected-row' : ''}>
+                <tr key={p.user_id} className={`row-dense ${selectedIds.has(p.user_id) ? 'selected-row' : ''}`}>
                   <td style={{ textAlign: 'center' }}>
-                    <input
-                      type="checkbox"
-                      checked={selectedIds.has(p.user_id)}
-                      onChange={() => toggleSelectProfile(p.user_id)}
-                      style={{ cursor: 'pointer' }}
-                    />
+                    <span className="row-dense__check">
+                      <input
+                        type="checkbox"
+                        checked={selectedIds.has(p.user_id)}
+                        onChange={() => toggleSelectProfile(p.user_id)}
+                        style={{ cursor: 'pointer' }}
+                      />
+                    </span>
                   </td>
                   <td>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                        {p.color ? (
-                          <span
-                            data-testid="profile-color-dot"
-                            title={p.color}
-                            style={{ width: 10, height: 10, borderRadius: 999, background: p.color, flexShrink: 0, border: '1px solid rgba(255,255,255,0.25)' }}
-                          />
-                        ) : null}
-                        <strong style={{ fontSize: 14, color: '#f3f4f6' }}>{p.name || 'Unnamed Profile'}</strong>
-                      </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                    <div className="row-dense__lead">
+                      {p.color ? (
+                        <span
+                          data-testid="profile-color-dot"
+                          title={p.color}
+                          style={{ width: 10, height: 10, borderRadius: 999, background: p.color, flexShrink: 0, border: '1px solid rgba(255,255,255,0.25)' }}
+                        />
+                      ) : null}
+                      <strong style={{ fontSize: 13, color: 'var(--text)' }}>{p.name || 'Unnamed Profile'}</strong>
+                      <span className="row-dense__group">
                         <span className="group-tag">
                           <FolderIcon size={10} />
                           {getGroupName(p.group_id)}
                         </span>
-                        {(profileTagMap[p.user_id] || []).map((tg) => (
-                          <span
-                            key={tg.tag_id}
-                            className="group-tag"
-                            style={{ color: tg.color || 'var(--text-secondary)', borderColor: `${tg.color || 'var(--border)'}66` }}
-                            title={tg.name}
-                          >
-                            #{tg.name}
-                          </span>
-                        ))}
-                        <div className="id-badge">
-                          <code>{p.user_id.slice(0, 10)}...</code>
-                          <button onClick={() => copyToClipboard(p.user_id)} title="Copy ID">
-                            {copiedId === p.user_id ? <CheckIcon size={11} style={{ color: 'var(--ok)' }} /> : <CopyIcon size={11} />}
-                          </button>
-                        </div>
+                      </span>
+                      {(profileTagMap[p.user_id] || []).map((tg) => (
+                        <span
+                          key={tg.tag_id}
+                          className="group-tag"
+                          style={{ color: tg.color || 'var(--text-secondary)', borderColor: `${tg.color || 'var(--border)'}66` }}
+                          title={tg.name}
+                        >
+                          #{tg.name}
+                        </span>
+                      ))}
+                      <div className="id-badge">
+                        <code>{p.user_id.slice(0, 8)}</code>
+                        <button onClick={() => copyToClipboard(p.user_id)} title="Copy ID">
+                          {copiedId === p.user_id ? <CheckIcon size={11} style={{ color: 'var(--ok)' }} /> : <CopyIcon size={11} />}
+                        </button>
                       </div>
                     </div>
                   </td>
                   <td>
-                    {p.proxy_host ? (
-                      <div className="proxy-tag">
-                        <span className="proxy-type-badge">{(p.proxy_type || 'HTTP').toUpperCase()}</span>
-                        <span>{p.proxy_host}:{p.proxy_port}</span>
-                        {p.proxy_country ? <span style={{ color: 'var(--accent)', fontSize: 11 }}>({p.proxy_country})</span> : null}
-                      </div>
-                    ) : (
-                      <span style={{ color: 'var(--text-muted)', fontSize: 12.5 }}>Direct (No Proxy)</span>
-                    )}
+                    <div className="row-dense__meta">
+                      {p.proxy_host ? (
+                        <div className="proxy-tag">
+                          <span className="proxy-type-badge">{(p.proxy_type || 'HTTP').toUpperCase()}</span>
+                          <span>{p.proxy_host}:{p.proxy_port}</span>
+                          {p.proxy_country ? <span style={{ color: 'var(--accent)', fontSize: 11 }}>({p.proxy_country})</span> : null}
+                        </div>
+                      ) : (
+                        <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>Direct (No Proxy)</span>
+                      )}
+                    </div>
                   </td>
                   <td>
-                    <span className="proxy-type-badge" style={{ color: p.platform === 'ios' || p.platform === 'android' ? 'var(--ok)' : 'var(--text-secondary)' }}>
-                      {(p.platform || 'windows').toUpperCase()}
-                    </span>
+                    <div className="row-dense__meta">
+                      <span className="proxy-type-badge" style={{ color: p.platform === 'ios' || p.platform === 'android' ? 'var(--ok)' : 'var(--text-secondary)' }}>
+                        {(p.platform || 'windows').toUpperCase()}
+                      </span>
+                    </div>
                   </td>
                   <td>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                    <div className="row-dense__meta" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                       <span
                         style={{
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: 4,
                           fontSize: 12,
-                          fontWeight: 600,
+                          fontWeight: 500,
                           color: 'var(--text)',
                         }}
                       >
@@ -1506,12 +1509,14 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
                     </div>
                   </td>
                   <td>
-                    <span className={`badge ${p.status}`}>
-                      {p.status === 'running' ? t('Running') : t('Closed')}
+                    <span className="row-dense__status">
+                      <span className={`badge ${p.status}`}>
+                        {p.status === 'running' ? t('Running') : t('Closed')}
+                      </span>
                     </span>
                   </td>
                   <td>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6, position: 'relative' }}>
+                    <div className="row-dense__actions" style={{ justifyContent: 'flex-end', position: 'relative' }}>
                       {p.status === 'running' ? (
                         <button
                           type="button"

@@ -245,9 +245,15 @@ app.use(motionRouter);
  * reading this file.
  */
 export function resolveRendererDir(fromDir: string): string {
-  const hasIndex = (d: string): boolean => {
+  // A directory only counts if it holds a BUILT index.html. The Vite dev template at
+  // src/renderer/index.html also exists and also contains an index.html, but it points at
+  // /src/main.tsx, which a browser cannot load (wrong MIME type) and which only the Vite
+  // dev server can serve. Picking it produced a blank page. Built output references a
+  // real hashed asset bundle under ./assets/, so require that.
+  const isBuilt = (d: string): boolean => {
     try {
-      return fs.existsSync(path.join(d, 'index.html'));
+      const html = fs.readFileSync(path.join(d, 'index.html'), 'utf8');
+      return /(?:src|href)="\.\/assets\//.test(html);
     } catch {
       return false;
     }
@@ -260,12 +266,24 @@ export function resolveRendererDir(fromDir: string): string {
   const candidates: string[] = [];
   let dir = fromDir;
   for (let depth = 0; depth < 6; depth += 1) {
-    candidates.push(path.join(dir, 'renderer'));
+    // Prefer the built directory before its un-built sibling at the same level.
     candidates.push(path.join(dir, 'dist', 'renderer'));
+    candidates.push(path.join(dir, 'renderer'));
     dir = path.dirname(dir);
   }
   candidates.push(fallback);
-  return candidates.find(hasIndex) ?? fallback;
+  const built = candidates.find(isBuilt);
+  if (built) return built;
+  // Nothing built on disk (e.g. a dev run with no bundle): fall back to a directory that
+  // at least holds an index.html, so the caller's own error is the one reported.
+  const anyIndex = candidates.find((d) => {
+    try {
+      return fs.existsSync(path.join(d, 'index.html'));
+    } catch {
+      return false;
+    }
+  });
+  return anyIndex ?? fallback;
 }
 
 export function startApi(): Promise<void> {

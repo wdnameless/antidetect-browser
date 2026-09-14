@@ -42,42 +42,105 @@ import {
   FlowIcon,
   CalendarIcon,
 } from './icons';
-type Page = 'profiles' | 'groups' | 'proxies' | 'devices' | 'extensions' | 'email' | 'teams' | 'cloud' | 'diagnostics' | 'trash' | 'scripts' | 'catalog' | 'flows' | 'settings' | 'calendar';
+type Page =
+  | 'profiles'
+  | 'groups'
+  | 'proxies'
+  | 'devices'
+  | 'extensions'
+  | 'email'
+  | 'teams'
+  | 'cloud'
+  | 'diagnostics'
+  | 'trash'
+  | 'scripts'
+  | 'catalog'
+  | 'flows'
+  | 'settings'
+  | 'calendar';
 
-interface NavItem {
+export interface SubTab {
+  key: Page;
+  label: string;
+}
+
+export interface NavDestination {
   key: Page;
   label: string;
   icon: React.ComponentType<{ size?: number; style?: React.CSSProperties }>;
-  group: NavGroup;
+  subTabs?: SubTab[];
 }
 
-/**
- * Navigation groups, in the order they render. ShardX's shape: the things you work
- * with, the things you keep, and the things you configure.
- */
-type NavGroup = 'WORKSPACE' | 'LIBRARY' | 'SYSTEM';
-
-const NAV_GROUP_ORDER: NavGroup[] = ['WORKSPACE', 'LIBRARY', 'SYSTEM'];
-
-const NAV: NavItem[] = [
-  { key: 'profiles', label: 'Profiles', icon: ProfilesIcon, group: 'WORKSPACE' },
-  { key: 'groups', label: 'Groups', icon: FolderIcon, group: 'WORKSPACE' },
-  { key: 'proxies', label: 'Proxies', icon: ProxiesIcon, group: 'WORKSPACE' },
-  { key: 'devices', label: 'Devices', icon: DevicesIcon, group: 'WORKSPACE' },
-  { key: 'extensions', label: 'Extensions', icon: ExtensionsIcon, group: 'WORKSPACE' },
-  { key: 'flows', label: 'Flow Canvas', icon: FlowIcon, group: 'WORKSPACE' },
-  // `scripts` was in the Page union and rendered, but missing from NAV, so the page
-  // was unreachable by clicking. Restored here with its own group placement.
-  { key: 'scripts', label: 'Automation', icon: FlowIcon, group: 'WORKSPACE' },
-  { key: 'email', label: 'Email', icon: ShieldIcon, group: 'LIBRARY' },
-  { key: 'calendar', label: 'Calendar', icon: CalendarIcon, group: 'LIBRARY' },
-  { key: 'catalog', label: 'Catalog', icon: CookieIcon, group: 'LIBRARY' },
-  { key: 'teams', label: 'Teams', icon: UsersIcon, group: 'LIBRARY' },
-  { key: 'diagnostics', label: 'Diagnostics', icon: KeyIcon, group: 'SYSTEM' },
-  { key: 'trash', label: 'Trash', icon: TrashIcon, group: 'SYSTEM' },
-  { key: 'cloud', label: 'Cloud Sync', icon: CloudIcon, group: 'SYSTEM' },
-  { key: 'settings', label: 'Settings', icon: SettingsIcon, group: 'SYSTEM' },
+export const NAV_DESTINATIONS: NavDestination[] = [
+  {
+    key: 'profiles',
+    label: 'Profiles',
+    icon: ProfilesIcon,
+    subTabs: [
+      { key: 'profiles', label: 'Profiles' },
+      { key: 'groups', label: 'Groups' },
+      { key: 'trash', label: 'Trash' },
+    ],
+  },
+  {
+    key: 'proxies',
+    label: 'Proxies',
+    icon: ProxiesIcon,
+  },
+  {
+    key: 'devices',
+    label: 'Browser',
+    icon: DevicesIcon,
+    subTabs: [
+      { key: 'devices', label: 'Devices' },
+      { key: 'extensions', label: 'Extensions' },
+    ],
+  },
+  {
+    key: 'flows',
+    label: 'Automation',
+    icon: FlowIcon,
+    subTabs: [
+      { key: 'flows', label: 'Flow Canvas' },
+      { key: 'scripts', label: 'Scripts' },
+    ],
+  },
+  {
+    key: 'email',
+    label: 'Library',
+    icon: CookieIcon,
+    subTabs: [
+      { key: 'email', label: 'Email' },
+      { key: 'calendar', label: 'Calendar' },
+      { key: 'catalog', label: 'Catalog' },
+    ],
+  },
+  {
+    key: 'cloud',
+    label: 'Cloud',
+    icon: CloudIcon,
+    subTabs: [
+      { key: 'cloud', label: 'Cloud Sync' },
+      { key: 'teams', label: 'Teams' },
+    ],
+  },
+  {
+    key: 'settings',
+    label: 'Settings',
+    icon: SettingsIcon,
+    subTabs: [
+      { key: 'settings', label: 'Settings' },
+      { key: 'diagnostics', label: 'Diagnostics' },
+    ],
+  },
 ];
+
+function getActiveDestination(currentPage: Page): NavDestination {
+  const dest = NAV_DESTINATIONS.find(
+    (d) => d.key === currentPage || d.subTabs?.some((st) => st.key === currentPage)
+  );
+  return dest || NAV_DESTINATIONS[0];
+}
 
 export function App() {
   const { t } = useI18n();
@@ -92,6 +155,7 @@ export function App() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(() => getStoredSidebarCollapsed());
   const [runningCount, setRunningCount] = useState<number>(0);
   const [syncConnected, setSyncConnected] = useState<boolean>(false);
+  const activeDest = getActiveDestination(page);
 
   const initSession = useCallback((token: string) => {
     setApiKey(token);
@@ -171,7 +235,7 @@ export function App() {
     return <LoginScreen onSuccess={initSession} />;
   }
 
-  const activeNav = NAV.find((n) => n.key === page);
+  const activeNav = NAV_DESTINATIONS.find((n) => n.key === page);
   const handleSelectGroupAndGoToProfiles = (groupId: string) => {
     setSelectedGroupId(groupId);
     setPage('profiles');
@@ -193,51 +257,41 @@ export function App() {
           </div>
 
           <nav className="nav" aria-label="Main navigation">
-            {NAV_GROUP_ORDER.map((groupKey) => {
-              const items = NAV.filter((n) => n.group === groupKey);
-              if (items.length === 0) return null;
-              return (
-                <div className="nav-group" key={groupKey}>
-                  <div className={`nav-group-label ${sidebarCollapsed ? 'collapsed' : ''}`}>
-                    {sidebarCollapsed ? '' : groupKey}
-                  </div>
-                  {items.map((item) => {
-                    const Icon = item.icon;
-                    const active = item.key === page;
-                    const isProfiles = item.key === 'profiles';
-                    const isCloud = item.key === 'cloud';
-                    const itemLabel = t(item.label);
+            {NAV_DESTINATIONS.map((dest) => {
+              const Icon = dest.icon;
+              const isDestActive =
+                page === dest.key || dest.subTabs?.some((st) => st.key === page);
+              const isProfiles = dest.key === 'profiles';
+              const isCloud = dest.key === 'cloud';
+              const itemLabel = t(dest.label);
 
-                    return (
-                      <button
-                        key={item.key}
-                        type="button"
-                        className={`nav-item ${active ? 'active' : ''}`}
-                        data-tooltip={itemLabel}
-                        aria-label={itemLabel}
-                        title={sidebarCollapsed ? itemLabel : undefined}
-                        onClick={() => {
-                          if (item.key !== 'profiles') setSelectedGroupId(null);
-                          setPage(item.key);
-                        }}
-                      >
-                        <div className="nav-item-icon-wrapper">
-                          <Icon size={16} />
-                          {isCloud && syncConnected && <span className="sync-dot" title="Cloud connected" />}
-                          {isProfiles && runningCount > 0 && sidebarCollapsed && (
-                            <span className="nav-badge" title={`${runningCount} ${t('running')}`}>
-                              {runningCount}
-                            </span>
-                          )}
-                        </div>
-                        <span className="nav-label">{itemLabel}</span>
-                        {isProfiles && runningCount > 0 && !sidebarCollapsed && (
-                          <span className="nav-badge">{runningCount}</span>
-                        )}
-                      </button>
-                    );
-                  })}
-                </div>
+              return (
+                <button
+                  key={dest.key}
+                  type="button"
+                  className={`nav-item ${isDestActive ? 'active' : ''}`}
+                  data-tooltip={itemLabel}
+                  aria-label={itemLabel}
+                  title={sidebarCollapsed ? itemLabel : undefined}
+                  onClick={() => {
+                    if (dest.key !== 'profiles') setSelectedGroupId(null);
+                    setPage(dest.key);
+                  }}
+                >
+                  <div className="nav-item-icon-wrapper">
+                    <Icon size={16} />
+                    {isCloud && syncConnected && <span className="sync-dot" title="Cloud connected" />}
+                    {isProfiles && runningCount > 0 && sidebarCollapsed && (
+                      <span className="nav-badge" title={`${runningCount} ${t('running')}`}>
+                        {runningCount}
+                      </span>
+                    )}
+                  </div>
+                  <span className="nav-label">{itemLabel}</span>
+                  {isProfiles && runningCount > 0 && !sidebarCollapsed && (
+                    <span className="nav-badge">{runningCount}</span>
+                  )}
+                </button>
               );
             })}
           </nav>
@@ -320,6 +374,41 @@ export function App() {
         </header>
 
         <main className="content">
+          {activeDest.subTabs && activeDest.subTabs.length > 0 ? (
+            <nav
+              className="subtabs"
+              aria-label="Sub navigation"
+              style={{
+                display: 'flex',
+                gap: 'var(--space-1)',
+                borderBottom: '1px solid var(--border)',
+                paddingBottom: 'var(--space-2)',
+                marginBottom: 'var(--space-4)',
+              }}
+            >
+              {activeDest.subTabs.map((st) => {
+                const isTabActive = page === st.key;
+                return (
+                  <button
+                    key={st.key}
+                    type="button"
+                    className={`btn ${isTabActive ? 'btn-primary' : 'btn-ghost'}`}
+                    style={{
+                      height: 'var(--control-h-sm)',
+                      fontSize: 'var(--text-sm)',
+                      padding: '0 var(--space-3)',
+                    }}
+                    onClick={() => {
+                      if (st.key !== 'profiles') setSelectedGroupId(null);
+                      setPage(st.key);
+                    }}
+                  >
+                    {t(st.label)}
+                  </button>
+                );
+              })}
+            </nav>
+          ) : null}
           {page === 'profiles' ? (
             <Profiles initialGroupId={selectedGroupId} />
           ) : page === 'groups' ? (

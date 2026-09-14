@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { api, type GroupItem, type ProfileListItem } from '../api';
 import { FolderIcon, PlusIcon, EditIcon, TrashIcon, SearchIcon, ProfilesIcon } from '../icons';
 import { useI18n } from '../i18n';
-
+import { EmptyState } from '../components/EmptyState';
 export function Groups({ onSelectGroup }: { onSelectGroup?: (groupId: string) => void }) {
   const { t } = useI18n();
   const [groups, setGroups] = useState<GroupItem[]>([]);
@@ -155,38 +155,36 @@ export function Groups({ onSelectGroup }: { onSelectGroup?: (groupId: string) =>
           </thead>
           <tbody>
             {filteredGroups.length === 0 ? (
-              <tr>
-                <td colSpan={5} style={{ textAlign: 'center', padding: '40px 16px', color: 'var(--text-muted)' }}>
-                  {groups.length === 0 ? (
-                    <div>
-                      <FolderIcon size={32} style={{ opacity: 0.3, marginBottom: 8 }} />
-                      <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-secondary)' }}>{t('No groups yet')}</div>
-                      <p style={{ fontSize: 12, marginTop: 4 }}>
-                        {t('Create groups to keep dozens or hundreds of profiles neatly organized.')}
-                      </p>
-                      <button
-                        type="button"
-                        className="btn btn-primary"
-                        style={{ marginTop: 12 }}
-                        onClick={() => setShowCreateModal(true)}
-                      >
-                        <PlusIcon size={13} />
-                        <span>{t('Create First Group')}</span>
-                      </button>
-                    </div>
-                  ) : (
-                    t('No groups matching search')
-                  )}
-                </td>
-              </tr>
+              <EmptyState
+                colSpan={5}
+                icon={<FolderIcon size={32} />}
+                title={groups.length === 0 ? t('No groups yet') : t('No groups matching search')}
+                description={
+                  groups.length === 0
+                    ? t('Create groups to keep dozens or hundreds of profiles neatly organized.')
+                    : undefined
+                }
+                action={
+                  groups.length === 0 ? (
+                    <button
+                      type="button"
+                      className="btn btn-primary"
+                      onClick={() => setShowCreateModal(true)}
+                    >
+                      <PlusIcon size={13} />
+                      <span>{t('Create First Group')}</span>
+                    </button>
+                  ) : undefined
+                }
+              />
             ) : (
               filteredGroups.map((g, idx) => {
                 const count = profiles.filter((p) => p.group_id === g.id).length;
                 return (
-                  <tr key={g.id}>
+                  <tr key={g.id} className="row-dense">
                     <td style={{ color: 'var(--text-muted)', fontSize: 12 }}>{idx + 1}</td>
                     <td>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <div className="row-dense__lead" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                         <span style={{ color: 'var(--accent)' }}>
                           <FolderIcon size={16} />
                         </span>
@@ -194,17 +192,17 @@ export function Groups({ onSelectGroup }: { onSelectGroup?: (groupId: string) =>
                       </div>
                     </td>
                     <td>
-                      <span className="badge badge-gray" style={{ fontWeight: 600 }}>
+                      <span className="row-dense__group badge badge-gray" style={{ fontWeight: 600 }}>
                         {count} {count === 1 ? t('profile') : t('profiles')}
                       </span>
                     </td>
                     <td>
-                      <span style={{ fontSize: 11.5, fontFamily: 'var(--font-mono)', color: 'var(--text-muted)' }}>
+                      <span className="row-dense__meta" style={{ fontSize: 11.5, fontFamily: 'var(--font-mono)', color: 'var(--text-muted)' }}>
                         {g.id}
                       </span>
                     </td>
                     <td>
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6 }}>
+                      <div className="row-dense__actions" style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6 }}>
                         {onSelectGroup ? (
                           <button
                             type="button"

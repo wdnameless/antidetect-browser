@@ -25,7 +25,12 @@ beforeAll(() => {
   root = fs.mkdtempSync(path.join(os.tmpdir(), 'nt-renderer-'));
   // Mirrors the packaged layout: dist/renderer plus the compiled service nesting.
   fs.mkdirSync(path.join(root, 'dist', 'renderer', 'assets'), { recursive: true });
-  fs.writeFileSync(path.join(root, 'dist', 'renderer', 'index.html'), '<html>app</html>');
+  // Must look like real Vite output: the resolver requires a ./assets/ reference so the
+  // dev template (which points at /src/main.tsx) cannot be mistaken for a built bundle.
+  fs.writeFileSync(
+    path.join(root, 'dist', 'renderer', 'index.html'),
+    '<script type="module" src="./assets/index-abc.js"></script>',
+  );
   fs.mkdirSync(path.join(root, 'dist', 'src', 'main', 'api'), { recursive: true });
   fs.writeFileSync(path.join(root, 'dist', 'src', 'main', 'api', 'server.js'), '// stub');
 });
@@ -49,5 +54,32 @@ describe('resolveRendererDir finds the UI in a packaged layout', () => {
     fs.mkdirSync(decoy, { recursive: true });
     const fromDir = path.join(root, 'dist', 'src', 'main', 'api');
     expect(resolveRendererDir(fromDir)).toBe(path.join(root, 'dist', 'renderer'));
+  });
+});
+
+describe('the Vite dev template is not mistaken for built output', () => {
+  it('ignores an index.html that points at /src/main.tsx', () => {
+    // src/renderer/index.html is the Vite dev template. It contains an index.html and so
+    // passed an existence-only check, but it references /src/main.tsx — a module the
+    // packaged service cannot serve, which yielded a BLANK PAGE instead of the app.
+    const devRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'nt-dev-'));
+    const devDir = path.join(devRoot, 'src', 'renderer');
+    fs.mkdirSync(devDir, { recursive: true });
+    fs.writeFileSync(path.join(devDir, 'index.html'), '<script type="module" src="/src/main.tsx"></script>');
+
+    const builtRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'nt-built-'));
+    const builtDir = path.join(builtRoot, 'dist', 'renderer');
+    fs.mkdirSync(path.join(builtDir, 'assets'), { recursive: true });
+    fs.writeFileSync(
+      path.join(builtDir, 'index.html'),
+      '<script type="module" crossorigin src="./assets/index-abc.js"></script>',
+    );
+    const fromDir = path.join(builtRoot, 'dist', 'src', 'main', 'api');
+    fs.mkdirSync(fromDir, { recursive: true });
+
+    expect(resolveRendererDir(fromDir)).toBe(builtDir);
+
+    fs.rmSync(devRoot, { recursive: true, force: true });
+    fs.rmSync(builtRoot, { recursive: true, force: true });
   });
 });

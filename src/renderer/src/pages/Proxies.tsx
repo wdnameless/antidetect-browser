@@ -334,33 +334,39 @@ export function Proxies() {
               proxies.map((p) => {
                 const res = checkResult[p.proxy_id];
                 return (
-                  <tr key={p.proxy_id}>
+                  <tr key={p.proxy_id} className="row-dense">
                     <td>
                       <span className="proxy-type-badge">{p.type.toUpperCase()}</span>
                     </td>
                     <td>
-                      <code style={{ fontSize: 13, color: 'var(--text)' }}>{p.host}:{p.port}</code>
+                      <div className="row-dense__lead">
+                        <code style={{ fontSize: 13, color: 'var(--text)' }}>{p.host}:{p.port}</code>
+                      </div>
                     </td>
                     <td>
-                      <span style={{ color: p.username ? 'var(--text-secondary)' : 'var(--text-muted)', fontSize: 13 }}>
-                        {p.username || '—'}
-                      </span>
-                    </td>
-                    <td>
-                      {res ? (
-                        <span style={{ fontSize: 12, color: res.ok ? 'var(--ok)' : 'var(--danger)' }}>
-                          {res.ok ? `✓ ${res.ip} (${res.latencyMs}ms)` : `✕ ${res.error || 'Failed'}`}
+                      <div className="row-dense__meta">
+                        <span style={{ color: p.username ? 'var(--text-secondary)' : 'var(--text-muted)', fontSize: 13 }}>
+                          {p.username || '—'}
                         </span>
-                      ) : p.country ? (
-                        <span style={{ fontSize: 12.5, color: 'var(--text-secondary)' }}>
-                          {p.country} ({p.timezone || 'UTC'})
-                        </span>
-                      ) : (
-                        <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{t('Not tested')}</span>
-                      )}
+                      </div>
                     </td>
                     <td>
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6 }}>
+                      <div className="row-dense__meta">
+                        {res ? (
+                          <span className="row-dense__status" style={{ fontSize: 12, color: res.ok ? 'var(--ok)' : 'var(--danger)' }}>
+                            {res.ok ? `✓ ${res.ip} (${res.latencyMs}ms)` : `✕ ${res.error || 'Failed'}`}
+                          </span>
+                        ) : p.country ? (
+                          <span style={{ fontSize: 12.5, color: 'var(--text-secondary)' }}>
+                            {p.country} ({p.timezone || 'UTC'})
+                          </span>
+                        ) : (
+                          <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{t('Not tested')}</span>
+                        )}
+                      </div>
+                    </td>
+                    <td>
+                      <div className="row-dense__actions" style={{ justifyContent: 'flex-end' }}>
                         <button
                           className="btn-icon"
                           onClick={() => void check(p.proxy_id)}
