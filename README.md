@@ -97,7 +97,7 @@ npm run dist:mac             # macOS .dmg (arm64)
 - **Linux**: собирается `.deb` / `.AppImage` под x64 (WebKitGTK).
 - **macOS (arm64 Apple Silicon)**: собирается `.dmg` / `.app`. На Apple Silicon любой arm64-код обязан иметь подпись — иначе ядро откажется его загружать, независимо от Gatekeeper. Поэтому сборка **обязана** быть хотя бы **ad-hoc** подписана (`codesign -s -`, бесплатно, без сертификата). Платного Apple Developer account у проекта нет, поэтому Developer ID и нотаризации нет.
   - **Electron-сборка** (`npm run dist:mac`): ad-hoc подпись применяется автоматически хуком `scripts/afterPack-adhoc-sign.cjs`.
-  - **Tauri-оболочка**: то же самое через `bundle.macOS.signingIdentity = "-"` в `src-tauri/tauri.conf.json`. Сборка требует macOS-раннера с установленным Tauri CLI и здесь не проверялась.
+  - **Tauri-оболочка**: то же самое через `bundle.macos.signingIdentity = "-"` в `src-tauri/tauri.conf.json`. Сборка требует macOS-раннера с установленным Tauri CLI и здесь не проверялась.
 - **Карантин Gatekeeper**: подпись ad-hoc не выдаёт Developer ID, поэтому при первом запуске система заблокирует приложение. Снять карантин нужно один раз:
   ```bash
   xattr -dr com.apple.quarantine /Applications/NullTrace.app

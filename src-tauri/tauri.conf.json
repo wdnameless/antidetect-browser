@@ -48,13 +48,10 @@
     "macos": {
       "frameworks": [],
       "minimumSystemVersion": "10.13",
-      "signingIdentity": null,
+      "signingIdentity": "-",
       "providerShortName": null,
       "entitlements": null,
       "exceptionDomain": ""
-    },
-    "macOS": {
-      "signingIdentity": "-"
     }
   }
 }
