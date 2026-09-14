@@ -44,6 +44,7 @@ import preflightRoutes from './routes/preflight';
 import cookieRobotRoutes from './routes/cookieRobot';
 import settingsRoutes from './routes/settings';
 import { motionRouter } from './routes/motion';
+import { mcpRouter } from './routes/mcp';
 
 const LOOPBACK_HOST_RE = /^(127\.0\.0\.1|localhost|\[::1\])(:\d+)?$/i;
 
@@ -217,6 +218,7 @@ app.use(preflightRoutes);
 app.use(cookieRobotRoutes);
 app.use(settingsRoutes);
 app.use(motionRouter);
+app.use('/api/v1/mcp', mcpRouter);
 
   // JSON 404 for unknown routes (Express default would return HTML).
   app.use((_req: Request, res: Response) => {

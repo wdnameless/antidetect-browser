@@ -5,7 +5,11 @@
     "moduleResolution": "Node",
     "rootDir": ".",
     "outDir": "dist",
-    "types": ["node"]
+    "types": ["node"],
+    // The main process runs on Node 24, where `Promise.withResolvers` exists at runtime.
+    // The base lib is ES2022, which predates its typing, so the main process opts into the
+    // ES2024 Promise library explicitly rather than silencing the rule that requires it.
+    "lib": ["ES2022", "ES2024.Promise"]
   },
   "include": ["electron/**/*", "src/main/**/*"]
 }
