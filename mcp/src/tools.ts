@@ -632,7 +632,21 @@ export class ToolRouter {
     auditLogger?: McpAuditLogger;
     allowlistPath?: string;
   }) {
-    this.client = options?.client || new AntidetectClient({ baseUrl: process.env.ANTIDETECT_API_URL || 'http://127.0.0.1:3000' });
+    // The API lives on the app's own loopback port, and every /api/v1 route requires a
+    // Bearer token. Two defects lived here:
+    //  - the default was `http://127.0.0.1:3000`, a port this app never listens on, so a
+    //    standalone MCP process pointed at nothing;
+    //  - no token was ever passed, so even with the right URL every tool call returned 401.
+    // Both values now come from the environment, which `mcpService` fills from the running
+    // app's real host/port/key.
+    const apiBaseUrl =
+      process.env.ANTIDETECT_API_URL || `http://${process.env.API_HOST || '127.0.0.1'}:${process.env.API_PORT || '50325'}`;
+    this.client =
+      options?.client ||
+      new AntidetectClient({
+        baseUrl: apiBaseUrl,
+        token: process.env.ANTIDETECT_API_TOKEN || undefined,
+      });
     this.browserDriver = options?.browserDriver || new BrowserDriver(this.client);
     this.auditLogger = options?.auditLogger || new McpAuditLogger();
 

@@ -146,12 +146,11 @@ jobs:
         run: npm run build
 
       # electron-builder auto-detects CI and attempts its own GitHub publish, which then
-      # fails because it looks for GH_TOKEN — killing the build step before the artefact
-      # exists, even though softprops/action-gh-release below does the publishing.
-      # `--publish never` makes the build stop at the artefact. Verified: a CI=true pack
-      # exits 0 with this flag and aborts with "GitHub Personal Access Token is not set"
-      # without it.
-      - name: Build portable artefact for ${{ matrix.platform }}
+      # fails for a missing GH_TOKEN and kills the build before the artefact exists.
+      # `--publish never` stops the build at the artefact — softprops below does the publish.
+      # Verified this does NOT suppress `latest.yml`: a --publish never run emits it with
+      # the correct sha512 and size, which is what electron-updater needs.
+      - name: Build installer and portable artefact
         run: npx electron-builder --${{ matrix.platform }} --publish never
 
       - name: Upload artefact
@@ -160,17 +159,21 @@ jobs:
           name: ${{ matrix.artifact }}
           path: |
             release/*.exe
-            release/*.AppImage
-            release/*.dmg
+            release/*.blockmap
+            release/latest*.yml
           if-no-files-found: error
 
+      # `latest.yml` and the blockmap MUST be published alongside the installer: this is
+      # what electron-updater fetches to discover and verify an update. A release carrying
+      # only the .exe cannot update itself — the in-app update check reports "latest" while
+      # a newer version exists, silently.
       - name: Publish release assets
         uses: softprops/action-gh-release@v2
         with:
           files: |
             release/*.exe
-            release/*.AppImage
-            release/*.dmg
+            release/*.blockmap
+            release/latest*.yml
           fail_on_unmatched_files: false
 
   tauri:

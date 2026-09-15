@@ -1,6 +1,6 @@
 {
   "name": "antidetect-browser",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "private": true,
   "description": "NullTrace — zero footprint, infinite scale. Personal antidetect browser with an AdsPower-compatible Local API.",
   "workspaces": [
@@ -145,13 +145,18 @@
       "icon": "resources/icon.png",
       "target": [
         {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
           "target": "portable",
           "arch": [
             "x64"
           ]
         }
-      ],
-      "artifactName": "NullTrace-${version}-portable-win-x64.${ext}"
+      ]
     },
     "linux": {
       "icon": "resources/icon.png",
@@ -190,6 +195,17 @@
       "repo": "antidetect-browser",
       "private": false
     },
-    "artifactName": "NullTrace-${version}-portable-${os}-${arch}.${ext}"
+    "artifactName": "NullTrace-${version}-portable-${os}-${arch}.${ext}",
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "artifactName": "NullTrace-Setup-${version}.${ext}"
+    },
+    "portable": {
+      "artifactName": "NullTrace-${version}-portable-win-x64.${ext}"
+    }
   }
 }

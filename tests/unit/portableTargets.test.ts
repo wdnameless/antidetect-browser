@@ -24,25 +24,45 @@ describe('Portable Packaging Targets (tasks 2.1-2.4)', () => {
   });
 
   describe('Windows Target', () => {
-    it('target is portable and NOT nsis (no installer produced)', () => {
+    it('ships portable AND an NSIS installer', () => {
       const winTarget = pkg.build.win?.target;
       expect(winTarget).toBeDefined();
       const targetNames = Array.isArray(winTarget)
         ? winTarget.map((t: { target: string }) => (typeof t === 'string' ? t : t.target))
         : [winTarget];
 
+      // Both are required, and the reason is not cosmetic:
+      //  - `portable` is the installer-free single file the operator already uses.
+      //  - `nsis` is the ONLY Windows target electron-builder can auto-update from
+      //    (macOS uses dmg+zip, Linux AppImage/deb). Without it, in-app update cannot work
+      //    at all, and the app would report "latest" while a newer release existed.
+      // Shipping only `portable` was a regression: an earlier commit had configured NSIS
+      // for auto-update, and the rebrand commit replaced it.
       expect(targetNames).toContain('portable');
-      expect(targetNames).not.toContain('nsis');
-      expect(pkg.build.nsis).toBeUndefined();
+      expect(targetNames).toContain('nsis');
+      // The installer must be configured, not left to defaults — an updater silently
+      // depends on it being a real, installed build rather than a self-extracting one.
+      expect(pkg.build.nsis).toBeDefined();
+      expect(pkg.build.nsis.oneClick).toBe(false);
     });
 
-    it('has self-describing artifactName containing NullTrace and version', () => {
-      const artifact = pkg.build.win?.artifactName || pkg.build.artifactName;
-      expect(artifact).toContain('NullTrace');
-      expect(artifact).toContain('${version}');
-      expect(artifact).toContain('portable');
-      expect(artifact).toContain('win');
-      expect(artifact).toContain('x64');
+    it('gives the installer and the portable file distinct, self-describing names', () => {
+      // The two artifacts land in the same release directory. If both derived their name
+      // from one `win.artifactName`, one would overwrite the other and the release would
+      // silently lose an artifact.
+      const nsisName = pkg.build.nsis?.artifactName;
+      const portableName = pkg.build.portable?.artifactName;
+      expect(nsisName).toBeDefined();
+      expect(portableName).toBeDefined();
+      expect(nsisName).not.toBe(portableName);
+      for (const name of [nsisName, portableName]) {
+        expect(name).toContain('NullTrace');
+        expect(name).toContain('${version}');
+      }
+      expect(portableName).toContain('portable');
+      expect(portableName).toContain('win');
+      expect(portableName).toContain('x64');
+      expect(nsisName).toContain('Setup');
     });
   });
 
@@ -176,4 +196,41 @@ describe('every platform build prepares the kernel first', () => {
       expect(pkg.scripts[`predist:${target}`]).toContain('ensure-kernel');
     });
   }
+});
+
+describe('in-app auto-update is actually possible', () => {
+  const root = path.resolve(__dirname, '../..');
+  const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
+
+  it('the release publishes the metadata electron-updater reads', () => {
+    // electron-updater fetches `latest.yml` to learn a new version exists. A release with
+    // only the .exe makes the in-app check report "latest" while a newer build is published,
+    // which is worse than no update feature: it lies.
+    //
+    // This asserts on the `softprops/action-gh-release` step's own `files:` list, not on the
+    // file as a whole. A whole-file substring check passes on a mention in a comment — which
+    // it did, when I tested it by deleting the real entry.
+    const workflow = fs.readFileSync(path.join(root, '.github/workflows/ci.yml'), 'utf8');
+    const step = workflow.indexOf('softprops/action-gh-release');
+    expect(step, 'the release publishing step must exist').toBeGreaterThan(-1);
+    const stepBody = workflow.slice(step, step + 400);
+    expect(stepBody).toMatch(/latest\*?\.yml/);
+    expect(stepBody).toContain('.blockmap');
+  });
+
+  it('publishing config points at a real GitHub repo', () => {
+    // Without this, the packaged app has no feed to query and update silently never works.
+    const publish = Array.isArray(pkg.build.publish) ? pkg.build.publish[0] : pkg.build.publish;
+    expect(publish).toBeDefined();
+    expect(publish.provider).toBe('github');
+    expect(publish.owner).toBeTruthy();
+    expect(publish.repo).toBeTruthy();
+  });
+
+  it('keeps autoDownload off so an update is never fetched behind the operator', () => {
+    // The UI offers a deliberate Check -> Download -> Restart flow. Silently downloading a
+    // 260MB installer on a metered connection is not a decision the app should make.
+    const main = fs.readFileSync(path.join(root, 'electron/main.ts'), 'utf8');
+    expect(main).toMatch(/autoUpdater\.autoDownload\s*=\s*false/);
+  });
 });
