@@ -4,7 +4,8 @@
   "private": true,
   "description": "NullTrace — zero footprint, infinite scale. Personal antidetect browser with an AdsPower-compatible Local API.",
   "workspaces": [
-    "packages/*"
+    "packages/*",
+    "mcp"
   ],
   "main": "dist/electron/main.js",
   "engines": {
@@ -15,6 +16,7 @@
     "pretest": "npm run build:sdk",
     "test": "vitest run",
     "typecheck:main": "tsc -p tsconfig.main.json --noEmit",
+    "pretypecheck": "npm run build:sdk",
     "typecheck:node": "tsc -p tsconfig.main.json --noEmit",
     "typecheck:renderer": "tsc -p src/renderer/tsconfig.json --noEmit",
     "build:mcp": "tsc -p mcp/tsconfig.json",
