@@ -1,25 +1,27 @@
 {
-  "$schema": "https://raw.githubusercontent.com/tauri-apps/tauri/dev/crates/tauri-config-schema/schema.json",
+  "$schema": "https://schema.tauri.app/config/2",
   "productName": "NullTrace",
-  "version": "0.1.0",
+  "version": "0.6.0",
   "identifier": "com.antidetect.browser",
   "build": {
     "frontendDist": "http://127.0.0.1:50325"
   },
   "app": {
-    "withGlobalTauri": false,
-    "windows": [
-      {
-        "title": "NullTrace",
-        "url": "http://127.0.0.1:50325",
-        "width": 1280,
-        "height": 800,
-        "resizable": true,
-        "fullscreen": false
-      }
-    ],
+    "withGlobalTauri": true,
     "security": {
-      "csp": null
+      "csp": "default-src 'self' http://127.0.0.1:* http://localhost:* ws://127.0.0.1:* ws://localhost:*; script-src 'self' 'unsafe-inline' 'unsafe-eval' http://127.0.0.1:* http://localhost:*; style-src 'self' 'unsafe-inline' http://127.0.0.1:* http://localhost:*; connect-src 'self' http://127.0.0.1:* http://localhost:* ws://127.0.0.1:* ws://localhost:* https:; img-src 'self' data: blob: http://127.0.0.1:* http://localhost:* https:; font-src 'self' data: http://127.0.0.1:* http://localhost:* https:;"
+    },
+    "windows": []
+  },
+  "plugins": {
+    "updater": {
+      "endpoints": [
+        "https://github.com/wdnameless/antidetect-browser/releases/latest/download/latest.json"
+      ],
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDI5RjQyM0Y4RUZBNEREN0YKUldSLzNhVHYrQ1AwS1QvcTBvajBEVFNDQU1jK2lBOXJkdCtDSDJCMktwdFR0Z2pSQ2ExaEw1QjkK",
+      "windows": {
+        "installMode": "passive"
+      }
     }
   },
   "bundle": {
@@ -32,10 +34,19 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
+    "resources": {
+      "../dist": "dist",
+      "../mcp/dist": "mcp/dist",
+      "../resources/release-keyring.json": "resources/release-keyring.json"
+    },
+    "externalBin": [
+      "binaries/node"
+    ],
     "windows": {
-      "certificateThumbprint": null,
-      "digestAlgorithm": "sha256",
-      "timestampUrl": ""
+      "webviewInstallMode": {
+        "type": "downloadBootstrapper"
+      },
+      "nsis": {}
     },
     "linux": {
       "deb": {
@@ -45,13 +56,9 @@
         "bundleMediaFramework": false
       }
     },
-    "macos": {
-      "frameworks": [],
-      "minimumSystemVersion": "10.13",
+    "macOS": {
       "signingIdentity": "-",
-      "providerShortName": null,
-      "entitlements": null,
-      "exceptionDomain": ""
+      "minimumSystemVersion": "10.13"
     }
   }
 }
