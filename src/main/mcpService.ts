@@ -2,6 +2,7 @@ import { spawn, ChildProcess } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as net from 'node:net';
 import * as path from 'node:path';
+import { API_HOST, API_PORT, getApiKey } from './config';
 import { TOOL_DEFINITIONS } from '../../mcp/src/tools';
 
 export interface McpStatusResponse {
@@ -130,6 +131,11 @@ export class McpService {
     const env: NodeJS.ProcessEnv = {
       ...process.env,
       MCP_HTTP_PORT: String(freePort),
+      // The MCP server reaches the app's own API as a client. Without these it used a
+      // hardcoded default port this app never listens on, and sent no auth at all — every
+      // tool call would fail. Both values are the ones the running app actually uses.
+      ANTIDETECT_API_URL: `http://${API_HOST}:${API_PORT}`,
+      ANTIDETECT_API_TOKEN: getApiKey(),
     };
 
     const child = spawn(process.execPath, [scriptPath], {
