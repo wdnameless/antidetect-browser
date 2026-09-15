@@ -181,6 +181,9 @@ export function Settings() {
   const [logFiles, setLogFiles] = useState<Array<{ name: string; size: number; modified: number }>>([]);
   const [kernelInfo, setKernelInfo] = useState<{ installed: string | null; latest: string | null; updateAvailable: boolean; releaseUrl?: string; error?: string } | null>(null);
   const [kernelChecking, setKernelChecking] = useState(false);
+  const [kernelBusy, setKernelBusy] = useState(false);
+  const [kernelInstallError, setKernelInstallError] = useState<string | null>(null);
+  const [kernelProgress, setKernelProgress] = useState<{ received: number; total: number } | null>(null);
   const [backups, setBackups] = useState<Array<{ name: string; size: number; modified: number }>>([]);
   const [restoreBusy, setRestoreBusy] = useState(false);
   const [restoreDone, setRestoreDone] = useState(false);
@@ -196,6 +199,54 @@ export function Settings() {
         if (res.code === 0) setKernelInfo(res.data);
         setKernelChecking(false);
       }).catch(() => setKernelChecking(false));
+    });
+  };
+
+  /**
+   * Download the kernel. 425 MB over a real network, so the button reports progress from
+   * the server's own byte counters rather than a spinner that says nothing, and a failure
+   * keeps the reason on screen instead of a button that silently does nothing.
+   */
+  const installKernel = (): void => {
+    setKernelBusy(true);
+    setKernelInstallError(null);
+    setKernelProgress({ received: 0, total: 0 });
+    // Poll the server's own counters; a 425 MB download with no feedback looks hung.
+    const poll = window.setInterval(() => {
+      void import('../api').then(({ api }) => {
+        api
+          .kernelStatus()
+          .then((res) => {
+            if (res.code !== 0) return;
+            if (res.data.status === 'downloading') {
+              setKernelProgress({ received: res.data.received, total: res.data.total });
+            } else if (res.data.status === 'error') {
+              setKernelInstallError(res.data.error ?? 'Kernel install failed');
+            }
+          })
+          .catch(() => undefined);
+      });
+    }, 1000);
+
+    void import('../api').then(({ api }) => {
+      api
+        .kernelInstall()
+        .then((res) => {
+          if (res.code !== 0) {
+            setKernelInstallError(res.msg || 'Kernel install failed');
+          } else {
+            setKernelProgress(null);
+            return api.kernelInfo().then((info) => {
+              if (info.code === 0) setKernelInfo((prev) => ({ ...(prev ?? { latest: null, updateAvailable: false }), installed: info.data.installed }));
+            });
+          }
+        })
+        .catch((err: unknown) => setKernelInstallError(err instanceof Error ? err.message : 'Kernel install failed'))
+        .finally(() => {
+          window.clearInterval(poll);
+          setKernelBusy(false);
+          setKernelProgress(null);
+        });
     });
   };
 
@@ -328,8 +379,34 @@ export function Settings() {
             </button>
           </div>
         );
-      case 'error':
-        return <p className="hint" style={{ color: 'var(--text-secondary)' }}>{t('Update check failed')}: {status.message}</p>;
+      case 'error': {
+        const isReleaseMissing =
+          status.message?.includes('Could not fetch a valid release JSON') ||
+          status.message?.includes('404') ||
+          status.message?.includes('release JSON');
+        if (isReleaseMissing) {
+          return (
+            <div>
+              <p className="hint" style={{ color: 'var(--text-secondary)' }}>
+                {t('Automatic updates are not configured for this build yet.')}
+              </p>
+              <p className="hint" style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px' }} title={status.message}>
+                {t('Diagnostics: Remote release metadata not found')}
+              </p>
+            </div>
+          );
+        }
+        return (
+          <div>
+            <p className="hint" style={{ color: 'var(--text-secondary)' }}>
+              {t('Update check could not complete.')}
+            </p>
+            <p className="hint" style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px' }}>
+              {status.message}
+            </p>
+          </div>
+        );
+      }
     }
   };
 
@@ -565,6 +642,30 @@ export function Settings() {
                     <span>{kernelChecking ? t('Checking…') : t('Check for kernel update')}</span>
                   </button>
                 </div>
+
+                {/* Installing the kernel from the app, because a shipped artefact does not
+                    contain it: the kernel is ~425 MB of patched Chromium, so bundling it
+                    would dwarf the app. Before this, a fresh install had no kernel and
+                    every profile launch failed with no in-app way to fix it. */}
+                <div className="setting-row">
+                  <span className="setting-label">{t('Kernel')}</span>
+                  {kernelProgress ? (
+                    <span style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)' }}>
+                      {kernelProgress.total > 0
+                        ? `${t('Downloading…')} ${Math.round((kernelProgress.received / kernelProgress.total) * 100)}%`
+                        : t('Downloading…')}
+                    </span>
+                  ) : (
+                    <button className="btn" onClick={installKernel} disabled={kernelBusy}>
+                      <span>{kernelBusy ? t('Installing…') : t('Download and install kernel')}</span>
+                    </button>
+                  )}
+                </div>
+                {kernelInstallError ? (
+                  <p className="hint" style={{ color: 'var(--danger)' }} role="alert">
+                    {kernelInstallError}
+                  </p>
+                ) : null}
                 {kernelInfo?.latest ? (
                   <p className="hint" style={{ color: kernelInfo.updateAvailable ? 'var(--warn)' : 'var(--text-secondary)', fontWeight: 500 }}>
                     {kernelInfo.updateAvailable

@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "defaultKeyId": "default-release-key",
+  "keys": {
+    "default-release-key": {
+      "keyId": "default-release-key",
+      "publicKeyPem": "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAmE9c823sLSVnNPiXLAgz/qw1jsWiDMX6morr6399GT8=\n-----END PUBLIC KEY-----\n",
+      "revoked": false
+    }
+  }
+}

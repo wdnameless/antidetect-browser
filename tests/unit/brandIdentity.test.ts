@@ -55,10 +55,10 @@ describe('rename boundary: on-disk locations must not move', () => {
 });
 
 describe('rename boundary: packaging identity keeps update continuity', () => {
-  const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
+  const tauriConf = JSON.parse(fs.readFileSync(path.join(ROOT, 'src-tauri', 'tauri.conf.json'), 'utf8'));
 
   it('the application id is unchanged so updates keep landing', () => {
-    expect(pkg.build.appId).toBe('com.antidetect.browser');
+    expect(tauriConf.identifier).toBe('com.antidetect.browser');
   });
 });
 
@@ -73,7 +73,7 @@ describe('brand identity', () => {
   });
 
   it('the taglines are defined in exactly one place', () => {
-    const files = walk(path.join(SRC)).concat(walk(path.join(ROOT, 'electron')));
+    const files = walk(path.join(SRC));
     const offenders: string[] = [];
     for (const file of files) {
       if (file.endsWith(`${path.sep}brand.ts`)) continue;

@@ -162,19 +162,10 @@ export function Email(): JSX.Element {
           </p>
         </div>
         <button
-          className="btn btn-primary"
+          className="btn primary"
           onClick={() => setShowAddModal(true)}
-          style={{
-            padding: '8px 16px',
-            backgroundColor: 'var(--accent)',
-            color: 'var(--text)',
-            border: 'none',
-            borderRadius: '6px',
-            cursor: 'pointer',
-            fontWeight: 500,
-          }}
         >
-          + {t('email.addAccount') || 'Add Account'}
+          + {t('email.addAccount')}
         </button>
       </div>
 
@@ -512,16 +503,16 @@ export function Email(): JSX.Element {
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '12px' }}>
                 <button
                   type="button"
+                  className="btn"
                   onClick={() => setShowAddModal(false)}
-                  style={{ padding: '8px 16px', borderRadius: '6px', border: '1px solid var(--border)', background: 'none', color: 'var(--text)', cursor: 'pointer' }}
                 >
-                  {t('email.cancel') || 'Cancel'}
+                  {t('email.cancel')}
                 </button>
                 <button
                   type="submit"
-                  style={{ padding: '8px 16px', borderRadius: '6px', border: 'none', backgroundColor: 'var(--accent)', color: 'var(--text)', cursor: 'pointer', fontWeight: 500 }}
+                  className="btn primary"
                 >
-                  {t('email.save') || 'Save'}
+                  {t('email.save')}
                 </button>
               </div>
             </form>

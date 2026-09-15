@@ -12,9 +12,6 @@ import {
 import {
   verifyUpdateBeforeApply,
   applyVerifiedRuntimeUpdate,
-  attachAutoUpdaterSecurity,
-  attachSecureUpdater,
-  AutoUpdaterLike,
 } from '../../../src/main/security/updaterIntegration';
 import {
   loadRollbackState,
@@ -315,53 +312,5 @@ describe('Secure Runtime Supply Chain - Updater Integration (Task 2.3)', () => {
 
     const stateAfter = loadRollbackState(stateFile);
     expect(stateAfter.updatePending).toBe(false);
-  });
-
-  it('wires into autoUpdater events and guards quitAndInstall', () => {
-    type Listener = (...args: unknown[]) => void;
-    const listeners: Record<string, Listener[]> = {};
-    let quitAndInstallCalled = false;
-
-    const mockAutoUpdater: AutoUpdaterLike = {
-      on: (event: string, fn: Listener) => {
-        listeners[event] = listeners[event] || [];
-        listeners[event].push(fn);
-      },
-      quitAndInstall: () => {
-        quitAndInstallCalled = true;
-      },
-    };
-
-    attachAutoUpdaterSecurity(mockAutoUpdater, {
-      getCurrentVersion: () => '1.0.0',
-      keyRing,
-      stateFile,
-      targetDir,
-    });
-
-    // Verify 'update-downloaded' listener was attached
-    expect(listeners['update-downloaded']).toBeDefined();
-    expect(listeners['update-downloaded'].length).toBeGreaterThan(0);
-
-    // Call quitAndInstall without verified update -> should refuse and throw
-    expect(() => mockAutoUpdater.quitAndInstall?.()).toThrow(/Refused update apply/);
-    expect(quitAndInstallCalled).toBe(false);
-    const invalidEnvelope = createSignedUpdate('1.1.0', {
-      'core.exe': 'original-v1.1.0-content',
-    });
-
-    // Corrupt staging
-    fs.writeFileSync(path.join(stagingDir, 'core.exe'), 'tampered');
-    const downloadHandler = listeners['update-downloaded'][0];
-    downloadHandler({
-      version: '1.1.0',
-      downloadedFile: path.join(stagingDir, 'update.zip'),
-      manifestEnvelope: invalidEnvelope,
-      stagingDir,
-    });
-
-    // Should still throw on quitAndInstall
-    expect(() => mockAutoUpdater.quitAndInstall?.()).toThrow(/Refused update apply/);
-    expect(quitAndInstallCalled).toBe(false);
   });
 });

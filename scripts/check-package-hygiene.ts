@@ -57,11 +57,23 @@ export async function runCheckPackageHygiene(options: PackageHygieneOptions = {}
         passed: !hasCamoufoxDep,
       });
 
-      // 2. Check electron-builder / packaging includes: ensure no dead legacy binaries bundled
+      // 2. Check Tauri packaging includes: ensure no browser kernel or orphaned binaries are bundled as resources
+      const tauriConfPath = path.resolve('src-tauri', 'tauri.conf.json');
+      let kernelNotBundled = true;
+      if (fs.existsSync(tauriConfPath)) {
+        try {
+          const tauriConf = JSON.parse(fs.readFileSync(tauriConfPath, 'utf8'));
+          const resources = tauriConf?.bundle?.resources || {};
+          const resourceKeys = Array.isArray(resources) ? resources : Object.keys(resources).concat(Object.values(resources));
+          kernelNotBundled = !resourceKeys.some((r: string) => /kernel|chromium|camoufox/i.test(r));
+        } catch {
+          kernelNotBundled = false;
+        }
+      }
       assertions.push({
         id: 'pkg-hygiene-build-resources',
-        name: 'Electron builder and distribution configs do not bundle orphaned legacy binaries into release artifacts',
-        passed: true,
+        name: 'Tauri bundle config does not bundle browser kernel or orphaned legacy binaries into release artifacts',
+        passed: kernelNotBundled,
       });
 
       // 3. Clean dependency tree and build targets

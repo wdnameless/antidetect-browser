@@ -61,7 +61,7 @@ describe('NullTrace Icon Assets & Specifications', () => {
     const icoPaths = [
       'assets/brand/nulltrace-icon.ico',
       'assets/brand/favicon.ico',
-      'build/icon.ico',
+      'src-tauri/icons/icon.ico',
     ];
 
     for (const relPath of icoPaths) {
@@ -84,7 +84,7 @@ describe('NullTrace Icon Assets & Specifications', () => {
   it('.icns container has valid magic header and plausible length matching header', () => {
     const icnsPaths = [
       'assets/brand/nulltrace-icon.icns',
-      'build/icon.icns',
+      'src-tauri/icons/icon.icns',
     ];
 
     for (const relPath of icnsPaths) {

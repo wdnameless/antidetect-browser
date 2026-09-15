@@ -70,6 +70,9 @@
   --accent: #fafafa;
   --accent-gradient: linear-gradient(135deg, #ffffff 0%, #cfcfd4 100%);
   --accent-hover: #e4e4e7;
+  /* Text/icon colour ON an `--accent` fill. It must invert with the accent, otherwise the
+     fill and its label merge in one of the two themes. */
+  --accent-foreground: #09090b;
 
   /* Semantic states (monochrome values) */
   --danger: #f4f4f5;
@@ -161,6 +164,81 @@
   --palette-width-expanded: 260px;
   --palette-width-rail: 84px;
   --flow-picker-width: 180px;
+
+  /* Inspector panel width. It was hardcoded `width: 320` inline. At 320 the panel was
+     wider than its own content needs (a label column plus a single control) while the
+     graph — the thing the page exists for — was squeezed to a strip. 264px still fits the
+     longest label and its input on one column. */
+  --flow-inspector-width: 264px;
+}
+
+/* ---------------------------------------------------------------------------
+   Light theme.
+
+   The same monochrome design language, inverted — NOT a second design. Every token that
+   carries colour is redefined; metric tokens (spacing, radii, type scale, breakpoints,
+   panel widths) are deliberately absent because they must not differ between themes.
+
+   The palette is the inverted zinc ramp: the dark theme's near-black app background
+   becomes near-white, its near-white text becomes near-black, and translucent-white
+   overlays become translucent-black. It stays greyscale on purpose — the project's token
+   test forbids any token with perceptible chroma (channel spread > 12), so a blue-tinted
+   light theme would fail the build, and rightly so: it would not be this product.
+
+   Applied by `data-theme="light"` on <html>; see `src/renderer/src/theme.ts` for how the
+   choice is stored and applied before first paint.
+   --------------------------------------------------------------------------- */
+:root[data-theme='light'] {
+  color-scheme: light;
+
+  /* Base surfaces: near-white app, white panels. */
+  --bg-app: #fafafa;
+  --bg-sidebar: #f4f4f5;
+  --bg-header: #f4f4f5;
+  --panel: #ffffff;
+  --panel-hover: #f4f4f5;
+  --panel-2: #ececee;
+
+  /* Surface scale, darkest-last reversed. */
+  --surface-1: #f7f7f8;
+  --surface-2: #f0f0f2;
+  --surface-3: #e8e8ea;
+
+  /* Hairline divider: black at low alpha instead of white, or it disappears. */
+  --divider: rgba(0, 0, 0, 0.09);
+
+  /* Control backgrounds & borders */
+  --control-bg: rgba(0, 0, 0, 0.04);
+  --control-bg-hover: rgba(0, 0, 0, 0.07);
+  --control-bg-active: rgba(0, 0, 0, 0.11);
+  --control-bg-selected: rgba(0, 0, 0, 0.14);
+  --border: rgba(0, 0, 0, 0.12);
+  --border-focus: rgba(0, 0, 0, 0.55);
+
+  /* Text */
+  --text: #18181b;
+  --text-secondary: #52525b;
+  --text-muted: #8a8a93;
+  /* `--accent` is the "maximum contrast against the background" colour, so in light mode it
+     inverts: the primary button becomes near-black with white text, exactly as it was
+     near-white with black text in dark mode. */
+  --accent: #18181b;
+  --accent-gradient: linear-gradient(135deg, #3f3f46 0%, #18181b 100%);
+  --accent-hover: #27272a;
+  --accent-foreground: #fafafa;
+
+  /* Semantic states (monochrome values, inverted) */
+  --danger: #27272a;
+  --danger-bg: rgba(0, 0, 0, 0.06);
+  --ok: #3f3f46;
+  --ok-bg: rgba(0, 0, 0, 0.06);
+  --warn: #52525b;
+  --warn-bg: rgba(0, 0, 0, 0.05);
+
+  /* Elevation: shadows are much subtler on a light surface, or they look like smudges. */
+  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.06);
+  --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.1);
+  --shadow-lg: 0 16px 40px rgba(0, 0, 0, 0.14);
 }
 * {
   box-sizing: border-box;
@@ -212,17 +290,26 @@ pre {
   border-right: 1px solid var(--divider);
   display: flex;
   flex-direction: column;
-  justify-content: space-between;
+  min-height: 0;
   padding: var(--space-4) var(--space-2);
   flex-shrink: 0;
-  transition: width 180ms ease, padding 180ms ease;
+  transition: width 180ms ease;
   position: relative;
   z-index: 20;
 }
 
 .sidebar.collapsed {
   width: var(--sidebar-w-collapsed);
-  padding: var(--space-4) var(--space-1);
+  padding: var(--space-4) var(--space-2);
+}
+
+.sidebar-content {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 
 .brand {
@@ -234,8 +321,8 @@ pre {
 }
 
 .sidebar.collapsed .brand {
-  padding: 8px 4px 16px;
-  justify-content: center;
+  padding: 8px 12px 20px;
+  justify-content: flex-start;
   gap: 0;
 }
 
@@ -325,6 +412,7 @@ pre {
   transition: all 0.15s ease;
   text-align: left;
   width: 100%;
+  box-sizing: border-box;
 }
 
 .nav-item:hover {
@@ -339,11 +427,18 @@ pre {
   font-weight: 600;
 }
 
-/* Collapsed Rail Item Adjustments */
+/* Collapsed rail item adjustments.
+   The rail is 52px wide with 8px padding each side, leaving 36px of usable width. The
+   previous rule kept the expanded `padding: 10px 14px`, which needs 28px of padding plus
+   the 20px icon = 48px — 12px wider than the rail. Every row therefore overflowed, which
+   produced a horizontal scrollbar across the whole nav (the ◀ ▶ strip) and left icons
+   unable to centre. Here the row fills the 36px and centres its icon, so nothing overflows
+   and the icons sit on one vertical axis. */
 .sidebar.collapsed .nav-item {
   padding: 10px 0;
   justify-content: center;
   position: relative;
+  overflow: hidden;
 }
 
 .sidebar.collapsed .nav-item svg {
@@ -351,6 +446,9 @@ pre {
   flex-shrink: 0;
 }
 
+.sidebar.collapsed .nav-item-icon-wrapper {
+  margin: 0 auto;
+}
 /* Inactive item icon color #71717a per spec */
 .nav-item svg {
   color: #71717a;
@@ -362,33 +460,11 @@ pre {
   color: #ffffff;
 }
 
-/* Instant pure CSS flyout tooltips in collapsed rail mode */
-.sidebar.collapsed .nav-item[data-tooltip]::after {
-  content: attr(data-tooltip);
-  position: absolute;
-  left: calc(100% + 10px);
-  top: 50%;
-  transform: translateY(-50%);
-  background: #18181b;
-  color: #fafafa;
-  font-size: 11.5px;
-  font-weight: 500;
-  padding: 5px 10px;
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--border);
-  white-space: nowrap;
-  pointer-events: none;
-  opacity: 0;
-  visibility: hidden;
-  transition: opacity 120ms ease, visibility 120ms ease;
-  box-shadow: var(--shadow-md);
-  z-index: 100;
-}
-
-.sidebar.collapsed .nav-item:hover[data-tooltip]::after {
-  opacity: 1;
-  visibility: visible;
-}
+/* Rail labels use the native `title` attribute (set in App.tsx). A CSS flyout was tried
+   here and removed: an absolutely-positioned `::after` with `white-space: nowrap` and
+   `left: calc(100% + 10px)` sits outside the 52px rail, and `visibility: hidden` still
+   contributes to `scrollWidth` — so every nav row reported horizontal overflow and the
+   sidebar drew a scrollbar strip across the rail. The native tooltip costs no layout. */
 
 /* Nav Item Badges & Indicators */
 .nav-item-icon-wrapper {
@@ -396,6 +472,9 @@ pre {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
 }
 
 /* Running profile count badge */
@@ -461,7 +540,7 @@ pre {
 }
 
 .sidebar.collapsed .sidebar-toggle-btn {
-  padding: 6px 0;
+  padding: 6px;
 }
 
 .sidebar.collapsed .api-status-pill {
@@ -580,6 +659,41 @@ pre {
   background: var(--control-bg-hover);
 }
 
+/* Theme switch: two segments in one track, mirroring the reference's `Light | Dark`.
+   Each segment is a button so either side can be chosen directly. */
+.theme-switch {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  background: var(--control-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.theme-switch-option {
+  flex: 1;
+  min-width: 0;
+  padding: 4px 8px;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font-family: inherit;
+  font-size: var(--text-xs);
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.theme-switch-option:hover {
+  color: var(--text);
+}
+
+.theme-switch-option.active {
+  background: var(--control-bg-selected);
+  color: var(--text);
+}
+
 .automation-actions-row {
   display: flex;
   align-items: center;
@@ -623,29 +737,53 @@ pre {
   flex-direction: column;
 }
 
-.theme-toggle-btn {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  background: var(--control-bg);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  padding: 4px 8px;
-  font-size: 11.5px;
-  color: var(--text-secondary);
-  cursor: pointer;
-}
-
-.theme-toggle-btn:hover {
-  background: var(--control-bg-hover);
-  color: var(--text);
-}
-
 .sidebar-version {
   font-size: 10.5px;
   color: var(--text-muted);
   text-align: right;
   user-select: none;
+}
+
+.sidebar.collapsed .sidebar-footer {
+  padding-top: var(--space-2);
+  gap: var(--space-2);
+}
+
+/* In the collapsed rail the API card cannot show text — there are 36 usable pixels. It
+   collapses to its status dot instead of being hidden outright, so the operator still sees
+   at a glance whether the service is up. The card's overflow is `visible` by default, which
+   is what let it bleed past the rail before. */
+.sidebar.collapsed .automation-api-panel {
+  padding: var(--space-1) 0;
+  align-items: center;
+  gap: var(--space-1);
+  background: transparent;
+  border: none;
+  overflow: hidden;
+}
+
+.sidebar.collapsed .automation-api-header {
+  justify-content: center;
+}
+
+.sidebar.collapsed .automation-api-title,
+.sidebar.collapsed .automation-api-address-row,
+.sidebar.collapsed .automation-actions-row,
+.sidebar.collapsed .theme-switch,
+.sidebar.collapsed .automation-api-status *:not(.status-dot) {
+  display: none;
+}
+
+.sidebar.collapsed .automation-api-status {
+  justify-content: center;
+}
+
+/* Nothing in the rail may overflow or scroll horizontally. */
+.sidebar.collapsed .nav,
+.sidebar.collapsed .nav-group,
+.sidebar.collapsed .nav-group-items,
+.sidebar.collapsed .sidebar-content {
+  overflow-x: hidden;
 }
 
 .sidebar.collapsed .sidebar-version {
@@ -1774,203 +1912,3 @@ tr.row-dense:focus-within .row-dense__actions {
   font-size: 13px;
 }
 
-/* ---------------------------------------------------------------------------
-   Sidebar footer panels: MCP status and the Automation API.
-
-   These classes were referenced by McpPanel.tsx / ServicePanel.tsx but never
-   defined, so both panels rendered unstyled — labels ran straight into their
-   values ("STATUSSTOPPED", "ORIGINhttp://…") because there was no flex row to
-   separate them. The rules below give every referenced class a definition.
-   --------------------------------------------------------------------------- */
-
-.footer-panel-root {
-  width: 100%;
-  border-top: 1px solid var(--divider);
-}
-
-.footer-panel-header {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  width: 100%;
-  padding: var(--space-2) var(--space-3);
-  background: transparent;
-  border: none;
-  color: var(--text-secondary);
-  font-family: inherit;
-  font-size: var(--text-2xs);
-  font-weight: var(--weight-semibold);
-  /* ALL CAPS must carry letter-spacing — this is the rule that keeps micro-labels legible. */
-  letter-spacing: var(--tracking-wide);
-  text-transform: uppercase;
-  cursor: pointer;
-  text-align: left;
-}
-
-.footer-panel-header:hover {
-  color: var(--text);
-  background: var(--control-bg);
-}
-
-.footer-panel-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: var(--radius-full);
-  flex-shrink: 0;
-}
-
-.footer-panel-title {
-  flex: 1;
-}
-
-.footer-panel-badge {
-  color: var(--text-muted);
-  font-size: var(--text-2xs);
-  letter-spacing: var(--tracking-wide);
-  white-space: nowrap;
-}
-
-.footer-panel-chevron {
-  color: var(--text-muted);
-  font-size: var(--text-2xs);
-  line-height: 1;
-}
-
-.footer-panel-body {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-  padding: var(--space-1) var(--space-3) var(--space-3);
-}
-
-/* The row is what separates a label from its value; without `justify-content:
-   space-between` the two run together. */
-.footer-panel-row {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: var(--space-2);
-  font-size: var(--text-2xs);
-  line-height: var(--leading-normal);
-}
-
-.footer-panel-label {
-  color: var(--text-muted);
-  letter-spacing: var(--tracking-wide);
-  text-transform: uppercase;
-  white-space: nowrap;
-  flex-shrink: 0;
-}
-
-.footer-panel-value {
-  color: var(--text-secondary);
-  text-align: right;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-/* Endpoint and curl text: selectable (the labels are not) and wrapped, because a
-   URL or a key must be readable in full rather than truncated. */
-.footer-panel-code {
-  display: block;
-  font-family: var(--font-mono);
-  font-size: var(--text-2xs);
-  color: var(--text-secondary);
-  background: var(--control-bg);
-  border-radius: var(--radius-sm);
-  padding: var(--space-1) var(--space-2);
-  word-break: break-all;
-  user-select: text;
-  cursor: text;
-  max-height: 72px;
-  overflow-y: auto;
-}
-
-.footer-panel-actions {
-  display: flex;
-  gap: var(--space-1);
-  margin-top: var(--space-1);
-}
-
-.footer-panel-btn {
-  flex: 1;
-  padding: var(--space-1) var(--space-2);
-  background: var(--control-bg);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  color: var(--text-secondary);
-  font-family: inherit;
-  font-size: var(--text-2xs);
-  font-weight: var(--weight-medium);
-  cursor: pointer;
-  white-space: nowrap;
-}
-
-.footer-panel-btn:hover:not(:disabled) {
-  background: var(--control-bg-hover);
-  color: var(--text);
-}
-
-.footer-panel-btn:disabled {
-  opacity: 0.5;
-  cursor: default;
-}
-
-.footer-panel-btn.primary {
-  background: var(--control-bg-active);
-  color: var(--text);
-}
-
-/* Destructive action, marked by surface weight rather than an alarm colour — the
-   palette stays monochrome. */
-.footer-panel-btn.danger {
-  color: var(--danger);
-  border-color: var(--danger);
-}
-
-.footer-panel-btn.secondary {
-  flex-shrink: 0;
-}
-
-/* Footer utility row: docs link plus the version pill. */
-.sidebar-footer-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-2);
-  padding: var(--space-2) var(--space-3);
-  border-top: 1px solid var(--divider);
-  font-size: var(--text-2xs);
-}
-
-.sidebar-footer-link {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-1);
-  background: transparent;
-  border: none;
-  color: var(--text-secondary);
-  font-family: inherit;
-  font-size: var(--text-2xs);
-  cursor: pointer;
-  padding: 0;
-}
-
-.sidebar-footer-link:hover {
-  color: var(--text);
-}
-
-.sidebar-version-pill {
-  color: var(--text-muted);
-  font-size: var(--text-2xs);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.sidebar.collapsed .footer-panel-root,
-.sidebar.collapsed .sidebar-footer-row {
-  display: none;
-}

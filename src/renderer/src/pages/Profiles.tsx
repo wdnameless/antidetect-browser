@@ -1223,20 +1223,135 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
   return (
     <div>
       {/* Top Action Header */}
-      <div className="page-header-actions">
-        <div className="header-filters">
-          <div className="search-box">
-            <SearchIcon size={16} />
+      <div
+        className="page-header-actions"
+        style={{
+          flexDirection: 'column',
+          alignItems: 'stretch',
+          gap: 'var(--space-3)',
+          marginBottom: 'var(--space-3)',
+        }}
+      >
+        {/* Top Action Row: Group/Tag toggles, Utilities, and single primary action */}
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 'var(--space-3)',
+            flexWrap: 'wrap',
+          }}
+        >
+          {/* Left Action Buttons: Restrained secondary toolbar controls */}
+          <div className="header-btn-group" style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-1)', flexWrap: 'wrap' }}>
+            <button className="btn btn-sm" onClick={() => setShowGroupModal(true)}>
+              <FolderIcon size={13} />
+              <span>Groups</span>
+            </button>
+            <button
+              className="btn btn-sm"
+              onClick={() => { setTagForm({ id: null, name: '', color: 'var(--text-secondary)' }); setShowTagModal(true); }}
+            >
+              <ProxiesIcon size={13} />
+              <span>Tags</span>
+            </button>
+            <button
+              className={`btn btn-sm ${blockOnFail ? 'active' : ''}`}
+              onClick={toggleBlockOnFail}
+              title={t('Block profile launch if preflight check fails (enforces proxy & fingerprint health before start)')}
+              style={{
+                borderColor: blockOnFail ? 'var(--accent)' : undefined,
+                color: blockOnFail ? 'var(--accent)' : undefined,
+                background: blockOnFail ? 'var(--control-bg-active)' : undefined,
+              }}
+            >
+              <ShieldCheckIcon size={13} />
+              <span>{blockOnFail ? t('Preflight Guard: ON') : t('Preflight Guard: OFF')}</span>
+            </button>
+            <div style={{ width: 1, height: 16, background: 'var(--divider)', margin: '0 4px' }} />
+            <button className="btn btn-sm" onClick={() => setShowBatch(true)}>
+              {t('Batch Create')}
+            </button>
+            <button className="btn btn-sm" onClick={() => setShowCsv(true)}>
+              {t('Import CSV')}
+            </button>
+            <button className="btn btn-sm" onClick={() => window.open(api.exportCsvUrl(), '_blank')} title={t('Export all profiles to CSV')}>
+              {t('Export CSV')}
+            </button>
+            <button className="btn btn-sm" onClick={() => document.getElementById('import-bundle-input')?.click()} disabled={busy} title={t('Import a profile bundle (.json) exported from this or another machine')}>
+              {t('Import Bundle')}
+            </button>
+            <input
+              id="import-bundle-input"
+              type="file"
+              accept="application/json,.json"
+              style={{ display: 'none' }}
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) void handleImportBundle(f);
+                e.target.value = '';
+              }}
+            />
+          </div>
+
+          {/* Primary Action Button */}
+          <div>
+            <button className="btn btn-sm primary" onClick={openCreateModal} disabled={busy} style={{ fontWeight: 500 }}>
+              <PlusIcon size={14} />
+              <span>{t('New Profile')}</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Integrated Unified Filter Toolbar Strip */}
+        <div
+          className="header-filters"
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 0,
+            background: 'var(--surface-2)',
+            border: '1px solid var(--border)',
+            borderRadius: 'var(--radius-md)',
+            padding: '2px',
+            overflow: 'hidden',
+          }}
+        >
+          <div
+            className="search-box"
+            style={{
+              flex: 1,
+              minWidth: 180,
+              background: 'transparent',
+              border: 'none',
+              borderRight: '1px solid var(--border)',
+              borderRadius: 0,
+              height: 'var(--control-h-sm)',
+              padding: '0 8px',
+            }}
+          >
+            <SearchIcon size={14} style={{ color: 'var(--text-muted)' }} />
             <input
               placeholder={t('Search profile name, ID, or proxy...')}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
+              style={{ fontSize: 'var(--text-xs)', background: 'transparent', border: 'none', outline: 'none' }}
             />
           </div>
           <select
             className="select-input"
             value={selectedGroupFilter}
             onChange={(e) => setSelectedGroupFilter(e.target.value)}
+            style={{
+              background: 'transparent',
+              border: 'none',
+              borderRight: '1px solid var(--border)',
+              borderRadius: 0,
+              height: 'var(--control-h-sm)',
+              fontSize: 'var(--text-xs)',
+              padding: '0 10px',
+              color: selectedGroupFilter ? 'var(--text)' : 'var(--text-secondary)',
+            }}
           >
             <option value="">{t('All Groups')} ({groups.reduce((acc, g) => acc + g.profile_count, 0)})</option>
             {groups.map((g) => (
@@ -1250,6 +1365,16 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
             className="select-input"
             value={selectedPlatformFilter}
             onChange={(e) => setSelectedPlatformFilter(e.target.value)}
+            style={{
+              background: 'transparent',
+              border: 'none',
+              borderRight: '1px solid var(--border)',
+              borderRadius: 0,
+              height: 'var(--control-h-sm)',
+              fontSize: 'var(--text-xs)',
+              padding: '0 10px',
+              color: selectedPlatformFilter ? 'var(--text)' : 'var(--text-secondary)',
+            }}
           >
             <option value="">{t('All Platforms')}</option>
             <option value="windows">{t('Windows')}</option>
@@ -1263,6 +1388,16 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
             className="select-input"
             value={selectedStatusFilter}
             onChange={(e) => setSelectedStatusFilter(e.target.value)}
+            style={{
+              background: 'transparent',
+              border: 'none',
+              borderRight: '1px solid var(--border)',
+              borderRadius: 0,
+              height: 'var(--control-h-sm)',
+              fontSize: 'var(--text-xs)',
+              padding: '0 10px',
+              color: selectedStatusFilter ? 'var(--text)' : 'var(--text-secondary)',
+            }}
           >
             <option value="">{t('All Statuses')}</option>
             <option value="running">{t('Running')}</option>
@@ -1273,6 +1408,15 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
             className="select-input"
             value={selectedTagFilter}
             onChange={(e) => setSelectedTagFilter(e.target.value)}
+            style={{
+              background: 'transparent',
+              border: 'none',
+              borderRadius: 0,
+              height: 'var(--control-h-sm)',
+              fontSize: 'var(--text-xs)',
+              padding: '0 10px',
+              color: selectedTagFilter ? 'var(--text)' : 'var(--text-secondary)',
+            }}
           >
             <option value="">{t('All Tags')}</option>
             {tags.map((tg) => (
@@ -1281,57 +1425,6 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
               </option>
             ))}
           </select>
-        </div>
-
-        <div className="header-btn-group">
-          <button className="btn" onClick={() => setShowGroupModal(true)}>
-            <FolderIcon size={14} />
-            <span>Groups</span>
-          </button>
-          <button className="btn" onClick={() => { setTagForm({ id: null, name: '', color: '#71717a' }); setShowTagModal(true); }}>
-            <ProxiesIcon size={14} />
-            <span>Tags</span>
-          </button>
-          <button
-            className={`btn ${blockOnFail ? 'active' : ''}`}
-            onClick={toggleBlockOnFail}
-            title={t('Block profile launch if preflight check fails (enforces proxy & fingerprint health before start)')}
-            style={{
-              borderColor: blockOnFail ? 'var(--accent)' : undefined,
-              color: blockOnFail ? 'var(--accent)' : undefined,
-              background: blockOnFail ? 'var(--control-bg-active)' : undefined,
-            }}
-          >
-            <ShieldCheckIcon size={14} />
-            <span>{blockOnFail ? t('Preflight Guard: ON') : t('Preflight Guard: OFF')}</span>
-          </button>
-          <button className="btn" onClick={() => setShowBatch(true)}>
-            {t('Batch Create')}
-          </button>
-          <button className="btn" onClick={() => setShowCsv(true)}>
-            {t('Import CSV')}
-          </button>
-          <button className="btn" onClick={() => window.open(api.exportCsvUrl(), '_blank')} title={t('Export all profiles to CSV')}>
-            {t('Export CSV')}
-          </button>
-          <button className="btn" onClick={() => document.getElementById('import-bundle-input')?.click()} disabled={busy} title={t('Import a profile bundle (.json) exported from this or another machine')}>
-            {t('Import Bundle')}
-          </button>
-          <input
-            id="import-bundle-input"
-            type="file"
-            accept="application/json,.json"
-            style={{ display: 'none' }}
-            onChange={(e) => {
-              const f = e.target.files?.[0];
-              if (f) void handleImportBundle(f);
-              e.target.value = '';
-            }}
-          />
-          <button className="btn primary" onClick={openCreateModal} disabled={busy}>
-            <PlusIcon size={15} />
-            <span>{t('New Profile')}</span>
-          </button>
         </div>
       </div>
 
@@ -1384,11 +1477,11 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
                   colSpan={8}
                   icon={<ProfilesIcon size={32} />}
                   title={t('No profiles yet')}
-                  description={t('Create your first browser profile — each profile gets a unique fingerprint, device, and proxy. Click + New Profile to get started.')}
+                  description={t('Create your first browser profile — each profile gets a unique fingerprint, device, and proxy.')}
                   action={
-                    <button className="btn btn-sm primary" onClick={openCreateModal}>
+                    <button className="btn btn-sm primary" onClick={openCreateModal} style={{ fontWeight: 500 }}>
                       <PlusIcon size={13} />
-                      <span>{t('+ New Profile')}</span>
+                      <span>{t('New Profile')}</span>
                     </button>
                   }
                 />
@@ -1890,7 +1983,7 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
             <span
               style={{
                 background: 'var(--accent)',
-                color: '#fff',
+                color: 'var(--accent-foreground)',
                 borderRadius: '50%',
                 width: 22,
                 height: 22,

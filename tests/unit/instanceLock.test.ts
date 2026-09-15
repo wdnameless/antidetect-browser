@@ -44,12 +44,6 @@ describe('instanceLock', () => {
       expect(isProcessOurApp(12345, { execFileSync: fakeExec })).toBe(true);
     });
 
-    it('returns true when command line contains electron', () => {
-      const fakeExec = vi.fn().mockReturnValue(
-        'CommandLine\nelectron.exe . --inspect'
-      );
-      expect(isProcessOurApp(12345, { execFileSync: fakeExec })).toBe(true);
-    });
 
     it('returns true when command line contains node with our service or entry path', () => {
       const fakeExec = vi.fn().mockReturnValue(

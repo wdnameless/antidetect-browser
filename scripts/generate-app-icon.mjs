@@ -18,7 +18,7 @@ import { fileURLToPath } from 'node:url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const OUT_DIR = path.join(__dirname, '..', 'resources');
 
-// Two sizes: 256 is what electron-builder needs to derive the .exe icon, while
+// Two sizes: 256 is what the desktop shell needs for the app icon, while
 // the tray slot is only 16-24 logical px — feeding the tray a native small
 // bitmap keeps it sharp instead of letting Windows downscale 256 -> 16.
 const APP_ICON = { size: 256, file: path.join(OUT_DIR, 'icon.png') };

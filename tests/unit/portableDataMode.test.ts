@@ -15,9 +15,6 @@ import {
   resolveDataDir,
   isPortableMode,
   portableBaseDir,
-  needsDataModeChoice,
-  setDataMode,
-  readSettings,
 } from '../../src/main/config';
 
 let tmpRoot: string;
@@ -55,7 +52,6 @@ describe('portable mode detection', () => {
   it('is off when the portable variable is absent', () => {
     expect(isPortableMode()).toBe(false);
     expect(portableBaseDir()).toBeNull();
-    expect(needsDataModeChoice()).toBe(false);
   });
 
   it('is on when the portable variable is set', () => {
@@ -111,31 +107,5 @@ describe('data directory resolution order', () => {
     const onB = resolveDataDir();
     expect(onB).toBe(path.join(b, 'data'));
     expect(onB).not.toBe(onA);
-  });
-});
-
-describe('first-run choice', () => {
-  it('is required on a portable launch with no recorded choice', () => {
-    setEnv('PORTABLE_EXECUTABLE_DIR', tmpRoot);
-    expect(needsDataModeChoice()).toBe(true);
-  });
-
-  it('records the answer and does not ask again', () => {
-    setEnv('PORTABLE_EXECUTABLE_DIR', tmpRoot);
-    setDataMode('portable');
-    expect(readSettings().dataMode).toBe('portable');
-    expect(needsDataModeChoice()).toBe(false);
-    expect(resolveDataDir()).toBe(path.join(tmpRoot, 'data'));
-  });
-
-  it('accepts an explicit system choice', () => {
-    setEnv('PORTABLE_EXECUTABLE_DIR', tmpRoot);
-    setDataMode('system');
-    expect(needsDataModeChoice()).toBe(false);
-    expect(resolveDataDir()).toBe(path.join(settingsDir, 'data'));
-  });
-
-  it('is never asked on a non-portable launch', () => {
-    expect(needsDataModeChoice()).toBe(false);
   });
 });

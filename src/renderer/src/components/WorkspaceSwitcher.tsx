@@ -24,24 +24,33 @@ export function WorkspaceSwitcher({ active, onChange }: { active: string; onChan
     return () => window.clearInterval(iv);
   }, [load]);
 
+  const activeTeams = teams.filter((tm) => tm.local_status === 'active');
+  if (activeTeams.length === 0) {
+    return null;
+  }
+
   const options: Array<{ id: string; label: string }> = [
     { id: 'personal', label: t('Personal') },
-    ...teams.filter((tm) => tm.local_status === 'active').map((tm) => ({ id: tm.id, label: tm.name })),
+    ...activeTeams.map((tm) => ({ id: tm.id, label: tm.name })),
   ];
 
+  const tooltip = t('Active workspace (scopes profiles and teams)');
+
   return (
-    <select
-      className="input"
-      style={{ fontSize: 12, padding: '4px 8px', margin: '6px 12px', width: 'calc(100% - 24px)' }}
-      value={active}
-      onChange={(e) => onChange(e.target.value)}
-      title={t('Active workspace')}
-    >
-      {options.map((o) => (
-        <option key={o.id} value={o.id}>
-          {o.label}
-        </option>
-      ))}
-    </select>
+    <div className="workspace-switcher-block" title={tooltip}>
+      <div className="workspace-switcher-caption">{t('Workspace')}</div>
+      <select
+        className="input workspace-switcher-select"
+        value={active}
+        onChange={(e) => onChange(e.target.value)}
+        aria-label={t('Active workspace')}
+      >
+        {options.map((o) => (
+          <option key={o.id} value={o.id}>
+            {o.label}
+          </option>
+        ))}
+      </select>
+    </div>
   );
 }

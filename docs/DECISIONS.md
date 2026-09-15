@@ -39,3 +39,25 @@
 - **Решение (Фаза 5):** заменить на `sql.js` (WASM, чистый JS) с адаптером, повторяющим API better-sqlite3 (`prepare/run/get/all/exec`). Бэкенд больше не содержит нативных модулей и работает прямо в Electron main без пересборки. `better-sqlite3` удалён.
 - **Последствия:** стандартная упаковка electron-builder; нет зависимости от build tools; БД персистится в файл при каждой записи (приемлемо для локального инструмента).
 - **Статус (Фаза 5): РЕШЕНО и верифицировано** — упакованное приложение (`release/win-unpacked`) запускается, бэкенд стартует, API отвечает; инсталлятор NSIS собран. Детали — [`docs/ENVIRONMENT.md`](ENVIRONMENT.md).
+
+## ADR-008: Замена Electron на десктопную оболочку Tauri v2 (SUPERSEDES ADR-005)
+- **Контекст:** В ADR-005 десктопной оболочкой был выбран Electron. На практике бэкенд оказался полностью отвязан от Electron (`node dist/src/main/index.js` запускает полноценный сервис без Electron-зависимостей), рендерер общается с сервисом исключительно по HTTP REST API, а реальный функционал Electron сводился к ~300 строкам кода (`electron/main.ts` + `preload.ts`), реализующим окно, системный трей, диалоги и DPAPI. За этот минимальный слой приходилось платить ~150 МБ встроенного Chromium и вторым экземпляром браузерного движка в памяти.
+- **Решение:** Перевести основной десктопный билд с Electron на легковесную оболочку Tauri v2 (`src-tauri/`). Решение ADR-005 о стеке Electron суперседится данным ADR. При этом бэкенд **остаётся на Node.js** (переписывание бэкенда на Rust не планируется); оболочка является нативным окном и системным клеем над запущенным сервисом. Решение ADR-007 по `sql.js` (WASM/чистый JS) остаётся в силе и не затрагивается.
+- **Аудит функционала Electron и замена компонентов:**
+
+  | Функционал Electron | Чем заменён в Tauri |
+  |---|---|
+  | `BrowserWindow` (frameless, minimize/toggle-maximize/close) | Tauri webview (`decorations: false`) + core window API |
+  | `contextBridge` preload `window.antidetect` | Внедряемый скрипт инициализации (`src-tauri/src/bridge.js`) |
+  | `data:*` IPC (директория get/set/migrate/open, открытие логов) | Аутентифицированный HTTP API (`/api/v1/data/*`) + shell dialogs |
+  | `electron.safeStorage` (DPAPI) | Rust DPAPI-команда (`src-tauri/src/secrets.rs`) с обратной совместимостью с префиксом `enc:` |
+  | `powerMonitor` + `setContentProtection` (защита экрана) | Tauri `set_content_protected` + Win32 idle/power/session в Rust |
+  | `electron-updater` + проверка подписанного манифеста | `tauri-plugin-updater` + собственная валидация манифеста и связки ключей в Rust |
+  | Трей (Tray), single instance | Нативный системный трей Tauri + `tauri-plugin-single-instance` |
+  | `before-quit` graceful shutdown | `POST /api/v1/shutdown` перед принудительным завершением процесса |
+
+- **Ограничения платформ и честный статус:**
+  - **Windows** — единственная платформа, на которой сборка собрана и верифицирована.
+  - **macOS / Linux** — поставляются исключительно как конфигурация; артефакты под них пока не публикуются.
+  - Защита от захвата экрана (`set_content_protected`) работает кроссплатформенно, но автоблокировка по бездействию (measured-idle) и блокировка при выходе из сессии (session-lock) в данной волне реализованы только под Windows (через Win32 API).
+  - Electron-скрипты сохраняются в кодовой базе ровно на один релиз в качестве запасного варианта (fallback), после чего будут удалены.

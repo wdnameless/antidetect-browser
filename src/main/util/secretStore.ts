@@ -1,19 +1,19 @@
 // Secret protection for proxy credentials stored in the DB (v0.2.20).
 //
 // Stored format (priority order):
-//   "enc:<base64>" — DPAPI via electron.safeStorage (Electron main process)
+//   "enc:<base64>" — DPAPI / platform keyring via Tauri shell's Rust command
+//                    (src-tauri/src/secrets.rs), injected into the backend via setSecretCipher
 //   "aes:<base64>" — AES-256-GCM with a machine-local key file
 //                    (DATA_DIR/secret.key, generated once, mode 0600) — used
 //                    when running standalone (`npm run service`) or in server
-//                    mode, where Electron's safeStorage is unavailable
+//                    mode, where the shell's cipher is unavailable
 //   "plain:<text>" — last-resort fallback (never used when a key file exists)
 //
 // Values without a prefix are legacy plaintext from older versions — read
 // transparently, re-encrypted on the next write.
 //
-// The DPAPI cipher is injected by the Electron main process after
-// app.whenReady() (the backend itself never imports Electron at module load —
-// see ADR-007 module-system note in electron/main.ts).
+// The shell injects the cipher via setSecretCipher; the on-disk format and
+// enc:/aes:/plain: prefix semantics remain unchanged.
 
 import * as fs from 'fs';
 import * as path from 'path';

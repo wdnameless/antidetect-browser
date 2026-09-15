@@ -11,5 +11,5 @@
     // ES2024 Promise library explicitly rather than silencing the rule that requires it.
     "lib": ["ES2022", "ES2024.Promise"]
   },
-  "include": ["electron/**/*", "src/main/**/*"]
+  "include": ["src/main/**/*"]
 }
