@@ -16,6 +16,7 @@
     "pretest": "npm run build:sdk",
     "test": "vitest run",
     "typecheck:main": "tsc -p tsconfig.main.json --noEmit",
+    "pretypecheck": "npm run build:sdk",
     "typecheck:node": "tsc -p tsconfig.main.json --noEmit",
     "typecheck:renderer": "tsc -p src/renderer/tsconfig.json --noEmit",
     "build:mcp": "tsc -p mcp/tsconfig.json",
