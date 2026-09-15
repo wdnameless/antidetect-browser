@@ -15,9 +15,18 @@ const RU: Record<string, string> = {
   'Extensions': 'Расширения',
   'Email': 'Почта',
   'Settings': 'Настройки',
+  'Fingerprints': 'Отпечатки',
+  'Automation': 'Автоматизация',
+  'Library': 'Библиотека',
+  'Workspace': 'Рабочая область',
+  'System': 'Система',
+  'Trash': 'Корзина',
+  'Patch log': 'Патч-лог',
+  'Diagnostics': 'Диагностика',
+  'Cloud': 'Облако',
+  'Active workspace (scopes profiles and teams)': 'Активное пространство (определяет видимость профилей и команд)',
   'Loading NullTrace...': 'Загрузка NullTrace...',
   'Local Core: 127.0.0.1': 'Локальное ядро: 127.0.0.1',
-
   // Profiles header
   'Search profile name, ID, or proxy...': 'Поиск по имени, ID или прокси...',
   'All Groups': 'Все группы',
@@ -169,7 +178,6 @@ const RU: Record<string, string> = {
   'Automation API': 'API автоматизации',
   'Data Folder': 'Папка данных',
   'Updates': 'Обновления',
-  'Diagnostics': 'Диагностика',
   'Automation API (for your scripts)': 'API автоматизации (для ваших скриптов)',
   'Endpoint URL': 'Адрес API',
   'Bearer API Key': 'API-ключ (Bearer)',
@@ -408,7 +416,6 @@ const RU: Record<string, string> = {
   'Warning': 'Предупреждение',
 
   // Sprint 2: Trash
-  'Trash': 'Корзина',
   'Deleted profiles are kept for 30 days, then purged automatically.': 'Удалённые профили хранятся 30 дней, затем удаляются автоматически.',
   'Deleted at': 'Дата удаления',
   'Delete forever': 'Удалить навсегда',
@@ -592,6 +599,72 @@ const RU: Record<string, string> = {
   'No remote updates detected (local and remote data are identical).': 'Обновлений не обнаружено (локальные и облачные данные идентичны).',
   'Google Drive synced successfully': 'Синхронизация Google Drive выполнена успешно',
   'Drive credentials saved securely': 'Учетные данные Drive сохранены безопасно',
+  // Email Manager translations
+  'email.title': 'Управление почтой',
+  'email.subtitle': 'Чтение IMAP входящих и извлечение кодов верификации',
+  'email.addAccount': 'Добавить аккаунт',
+  'email.accounts': 'Аккаунты',
+  'email.loading': 'Загрузка...',
+  'email.noAccounts': 'Нет настроенных аккаунтов',
+  'email.delete': 'Удалить',
+  'email.inbox': 'Входящие',
+  'email.cached': 'Кэшировано',
+  'email.refresh': 'Обновить',
+  'email.selectAccountPrompt': 'Выберите аккаунт для просмотра входящих',
+  'email.loadingInbox': 'Загрузка входящих...',
+  'email.noMessages': 'Папка входящих пуста',
+  'email.messageView': 'Сообщение и коды верификации',
+  'email.readingMessage': 'Чтение сообщения...',
+  'email.selectMessagePrompt': 'Выберите сообщение для просмотра содержимого и кодов верификации',
+  'email.extractedCodes': 'Извлеченные коды / ссылки верификации',
+  'email.noCodesFound': 'В этом сообщении не найдено кодов или ссылок.',
+  'email.copy': 'Копировать',
+  'email.copied': 'Скопировано!',
+  'email.label': 'Метка (необязательно)',
+  'email.email': 'Email',
+  'email.host': 'IMAP Хост',
+  'email.port': 'Порт',
+  'email.username': 'Имя пользователя',
+  'email.password': 'Пароль / Пароль приложения',
+  'email.cancel': 'Отмена',
+  'email.save': 'Сохранить',
+  'calendar.jumpHint': 'Нажмите OK, чтобы перейти к выбранной группе',
+
+  // Sidebar footer: Automation API block
+  'On': 'Вкл',
+  'Off': 'Выкл',
+  'Copied': 'Скопировано',
+  'MCP': 'MCP',
+  'MCP config': 'Конфиг MCP',
+  'Documentation': 'Документация',
+  'Copy API address': 'Копировать адрес API',
+  'Start the MCP server': 'Запустить сервер MCP',
+  'Stop the MCP server': 'Остановить сервер MCP',
+  'Copy the MCP client configuration': 'Копировать конфигурацию клиента MCP',
+  'API key is set': 'API-ключ задан',
+  'No API key detected': 'API-ключ не найден',
+  '{n} tools': '{n} инструментов',
+
+  // Theme toggle in the sidebar footer
+  'Theme': 'Тема',
+  'Light': 'Светлая',
+  'Dark': 'Тёмная',
+  'Switch to the light theme': 'Переключить на светлую тему',
+  'Switch to the dark theme': 'Переключить на тёмную тему',
+  'Appearance': 'Оформление',
+
+  // Kernel install (one-time ~425 MB download)
+  'Kernel': 'Ядро',
+  'Download and install kernel': 'Скачать и установить ядро',
+  'Installing…': 'Установка…',
+  'The application restarts once to apply the location.': 'Приложение перезапустится один раз, чтобы применить расположение.',
+  'Where should {product} keep its files?': 'Куда {product} должен сохранять свои файлы?',
+  'Profiles, the browser kernel, extensions and backups go here. This can be tens of gigabytes, so pick a drive with room. You can change it later in Settings.': 'Здесь хранятся профили, ядро браузера, расширения и резервные копии. Это могут быть десятки гигабайт, поэтому выбирайте диск с запасом места. Позже это можно изменить в настройках.',
+  'Browse…': 'Обзор…',
+  'That folder cannot be used.': 'Эту папку нельзя использовать.',
+  'Could not check that folder.': 'Не удалось проверить эту папку.',
+  'Could not save that folder.': 'Не удалось сохранить эту папку.',
+  'Saving…': 'Сохранение…',
 };
 
 interface I18nCtx {
@@ -600,7 +673,59 @@ interface I18nCtx {
   t: (s: string) => string;
 }
 
-const Ctx = createContext<I18nCtx>({ lang: 'en', setLang: () => undefined, t: (s) => s });
+const EN: Record<string, string> = {
+  'email.title': 'Email Manager',
+  'email.subtitle': 'Read-only IMAP inbox and verification code extraction',
+  'email.addAccount': 'Add Account',
+  'email.accounts': 'Accounts',
+  'email.loading': 'Loading...',
+  'email.noAccounts': 'No accounts configured',
+  'email.delete': 'Delete',
+  'email.inbox': 'Inbox',
+  'email.cached': 'Cached',
+  'email.refresh': 'Refresh',
+  'email.selectAccountPrompt': 'Select an account to view inbox',
+  'email.loadingInbox': 'Loading inbox...',
+  'email.noMessages': 'Inbox is empty',
+  'email.messageView': 'Message & Extracted Codes',
+  'email.readingMessage': 'Reading message...',
+  'email.selectMessagePrompt': 'Select a message to view its body and verification codes',
+  'email.extractedCodes': 'Extracted Verification Codes / Links',
+  'email.noCodesFound': 'No codes or links detected in this message.',
+  'email.copy': 'Copy',
+  'email.copied': 'Copied!',
+  'email.label': 'Label (Optional)',
+  'email.email': 'Email',
+  'email.host': 'IMAP Host',
+  'email.port': 'Port',
+  'email.username': 'Username',
+  'email.password': 'Password / App Password',
+  'email.cancel': 'Cancel',
+  'email.save': 'Save',
+  'calendar.jumpHint': 'Click OK to jump to the selected group',
+  // The `{n} tools` label is substituted at the call site; it exists here so the
+  // placeholder is translated rather than concatenated in the component.
+  '{n} tools': '{n} tools',
+  'Light': 'Light',
+  'Dark': 'Dark',
+  'Theme': 'Theme',
+  'Appearance': 'Appearance',
+  'Kernel': 'Kernel',
+  'Download and install kernel': 'Download and install kernel',
+  'Installing…': 'Installing…',
+  'The application restarts once to apply the location.': 'The application restarts once to apply the location.',
+  'Where should {product} keep its files?': 'Where should {product} keep its files?',
+  'Profiles, the browser kernel, extensions and backups go here. This can be tens of gigabytes, so pick a drive with room. You can change it later in Settings.': 'Profiles, the browser kernel, extensions and backups go here. This can be tens of gigabytes, so pick a drive with room. You can change it later in Settings.',
+  'Browse…': 'Browse…',
+  'Checking…': 'Checking…',
+  'That folder cannot be used.': 'That folder cannot be used.',
+  'Could not check that folder.': 'Could not check that folder.',
+  'Could not save that folder.': 'Could not save that folder.',
+  'Saving…': 'Saving…',
+  'Use this folder': 'Use this folder',
+};
+
+const Ctx = createContext<I18nCtx>({ lang: 'en', setLang: () => undefined, t: (s) => EN[s] ?? s });
 
 export function I18nProvider({ children }: { children: ReactNode }) {
   const [lang, setLangState] = useState<Lang>(() => {
@@ -611,7 +736,7 @@ export function I18nProvider({ children }: { children: ReactNode }) {
     setLangState(l);
     localStorage.setItem('lang', l);
   };
-  const t = (s: string): string => (lang === 'ru' ? RU[s] ?? s : s);
+  const t = (s: string): string => (lang === 'ru' ? RU[s] ?? EN[s] ?? s : EN[s] ?? s);
   return <Ctx.Provider value={{ lang, setLang, t }}>{children}</Ctx.Provider>;
 }
 

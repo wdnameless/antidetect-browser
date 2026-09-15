@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { initApiKey, api, setApiKey } from './api';
 import { LoginScreen } from './LoginScreen';
+import { FirstRunDataDir } from './FirstRunDataDir';
 import { useI18n } from './i18n';
 import { PRODUCT_NAME, TAGLINE_PRIMARY } from './brand';
 import {
@@ -26,8 +27,7 @@ import { Catalog } from './pages/Catalog';
 import { FlowCanvas } from './pages/FlowCanvas';
 import { Email } from './pages/Email';
 import { WorkspaceSwitcher } from './components/WorkspaceSwitcher';
-import { McpPanel } from './components/McpPanel';
-import { ServicePanel } from './components/ServicePanel';
+import { AutomationPanel } from './components/AutomationPanel';
 import {
   ProfilesIcon,
   FolderIcon,
@@ -70,14 +70,27 @@ export interface NavDestination {
   key: Page;
   label: string;
   icon: React.ComponentType<{ size?: number; style?: React.CSSProperties }>;
+  group?: 'WORKSPACE' | 'LIBRARY' | 'SYSTEM';
   subTabs?: SubTab[];
 }
 
+/**
+ * Sidebar grouping, mirroring the ShardX reference: one flat list divided by small
+ * all-caps labels rather than nested collapsible sections. Order here is the render order.
+ */
+export const NAV_GROUPS: Array<{ id: string; label: string }> = [
+  { id: 'WORKSPACE', label: 'WORKSPACE' },
+  { id: 'LIBRARY', label: 'LIBRARY' },
+  { id: 'SYSTEM', label: 'SYSTEM' },
+];
+
 export const NAV_DESTINATIONS: NavDestination[] = [
+  // WORKSPACE
   {
     key: 'profiles',
     label: 'Profiles',
     icon: ProfilesIcon,
+    group: 'WORKSPACE',
     subTabs: [
       { key: 'profiles', label: 'Profiles' },
       { key: 'groups', label: 'Groups' },
@@ -88,39 +101,46 @@ export const NAV_DESTINATIONS: NavDestination[] = [
     key: 'proxies',
     label: 'Proxies',
     icon: ProxiesIcon,
+    group: 'WORKSPACE',
   },
   {
+    key: 'flows',
+    label: 'Automation',
+    icon: FlowIcon,
+    group: 'WORKSPACE',
+    subTabs: [
+      { key: 'flows', label: 'Flow Canvas' },
+      { key: 'scripts', label: 'Scripts' },
+    ],
+  },
+  // LIBRARY
+  {
     key: 'devices',
-    label: 'Browser',
+    label: 'Fingerprints',
     icon: DevicesIcon,
+    group: 'LIBRARY',
     subTabs: [
       { key: 'devices', label: 'Devices' },
       { key: 'extensions', label: 'Extensions' },
     ],
   },
   {
-    key: 'flows',
-    label: 'Automation',
-    icon: FlowIcon,
-    subTabs: [
-      { key: 'flows', label: 'Flow Canvas' },
-      { key: 'scripts', label: 'Scripts' },
-    ],
-  },
-  {
     key: 'email',
     label: 'Library',
     icon: CookieIcon,
+    group: 'LIBRARY',
     subTabs: [
       { key: 'email', label: 'Email' },
       { key: 'calendar', label: 'Calendar' },
       { key: 'catalog', label: 'Catalog' },
     ],
   },
+  // SYSTEM
   {
     key: 'cloud',
     label: 'Cloud',
     icon: CloudIcon,
+    group: 'SYSTEM',
     subTabs: [
       { key: 'cloud', label: 'Cloud Sync' },
       { key: 'teams', label: 'Teams' },
@@ -130,6 +150,7 @@ export const NAV_DESTINATIONS: NavDestination[] = [
     key: 'settings',
     label: 'Settings',
     icon: SettingsIcon,
+    group: 'SYSTEM',
     subTabs: [
       { key: 'settings', label: 'Settings' },
       { key: 'diagnostics', label: 'Diagnostics' },
@@ -151,6 +172,7 @@ export function App() {
   const hasNativeWindow = typeof window !== 'undefined' && Boolean(window.antidetect?.window);
   const [ready, setReady] = useState(false);
   const [authenticated, setAuthenticated] = useState<boolean>(false);
+  const [firstRunDir, setFirstRunDir] = useState<string | null>(null);
   const [page, setPage] = useState<Page>('profiles');
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
   const [workspace, setWorkspace] = useState('personal');
@@ -197,14 +219,62 @@ export function App() {
   }, []);
 
   useEffect(() => {
-    void initApiKey().then((token) => {
+    // ISSUE 1: Local use is unauthenticated by design.
+    // The credential gate exists for cloud sync / remote panel access.
+    // Query the panel auth-state: if no password is configured (hasPassword === false),
+    // do not gate behind LoginScreen. If hasPassword === true, credentials are required.
+    let mounted = true;
+    async function startupAuth() {
+      let hasPassword = false;
+      try {
+        const authRes = await api.authState();
+        if (authRes?.code === 0 && authRes.data) {
+          hasPassword = Boolean(authRes.data.hasPassword);
+        }
+      } catch {
+        // If the backend or endpoint is unreachable, fall back to checking if token exists
+      }
+
+      const token = await initApiKey();
+      if (!mounted) return;
+
+      /**
+       * Ask whether the data location has ever been chosen, before anything else runs.
+       *
+       * This sits ahead of the credential gate on purpose: the folder decides where the
+       * profiles, kernel and even the login database live, so asking it after the operator
+       * has signed in (or created a password) would be asking about data that already exists.
+       * A failed check must NOT block startup — an unreachable endpoint is not a reason to
+       * hide the app; the operator can still set the folder later in Settings.
+       */
+      try {
+        const fr = await api.firstRunData();
+        if (!mounted) return;
+        if (fr.data?.needed) {
+          setFirstRunDir(fr.data.defaultDir ?? '');
+          setReady(true);
+          return;
+        }
+      } catch {
+        // Endpoint unavailable or key not yet accepted: fall through to normal startup.
+      }
+
       if (token) {
         initSession(token);
+      } else if (!hasPassword) {
+        // Local instance with no configured credentials:
+        // Allow entry directly without blocking on login screen.
+        initSession('');
       } else {
+        // Credentials configured: strictly enforce LoginScreen gate
         setAuthenticated(false);
         setReady(true);
       }
-    });
+    }
+    void startupAuth();
+    return () => {
+      mounted = false;
+    };
   }, [initSession]);
 
   const toggleSidebar = useCallback(() => {
@@ -250,12 +320,66 @@ export function App() {
     setWorkspace(ws);
     void api.workspaceSetActive(ws).catch(() => undefined);
   };
+
+  // Footer version line. Kept as plain derived strings so the render stays readable and
+  // the "not configured yet" case (no published update metadata) reads as a state rather
+  // than a failure — the endpoint genuinely has nothing to serve until a release publishes
+  // latest.json, and presenting that as an error was misleading.
+  const updatesNotConfigured =
+    kernelUpdateState?.status === 'error' &&
+    Boolean(kernelUpdateState.error?.includes('Could not fetch a valid release JSON'));
+  const updateTitle = !hasRunUpdateCheck
+    ? 'Update check has not run'
+    : updatesNotConfigured
+      ? 'Automatic updates are not configured for this build yet'
+      : kernelUpdateState?.status === 'update-available'
+        ? `Update available: ${kernelUpdateState.info?.version ?? 'new'}`
+        : kernelUpdateState?.status === 'downloading'
+          ? 'Downloading update...'
+          : kernelUpdateState?.status === 'downloaded'
+            ? 'Update downloaded (ready to install)'
+            : kernelUpdateState?.status === 'error'
+              ? `Update error: ${kernelUpdateState.error ?? 'failed'}`
+              : 'Up to date';
+  const updateLabel = !hasRunUpdateCheck
+    ? t('Not checked')
+    : updatesNotConfigured
+      ? t('Updates not configured')
+      : kernelUpdateState?.status === 'update-available'
+        ? t('Update available')
+        : kernelUpdateState?.status === 'downloading'
+          ? t('Downloading...')
+          : kernelUpdateState?.status === 'downloaded'
+            ? t('Restart to update')
+            : kernelUpdateState?.status === 'error'
+              ? t('Check failed')
+              : t('Up to date');
+
   if (!ready) {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100vh', gap: '8px', color: 'var(--text-muted)' }}>
         <div>Loading {PRODUCT_NAME}...</div>
         <div style={{ fontSize: '12px', opacity: 0.7 }}>{TAGLINE_PRIMARY}</div>
       </div>
+    );
+  }
+
+  if (firstRunDir !== null) {
+    return (
+      <FirstRunDataDir
+        defaultDir={firstRunDir}
+        onDone={() => {
+          /**
+           * The location is recorded, but the backend resolved `DATA_DIR` when it started,
+           * so it only takes effect on the next launch. Restart rather than leaving the
+           * operator in an app whose data still lives in the folder they just moved away
+           * from — the shell re-executes and the sidecar is torn down through the normal
+           * exit path (graceful shutdown, then kill), so nothing is orphaned.
+           */
+          void window.antidetect?.data?.restart?.();
+          setFirstRunDir(null);
+        }}
+      />
     );
   }
 
@@ -275,7 +399,7 @@ export function App() {
         className={`sidebar ${sidebarCollapsed ? 'collapsed' : ''}`}
         aria-label="Navigation sidebar"
       >
-        <div>
+        <div className="sidebar-content">
           <div className="brand" title={`${PRODUCT_NAME} PRO`}>
             <div className="brand-icon">
               <BrandMark size={20} />
@@ -285,41 +409,52 @@ export function App() {
           </div>
 
           <nav className="nav" aria-label="Main navigation">
-            {NAV_DESTINATIONS.map((dest) => {
-              const Icon = dest.icon;
-              const isDestActive =
-                page === dest.key || dest.subTabs?.some((st) => st.key === page);
-              const isProfiles = dest.key === 'profiles';
-              const isCloud = dest.key === 'cloud';
-              const itemLabel = t(dest.label);
-
+            {NAV_GROUPS.map((group) => {
+              const groupItems = NAV_DESTINATIONS.filter((d) => d.group === group.id);
+              if (groupItems.length === 0) return null;
               return (
-                <button
-                  key={dest.key}
-                  type="button"
-                  className={`nav-item ${isDestActive ? 'active' : ''}`}
-                  data-tooltip={itemLabel}
-                  aria-label={itemLabel}
-                  title={sidebarCollapsed ? itemLabel : undefined}
-                  onClick={() => {
-                    if (dest.key !== 'profiles') setSelectedGroupId(null);
-                    setPage(dest.key);
-                  }}
-                >
-                  <div className="nav-item-icon-wrapper">
-                    <Icon size={16} />
-                    {isCloud && syncConnected && <span className="sync-dot" title="Cloud connected" />}
-                    {isProfiles && runningCount > 0 && sidebarCollapsed && (
-                      <span className="nav-badge" title={`${runningCount} ${t('running')}`}>
-                        {runningCount}
-                      </span>
-                    )}
+                <div key={group.id} className="nav-group">
+                  <div className="nav-group-label">{t(group.label)}</div>
+                  <div className="nav-group-items">
+                    {groupItems.map((dest) => {
+                      const Icon = dest.icon;
+                      const isDestActive =
+                        page === dest.key || dest.subTabs?.some((st) => st.key === page);
+                      const isProfiles = dest.key === 'profiles';
+                      const isCloud = dest.key === 'cloud';
+                      const itemLabel = t(dest.label);
+
+                      return (
+                        <button
+                          key={dest.key}
+                          type="button"
+                          className={`nav-item ${isDestActive ? 'active' : ''}`}
+                          data-tooltip={itemLabel}
+                          aria-label={itemLabel}
+                          title={sidebarCollapsed ? itemLabel : undefined}
+                          onClick={() => {
+                            if (dest.key !== 'profiles') setSelectedGroupId(null);
+                            setPage(dest.key);
+                          }}
+                        >
+                          <div className="nav-item-icon-wrapper">
+                            <Icon size={16} />
+                            {isCloud && syncConnected && <span className="sync-dot" title="Cloud connected" />}
+                            {isProfiles && runningCount > 0 && sidebarCollapsed && (
+                              <span className="nav-badge" title={`${runningCount} ${t('running')}`}>
+                                {runningCount}
+                              </span>
+                            )}
+                          </div>
+                          <span className="nav-label">{itemLabel}</span>
+                          {isProfiles && runningCount > 0 && !sidebarCollapsed && (
+                            <span className="nav-badge">{runningCount}</span>
+                          )}
+                        </button>
+                      );
+                    })}
                   </div>
-                  <span className="nav-label">{itemLabel}</span>
-                  {isProfiles && runningCount > 0 && !sidebarCollapsed && (
-                    <span className="nav-badge">{runningCount}</span>
-                  )}
-                </button>
+                </div>
               );
             })}
           </nav>
@@ -330,72 +465,13 @@ export function App() {
         </div>
 
         <div className="sidebar-footer">
-          <ServicePanel />
-          <McpPanel />
-
+          <AutomationPanel />
           {!sidebarCollapsed && (
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                padding: 'var(--space-1) 0',
-                fontSize: 'var(--text-xs)',
-                color: 'var(--text-secondary)',
-              }}
-            >
-              <a
-                href="https://github.com/wdnameless/antidetect-browser/tree/main/docs"
-                onClick={openDocs}
-                style={{
-                  color: 'var(--text-secondary)',
-                  textDecoration: 'none',
-                  fontSize: 'var(--text-xs)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 'var(--space-1)',
-                }}
-                title="Documentation"
-              >
-                Docs ↗
-              </a>
-
-              <div
-                style={{
-                  fontSize: 'var(--text-2xs)',
-                  color: 'var(--text-muted)',
-                  letterSpacing: 'var(--tracking-wide)',
-                  textAlign: 'right',
-                }}
-                title={
-                  !hasRunUpdateCheck
-                    ? 'Update check has not run'
-                    : kernelUpdateState?.status === 'update-available'
-                      ? `Update available: ${kernelUpdateState.info?.version ?? 'new'}`
-                      : kernelUpdateState?.status === 'downloading'
-                        ? 'Downloading update...'
-                        : kernelUpdateState?.status === 'downloaded'
-                          ? 'Update downloaded (ready to install)'
-                          : kernelUpdateState?.status === 'error'
-                            ? `Update error: ${kernelUpdateState.error ?? 'failed'}`
-                            : 'Up to date'
-                }
-              >
-                v0.4.0 •{' '}
-                <span style={{ color: !hasRunUpdateCheck ? 'var(--text-muted)' : kernelUpdateState?.status === 'update-available' ? 'var(--text)' : 'var(--text-secondary)' }}>
-                  {!hasRunUpdateCheck
-                    ? 'Not checked'
-                    : kernelUpdateState?.status === 'update-available'
-                      ? 'Update available'
-                      : kernelUpdateState?.status === 'downloading'
-                        ? 'Downloading...'
-                        : kernelUpdateState?.status === 'downloaded'
-                          ? 'Restart to update'
-                          : kernelUpdateState?.status === 'error'
-                            ? 'Check failed'
-                            : 'Up to date'}
-                </span>
-              </div>
+            <div className="sidebar-version" title={updateTitle}>
+              <strong style={{ color: 'var(--text-secondary)', fontWeight: 600 }}>
+                {PRODUCT_NAME} v0.6.0
+              </strong>
+              <div style={{ marginTop: 2 }}>{updateLabel}</div>
             </div>
           )}
 
@@ -429,7 +505,7 @@ export function App() {
       </aside>
 
       <div className="main">
-        <header className="topbar">
+        <header className="topbar" data-tauri-drag-region="">
           <h2 className="page-title">{activeNav ? t(activeNav.label) : 'Dashboard'}</h2>
           {hasNativeWindow ? (
             <div className="window-controls">
