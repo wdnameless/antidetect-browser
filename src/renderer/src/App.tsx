@@ -181,7 +181,19 @@ export function App() {
   const [syncConnected, setSyncConnected] = useState<boolean>(false);
   const activeDest = getActiveDestination(page);
   const [kernelUpdateState, setKernelUpdateState] = useState<{ status: string; info?: { version?: string }; error?: string } | null>(null);
+  // Reported by the backend, not hardcoded: the footer used to claim "v0.6.0" while the
+  // service answered "0.0.1" to /status, so neither number could be trusted after a bump.
+  const [appVersion, setAppVersion] = useState<string>('');
   const [hasRunUpdateCheck, setHasRunUpdateCheck] = useState<boolean>(false);
+
+  useEffect(() => {
+    api.status()
+      .then((res) => {
+        const v = res.data?.version;
+        if (typeof v === 'string' && v.length > 0 && v !== 'unknown') setAppVersion(v);
+      })
+      .catch(() => undefined);
+  }, []);
 
   useEffect(() => {
     // The shell emits `update:status` with a payload shaped { state, message, info, progress }
@@ -533,7 +545,7 @@ export function App() {
               }}
             >
               <strong style={{ color: 'var(--text-secondary)', fontWeight: 600 }}>
-                {PRODUCT_NAME} v0.6.0
+                {appVersion ? `${PRODUCT_NAME} v${appVersion}` : PRODUCT_NAME}
               </strong>
               <div style={{ marginTop: 2 }}>{updateLabel}</div>
             </button>

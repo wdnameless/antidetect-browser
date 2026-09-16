@@ -3,7 +3,7 @@ import * as http from 'http';
 import * as fs from 'fs';
 import * as path from 'path';
 import cors from 'cors';
-import { API_HOST, API_PORT, DATA_DIR, SERVER_MODE, TRUSTED_HOSTS } from '../config';
+import { API_HOST, API_PORT, APP_VERSION, DATA_DIR, SERVER_MODE, TRUSTED_HOSTS } from '../config';
 import { authMiddleware } from './auth';
 import { rateLimitMiddleware } from './rateLimit';
 import { createCdpRouter, tryHandleCdpUpgrade } from './cdpTunnel';
@@ -94,9 +94,11 @@ export function createApp(): Express {
     res.status(403).json({ code: -1, msg: 'forbidden host', data: {} });
   });
 
-  // Health check (no auth)
+  // Health check (no auth). The version is read from package.json rather than hardcoded:
+  // it previously reported a literal '0.0.1' that matched no release, so any client asking
+  // the service what it was got an answer that could not be trusted.
   app.get('/status', (_req, res) => {
-    res.json({ code: 0, msg: 'success', data: { status: 'ok', version: '0.0.1' } });
+    res.json({ code: 0, msg: 'success', data: { status: 'ok', version: APP_VERSION } });
   });
 
   const rendererDir = resolveRendererDir(__dirname);

@@ -261,6 +261,31 @@ export const API_HOST = process.env.API_HOST || '127.0.0.1';
 export const API_PORT = Number(process.env.API_PORT || 50325);
 
 /**
+ * The running application version, read from package.json.
+ *
+ * Resolved by walking up from this file so it works both compiled (`dist/src/main`) and
+ * from source, and falls back to a clearly-unknown marker rather than a plausible-looking
+ * number: a health endpoint that reports a version it invented is worse than one that
+ * admits it does not know.
+ */
+export const APP_VERSION: string = (() => {
+  let dir = __dirname;
+  for (let i = 0; i < 6; i++) {
+    const candidate = path.join(dir, 'package.json');
+    try {
+      const pkg = JSON.parse(fs.readFileSync(candidate, 'utf8')) as { version?: string };
+      if (typeof pkg.version === 'string' && pkg.version.length > 0) return pkg.version;
+    } catch {
+      // keep walking up
+    }
+    const parent = path.dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+  return 'unknown';
+})();
+
+/**
  * Server mode: the service is deployed on a remote machine and reached through
  * a reverse proxy (Traefik) over VPN. Enables trusted non-loopback Host headers,
  * disables permissive CORS and enables request logging to DATA_DIR/server.log.
