@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { getApiKey, getApiOrigin, checkHealth, getMcpStatus, startMcp, stopMcp, type McpStatus } from '../api';
+import { getApiKey, getApiOrigin, checkHealth, getMcpStatus, startMcp, stopMcp, buildMcpBundleIn, type McpStatus } from '../api';
 import { useI18n } from '../i18n';
 import { currentTheme, setTheme, type Theme } from '../theme';
 
@@ -27,6 +27,14 @@ export function AutomationPanel() {
   // The backend not answering is different from an MCP failure, and it is the cause of the
   // "Failed to fetch" the operator actually sees: the request never reaches anything.
   const [backendDown, setBackendDown] = useState(false);
+  const [bundleBusy, setBundleBusy] = useState(false);
+  const [bundleResult, setBundleResult] = useState<{
+    dir?: string;
+    zip?: string;
+    bytes?: number;
+    toolCount?: number;
+    scope?: string;
+  } | null>(null);
   // Seeded from the value already applied at startup, so the control shows the state that is
   // actually in effect rather than a default that may disagree with the page.
   const [theme, setThemeState] = useState<Theme>(() => currentTheme());
@@ -121,6 +129,45 @@ export function AutomationPanel() {
     );
   };
 
+  /**
+   * Produce a ready-to-use MCP server and show the config to hand to an agent.
+   *
+   * The user picks a folder; the app writes a self-contained server (dependencies vendored,
+   * no install step) plus a zip. The returned config is what the agent needs, and it is
+   * copied to the clipboard so the whole flow is "click, choose folder, paste".
+   */
+  const downloadBundle = async () => {
+    setBundleResult(null);
+    setError(null);
+    // Prefer the shell's native folder picker; fall back to asking for a path when running
+    // as a plain web client that has no such bridge.
+    let dir = '';
+    const picked = await window.antidetect?.data?.prepareDir?.();
+    if (picked?.ok && picked.dir) {
+      dir = picked.dir;
+    } else {
+      const typed = window.prompt(t('Folder to write the MCP server into:'));
+      if (!typed) return;
+      dir = typed;
+    }
+    setBundleBusy(true);
+    try {
+      const res = await buildMcpBundleIn(dir);
+      if (res.code !== 0 || !res.data?.ok) {
+        setError(res.data?.error ?? res.msg ?? t('Could not build the MCP server.'));
+        return;
+      }
+      setBundleResult(res.data);
+      if (res.data.config) {
+        void navigator.clipboard.writeText(JSON.stringify(res.data.config, null, 2)).catch(() => undefined);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t('Could not build the MCP server.'));
+    } finally {
+      setBundleBusy(false);
+    }
+  };
+
   const mcpLabel = mcp?.running
     ? mcp.toolCount !== undefined
       ? t('{n} tools').replace('{n}', String(mcp.toolCount))
@@ -141,6 +188,12 @@ export function AutomationPanel() {
         <span className="automation-api-address" title={origin}>
           {origin.replace(/^https?:\/\//, '')}
         </span>
+        {/* The key belongs with the address it authenticates — and folding it in here
+            removes a whole row from the footer, which was tall enough (267px of a 640px
+            window) to push the SYSTEM nav group under it. */}
+        <span className="automation-api-key" title={apiKey ? t('API key is set') : t('No API key detected')}>
+          {maskedKey}
+        </span>
         <button
           type="button"
           className="automation-copy-btn"
@@ -152,7 +205,8 @@ export function AutomationPanel() {
         </button>
       </div>
 
-      <div className="automation-actions-row">
+      {/* Three short controls on one wrapping row instead of two fixed rows. */}
+      <div className="automation-actions-row" style={{ flexWrap: 'wrap' }}>
         <button
           type="button"
           className="automation-action-btn"
@@ -165,12 +219,39 @@ export function AutomationPanel() {
         <button
           type="button"
           className="automation-action-btn"
+          data-testid="mcp-download"
+          onClick={() => void downloadBundle()}
+          disabled={bundleBusy || backendDown}
+          title={t('Write a ready-to-use MCP server into a folder, for your agent to run')}
+        >
+          {bundleBusy ? t('Building…') : t('Download MCP')}
+        </button>
+        <button
+          type="button"
+          className="automation-action-btn"
           onClick={() => void copy('mcp', mcpClientConfig())}
           title={t('Copy the MCP client configuration')}
         >
           {copied === 'mcp' ? t('Copied') : t('MCP config')}
         </button>
+        <a
+          className="automation-action-btn"
+          href="https://github.com/wdnameless/antidetect-browser/tree/main/docs"
+          target="_blank"
+          rel="noreferrer noopener"
+        >
+          {t('Documentation')}
+        </a>
       </div>
+
+      {bundleResult && (
+        <div className="automation-api-status" role="status" style={{ color: 'var(--text-secondary)' }}>
+          {t('MCP server written to')} {bundleResult.dir}
+          {bundleResult.toolCount ? ` — ${bundleResult.toolCount} ${t('tools')}` : ''}
+          {'. '}
+          {t('Config copied. Point your agent at it.')}
+        </div>
+      )}
 
       {backendDown && (
         <div className="automation-api-status" style={{ color: 'var(--warn)' }} role="status">
@@ -183,20 +264,6 @@ export function AutomationPanel() {
           {error}
         </div>
       )}
-
-      <div className="automation-actions-row">
-        <a
-          className="automation-action-btn"
-          href="https://github.com/wdnameless/antidetect-browser/tree/main/docs"
-          target="_blank"
-          rel="noreferrer noopener"
-        >
-          {t('Documentation')}
-        </a>
-        <span className="automation-api-address" title={apiKey ? t('API key is set') : t('No API key detected')}>
-          {maskedKey}
-        </span>
-      </div>
 
       {/* Theme: a real two-state control, and the only place the choice is made. It reflects
           the state that is actually in effect (including an OS preference when the operator

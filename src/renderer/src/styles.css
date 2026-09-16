@@ -307,9 +307,26 @@ pre {
   display: flex;
   flex-direction: column;
   min-height: 0;
-  flex: 1;
+  flex: 1 1 auto;
   overflow-y: auto;
   overflow-x: hidden;
+  /* Keep the scrollbar from overlaying the last nav row, and make the rail visible when the
+     list does overflow: on a short window the last group used to look simply cut off. */
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+}
+
+.sidebar-content::-webkit-scrollbar {
+  width: 6px;
+}
+
+.sidebar-content::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.sidebar-content::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
 }
 
 .brand {
@@ -554,11 +571,15 @@ pre {
 
 
 .sidebar-footer {
-  padding-top: 12px;
+  padding-top: 10px;
   border-top: 1px solid var(--border);
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
+  /* Never shrink: the footer used to be squeezed and the nav pane above it absorbed the
+     loss, which is how "Settings" ended up hidden behind the footer. A fixed footer with a
+     scrolling nav is the behaviour that keeps every destination reachable. */
+  flex: 0 0 auto;
 }
 
 /* AUTOMATION API Block */
@@ -566,10 +587,10 @@ pre {
   background: var(--surface-2);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
-  padding: 10px;
+  padding: 8px;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 5px;
 }
 
 .sidebar.collapsed .automation-api-panel {
@@ -636,11 +657,21 @@ pre {
 }
 
 .automation-api-address {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-family: var(--font-mono);
   font-size: 11px;
   color: var(--text);
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Masked API key, shown beside the address it authenticates. Truncates rather than
+   wrapping so the row stays one line. */
+.automation-api-key {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+  flex-shrink: 0;
   white-space: nowrap;
 }
 
@@ -742,6 +773,19 @@ pre {
   color: var(--text-muted);
   text-align: right;
   user-select: none;
+}
+
+/* The address row plus two action rows and the theme switch stacked to 158px. Laying the
+   three short controls on one row returns ~50px to the navigation, which is what was
+   pushing the SYSTEM group under the footer on short windows. */
+.automation-api-panel .automation-actions-row {
+  gap: 5px;
+}
+
+.automation-api-panel .automation-action-btn,
+.automation-api-panel .automation-copy-btn {
+  padding: 3px 6px;
+  font-size: 10px;
 }
 
 .sidebar.collapsed .sidebar-footer {

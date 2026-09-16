@@ -141,6 +141,19 @@ export function getMcpStatus(): Promise<ApiEnvelope<McpStatus>> {
   return api.mcpStatus();
 }
 
+export function buildMcpBundleIn(dir: string): Promise<ApiEnvelope<{
+  ok: boolean;
+  dir?: string;
+  zip?: string;
+  bytes?: number;
+  toolCount?: number;
+  scope?: string;
+  config?: { mcpServers: Record<string, { command: string; args: string[]; env: Record<string, string> }> };
+  error?: string;
+}>> {
+  return api.mcpBundle(dir);
+}
+
 export function startMcp(): Promise<ApiEnvelope<{ ok: boolean; message?: string; status?: McpStatus }>> {
   return api.mcpStart();
 }
@@ -1142,6 +1155,18 @@ export const api = {
   // ---- MCP service endpoints (ShardX sidebar footer) ----
   mcpStatus: () =>
     request<McpStatus>('/api/v1/mcp/status'),
+  /** Produce a ready-to-use MCP server in `dir` and return the agent config to paste. */
+  mcpBundle: (dir: string) =>
+    request<{
+      ok: boolean;
+      dir?: string;
+      zip?: string;
+      bytes?: number;
+      toolCount?: number;
+      scope?: string;
+      config?: { mcpServers: Record<string, { command: string; args: string[]; env: Record<string, string> }> };
+      error?: string;
+    }>('/api/v1/mcp/bundle', { method: 'POST', body: JSON.stringify({ dir }) }),
   mcpStart: () =>
     request<{ ok: boolean; message?: string; status?: McpStatus }>('/api/v1/mcp/start', { method: 'POST' }),
   mcpStop: () =>

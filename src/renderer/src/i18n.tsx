@@ -733,6 +733,14 @@ const RU: Record<string, string> = {
   'Sensors': 'Sensors',
   'WebGL': 'WebGL',
   'Browser language': 'Язык браузера',
+  'Download MCP': 'Скачать MCP',
+  'Building…': 'Сборка…',
+  'Write a ready-to-use MCP server into a folder, for your agent to run': 'Записать готовый MCP-сервер в папку, чтобы ваш агент мог его запустить',
+  'Folder to write the MCP server into:': 'Папка для записи MCP-сервера:',
+  'Could not build the MCP server.': 'Не удалось собрать MCP-сервер.',
+  'MCP server written to': 'MCP-сервер записан в',
+  'Config copied. Point your agent at it.': 'Конфигурация скопирована. Укажите её вашему агенту.',
+  'tools': 'инструментов',
 };
 
 interface I18nCtx {
@@ -863,6 +871,14 @@ const EN: Record<string, string> = {
   'Sensors': 'Sensors',
   'WebGL': 'WebGL',
   'Browser language': 'Browser language',
+  'Download MCP': 'Download MCP',
+  'Building…': 'Building…',
+  'Write a ready-to-use MCP server into a folder, for your agent to run': 'Write a ready-to-use MCP server into a folder, for your agent to run',
+  'Folder to write the MCP server into:': 'Folder to write the MCP server into:',
+  'Could not build the MCP server.': 'Could not build the MCP server.',
+  'MCP server written to': 'MCP server written to',
+  'Config copied. Point your agent at it.': 'Config copied. Point your agent at it.',
+  'tools': 'tools',
 };
 
 const Ctx = createContext<I18nCtx>({ lang: 'en', setLang: () => undefined, t: (s) => EN[s] ?? s });
