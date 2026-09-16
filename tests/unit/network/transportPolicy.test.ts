@@ -50,7 +50,7 @@ describe('Network Transport Policy & Pre-Launch Probe Pipeline', () => {
       const flags = composeTransportFlags({ status: 'SOCKS5_FULL_PASS' }, 'socks5://1.2.3.4:1080');
       expect(flags).toContain('--proxy-server=socks5://1.2.3.4:1080');
       expect(flags).toContain('--proxy-bypass-list=<-loopback>');
-      expect(flags).toContain('--force-webrtc-ip-handling-policy=disable_non_proxied_udp');
+      expect(flags).toContain('--webrtc-ip-handling-policy=disable_non_proxied_udp');
       expect(flags).not.toContain('--disable-quic');
       expect(flags).not.toContain('--disable-webrtc');
     });
@@ -61,7 +61,7 @@ describe('Network Transport Policy & Pre-Launch Probe Pipeline', () => {
       expect(flags).toContain('--proxy-bypass-list=<-loopback>');
       expect(flags).toContain('--disable-quic');
       expect(flags).toContain('--disable-webrtc');
-      expect(flags).toContain('--force-webrtc-ip-handling-policy=disable_non_proxied_udp');
+      expect(flags).toContain('--webrtc-ip-handling-policy=disable_non_proxied_udp');
     });
   });
 

@@ -184,12 +184,27 @@ export function App() {
   const [hasRunUpdateCheck, setHasRunUpdateCheck] = useState<boolean>(false);
 
   useEffect(() => {
+    // The shell emits `update:status` with a payload shaped { state, message, info, progress }
+    // (see UpdateStatusEvent in src-tauri/src/updater.rs). This listener used to read
+    // `status`/`error`, neither of which exists on that payload, so every state landed as
+    // `undefined` and the footer reported the check as failed no matter what actually
+    // happened. `Settings.tsx` already read `state` correctly — this aligns the two.
     const apiObj = window.antidetect as (typeof window.antidetect & {
-      onUpdateStatus?: (cb: (s: { status: string; info?: { version?: string }; error?: string }) => void) => () => void;
+      onUpdateStatus?: (cb: (s: { state: string; message?: string; info?: { version?: string } }) => void) => () => void;
     }) | undefined;
     const unsub = apiObj?.onUpdateStatus?.((s) => {
       setHasRunUpdateCheck(true);
-      setKernelUpdateState(s);
+      // Map the shell's vocabulary onto the one the footer renders. The Rust side says
+      // `checking-for-update` / `update-not-available`; the UI says `checking` / `up-to-date`.
+      const state =
+        s.state === 'checking-for-update' || s.state === 'checking'
+          ? 'checking'
+          : s.state === 'update-not-available'
+            ? 'up-to-date'
+            : s.state === 'update-downloaded'
+              ? 'downloaded'
+              : s.state;
+      setKernelUpdateState({ status: state, info: s.info, error: s.message });
     });
     return () => unsub?.();
   }, []);
@@ -330,7 +345,9 @@ export function App() {
     Boolean(kernelUpdateState.error?.includes('Could not fetch a valid release JSON'));
   const updateTitle = !hasRunUpdateCheck
     ? 'Update check has not run'
-    : updatesNotConfigured
+    : kernelUpdateState?.status === 'checking'
+      ? 'Checking for updates...'
+      : updatesNotConfigured
       ? 'Automatic updates are not configured for this build yet'
       : kernelUpdateState?.status === 'update-available'
         ? `Update available: ${kernelUpdateState.info?.version ?? 'new'}`
@@ -343,7 +360,9 @@ export function App() {
               : 'Up to date';
   const updateLabel = !hasRunUpdateCheck
     ? t('Not checked')
-    : updatesNotConfigured
+    : kernelUpdateState?.status === 'checking'
+      ? t('Checking...')
+      : updatesNotConfigured
       ? t('Updates not configured')
       : kernelUpdateState?.status === 'update-available'
         ? t('Update available')
@@ -467,12 +486,57 @@ export function App() {
         <div className="sidebar-footer">
           <AutomationPanel />
           {!sidebarCollapsed && (
-            <div className="sidebar-version" title={updateTitle}>
+            /*
+             * The version line is the update control.
+             *
+             * It used to be a passive label reading "Not checked" with no way to act on it —
+             * the only working button lived in Settings, which is not where an operator looks
+             * when they wonder whether they are current. Clicking now runs the check and
+             * reports the outcome in place; the same action remains in Settings.
+             *
+             * Rendered as a button, not a div with onClick, so it is keyboard reachable and
+             * announced as interactive.
+             */
+            <button
+              type="button"
+              className="sidebar-version"
+              data-testid="check-updates"
+              title={t('Check for updates')}
+              aria-label={t('Check for updates')}
+              onClick={() => {
+                const apiObj = window.antidetect as (typeof window.antidetect & {
+                  update?: { check?: () => Promise<void> };
+                }) | undefined;
+                if (!apiObj?.update?.check) {
+                  // No shell bridge (a browser-served client): say so rather than appearing
+                  // to do nothing.
+                  setHasRunUpdateCheck(true);
+                  setKernelUpdateState({
+                    status: 'error',
+                    error: 'Updates are only available in the desktop application.',
+                  });
+                  return;
+                }
+                setHasRunUpdateCheck(true);
+                setKernelUpdateState({ status: 'checking' });
+                void apiObj.update.check();
+              }}
+              style={{
+                background: 'none',
+                border: 'none',
+                padding: 0,
+                cursor: 'pointer',
+                textAlign: 'left',
+                width: '100%',
+                font: 'inherit',
+                color: 'inherit',
+              }}
+            >
               <strong style={{ color: 'var(--text-secondary)', fontWeight: 600 }}>
                 {PRODUCT_NAME} v0.6.0
               </strong>
               <div style={{ marginTop: 2 }}>{updateLabel}</div>
-            </div>
+            </button>
           )}
 
           <button

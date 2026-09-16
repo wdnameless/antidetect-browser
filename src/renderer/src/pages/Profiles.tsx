@@ -90,6 +90,18 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
   const [mobileModelId, setMobileModelId] = useState('');
   const [userAgent, setUserAgent] = useState('');
   const [cores, setCores] = useState<number>(8);
+  const [memoryGb, setMemoryGb] = useState<number>(16);
+  const [osPlatform, setOsPlatform] = useState<'windows' | 'mac' | 'linux' | 'android'>('windows');
+  const [profileTimezone, setProfileTimezone] = useState<string>('');
+  const [profileLang, setProfileLang] = useState<string>('en-US');
+  const [doNotTrack, setDoNotTrack] = useState<'off' | 'on' | 'auto'>('auto');
+  const [blockedPorts, setBlockedPorts] = useState<number[]>([]);
+  const [portInput, setPortInput] = useState<string>('');
+  const [webrtcPolicy, setWebrtcPolicy] = useState<'default' | 'disable_non_proxied_udp' | 'proxy'>('default');
+  const [mediaMicCount, setMediaMicCount] = useState<number>(1);
+  const [mediaSpeakerCount, setMediaSpeakerCount] = useState<number>(2);
+  const [mediaWebcamCount, setMediaWebcamCount] = useState<number>(1);
+  const [notes, setNotes] = useState<string>('');
 
   // Proxy state in modal: mode = 'none' | 'saved' | 'custom'
   const [proxyMode, setProxyMode] = useState<'none' | 'saved' | 'custom'>('none');
@@ -424,6 +436,19 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
     setCustomProxyUser('');
     setCustomProxyPass('');
     setProxyTestResult(null);
+    setCores(8);
+    setMemoryGb(16);
+    setOsPlatform('windows');
+    setProfileTimezone('');
+    setProfileLang('en-US');
+    setDoNotTrack('auto');
+    setBlockedPorts([]);
+    setPortInput('');
+    setWebrtcPolicy('default');
+    setMediaMicCount(1);
+    setMediaSpeakerCount(2);
+    setMediaWebcamCount(1);
+    setNotes('');
   };
 
   const openEditModal = async (p: ProfileListItem) => {
@@ -433,12 +458,31 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
     setName(p.name || '');
     setGroupId(p.group_id || '');
     setProxyTestResult(null);
-
-    // Fetch full details
     try {
       const res = await api.profileDetail(p.user_id);
       if (res.code === 0 && res.data) {
         const d = res.data;
+        setProfileColor(d.color || '');
+        setProfileTimezone(d.timezone || '');
+        // `lang` and `deviceMemory` live in the fingerprint's `config` blob, not on the
+        // fingerprint object itself — reading them one level up silently yields undefined
+        // and the form would show a default that disagrees with the profile.
+        const fpCfg = (d.fingerprint?.config ?? {}) as { lang?: string; deviceMemory?: number };
+        setProfileLang(typeof fpCfg.lang === 'string' ? fpCfg.lang : 'en-US');
+        setDoNotTrack((d.do_not_track as 'off' | 'on' | 'auto') || 'auto');
+        setBlockedPorts(Array.isArray(d.blocked_ports) ? d.blocked_ports.map(Number).filter((n) => !isNaN(n) && n > 0 && n <= 65535) : []);
+        setWebrtcPolicy((d.webrtc_policy as 'default' | 'disable_non_proxied_udp' | 'proxy') || 'default');
+        if (typeof fpCfg.deviceMemory === 'number') setMemoryGb(fpCfg.deviceMemory);
+        if (typeof d.fingerprint?.hardwareConcurrency === 'number') setCores(d.fingerprint.hardwareConcurrency);
+        if (d.fingerprint?.platform) {
+          const pl = d.fingerprint.platform.toLowerCase();
+          if (pl.includes('mac')) setOsPlatform('mac');
+          else if (pl.includes('linux')) setOsPlatform('linux');
+          else if (pl.includes('android')) setOsPlatform('android');
+          else setOsPlatform('windows');
+        }
+        setPortInput('');
+        setNotes('');
         setName(d.name || '');
         setGroupId(d.group_id || '');
         setDeviceId(d.device_id || '');
@@ -543,6 +587,10 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
           proxy_id: proxyIdPayload || undefined,
           proxy: proxyPayload,
           color: profileColor.trim() || undefined,
+          timezone: profileTimezone || undefined,
+          do_not_track: doNotTrack,
+          blocked_ports: blockedPorts,
+          webrtc_policy: webrtcPolicy,
         });
         if (res.code === 0) {
           setModalMode(null);
@@ -563,6 +611,10 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
           proxy_id: proxyIdPayload,
           proxy: proxyPayload,
           color: profileColor.trim() ? profileColor.trim() : null,
+          timezone: profileTimezone || null,
+          do_not_track: doNotTrack,
+          blocked_ports: blockedPorts,
+          webrtc_policy: webrtcPolicy,
         });
         if (res.code === 0) {
           setModalMode(null);
@@ -2113,44 +2165,43 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
             </div>
 
             {/* Modal Tabs Header */}
-            <div className="modal-tabs">
-              <button
-                className={`tab-btn ${modalTab === 'general' ? 'active' : ''}`}
-                onClick={() => setModalTab('general')}
-              >
-                <EditIcon size={14} />
-                <span>General Overview</span>
-              </button>
-              <button
-                className={`tab-btn ${modalTab === 'proxy' ? 'active' : ''}`}
-                onClick={() => setModalTab('proxy')}
-              >
-                <ProxiesIcon size={14} />
-                <span>Proxy Configuration</span>
-              </button>
-              <button
-                className={`tab-btn ${modalTab === 'fingerprint' ? 'active' : ''}`}
-                onClick={() => setModalTab('fingerprint')}
-              >
-                <FingerprintIcon size={14} />
-                <span>Fingerprint &amp; Hardware</span>
-              </button>
-              {modalMode === 'edit' ? (
+            {/* Section jump bar. The reference groups the form into labelled sections
+                rather than hiding them behind tabs, but keeping a way to reach a section
+                matters once the form is long — these scroll to it instead of swapping the
+                body, so nothing is ever off-screen-but-selected. */}
+            <div className="modal-tabs" data-testid="profile-form-sections">
+              {([
+                ['identity', 'IDENTITY'],
+                ['locale', 'LOCALE'],
+                ['privacy', 'PRIVACY'],
+                ['noise', 'NOISE'],
+                ['media', 'MEDIA DEVICES'],
+                ['extras', 'EXTENSIONS & COOKIES'],
+              ] as const).map(([id, label]) => (
                 <button
-                  className={`tab-btn ${modalTab === 'vault' ? 'active' : ''}`}
-                  onClick={() => { setModalTab('vault'); openVaultTab(profileId); }}
+                  key={id}
+                  type="button"
+                  className="tab-btn"
+                  onClick={() => document.getElementById(`pf-section-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
                 >
-                  <KeyIcon size={14} />
-                  <span>Vault</span>
+                  <span>{t(label)}</span>
                 </button>
-              ) : null}
+              ))}
             </div>
-
             <div className="modal-body">
-              {/* TAB 1: GENERAL */}
-              {modalTab === 'general' ? (
-                <>
-                  <div className="form-group">
+              {/*
+                Sectioned layout, three columns, following the reference. Sections are
+                stacked (not tabbed) so nothing is hidden: the jump bar above scrolls to one.
+                The three existing tab bodies (general / proxy / fingerprint) are kept
+                VERBATIM below — the redesign is presentational, and rewriting working
+                controls would be a needless regression risk.
+              */}
+              <div className="profile-form-grid">
+                {/* ---------------- Column 1: IDENTITY ---------------- */}
+                <div className="profile-form-col">
+                  <div className="pf-section" id="pf-section-identity">
+                    <div className="pf-section-label">{t('IDENTITY')}</div>
+                                      <div className="form-group">
                     <label>Profile Name</label>
                     <input
                       placeholder="e.g. MEXC-Account-01"
@@ -2220,137 +2271,180 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
                       </p>
                     </div>
                   ) : null}
-                </>
-              ) : null}
+                  </div>
 
-              {/* TAB: VAULT (Sprint 2.1) — credentials per profile */}
-              {modalTab === 'vault' && modalMode === 'edit' ? (
-                <>
-                  <div className="form-group">
-                    <label>{vaultForm.id ? t('Edit entry') : t('Add entry')}</label>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                      <input
-                        placeholder={t('Label (e.g. main account)')}
-                        value={vaultForm.label}
-                        onChange={(e) => setVaultForm({ ...vaultForm, label: e.target.value })}
-                      />
-                      <input
-                        placeholder={t('Login')}
-                        value={vaultForm.login}
-                        onChange={(e) => setVaultForm({ ...vaultForm, login: e.target.value })}
-                      />
-                      <input
-                        type="password"
-                        placeholder={t('Password')}
-                        value={vaultForm.password}
-                        onChange={(e) => setVaultForm({ ...vaultForm, password: e.target.value })}
-                      />
-                      <input
-                        placeholder={t('TOTP secret (optional)')}
-                        value={vaultForm.totp}
-                        onChange={(e) => setVaultForm({ ...vaultForm, totp: e.target.value })}
-                      />
+                  <div className="pf-section" id="pf-section-extras">
+                    <div className="pf-section-label">{t('EXTENSIONS & COOKIES')}</div>
+                    <p className="hint">
+                      {t('Extensions are managed once for the whole library in the Extensions tab; cookies are loaded per profile when the browser is running.')}
+                    </p>
+                  </div>
+                </div>
+
+                {/* ---------------- Column 2: LOCALE + NOISE ---------------- */}
+                <div className="profile-form-col">
+                  <div className="pf-section" id="pf-section-locale">
+                    <div className="pf-section-label">{t('LOCALE')}</div>
+                    <div className="form-group">
+                      <label>{t('Timezone')}</label>
+                      <select value={profileTimezone} onChange={(e) => setProfileTimezone(e.target.value)}>
+                        <option value="">{t('Auto (from proxy geo)')}</option>
+                        <option value="America/New_York">America/New_York</option>
+                        <option value="Europe/London">Europe/London</option>
+                        <option value="Europe/Berlin">Europe/Berlin</option>
+                        <option value="Europe/Moscow">Europe/Moscow</option>
+                        <option value="Asia/Dubai">Asia/Dubai</option>
+                        <option value="Asia/Singapore">Asia/Singapore</option>
+                        <option value="America/Los_Angeles">America/Los_Angeles</option>
+                      </select>
                     </div>
-                    <input
-                      style={{ marginTop: 8 }}
-                      placeholder={t('Notes')}
-                      value={vaultForm.notes}
-                      onChange={(e) => setVaultForm({ ...vaultForm, notes: e.target.value })}
+                    <div className="form-group">
+                      <label>{t('Browser language')}</label>
+                      <select value={profileLang} onChange={(e) => setProfileLang(e.target.value)}>
+                        <option value="">{t('Auto (from proxy geo)')}</option>
+                        <option value="en-US">en-US</option>
+                        <option value="en-GB">en-GB</option>
+                        <option value="de-DE">de-DE</option>
+                        <option value="fr-FR">fr-FR</option>
+                        <option value="es-ES">es-ES</option>
+                        <option value="ru-RU">ru-RU</option>
+                        <option value="pt-BR">pt-BR</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="pf-section" id="pf-section-noise">
+                    <div className="pf-section-label">{t('NOISE')}</div>
+                    {/*
+                      These are derived, not chosen. The stealth layer generates canvas /
+                      audio / rects / WebGL noise and the font inventory from the profile's
+                      fingerprint seed and hardware vector, so there is no per-profile
+                      switch to expose — a toggle here would be a control that does nothing.
+                      Showing the real state is useful; faking a switch is not.
+                    */}
+                    <div className="pf-derived-row">
+                      <span>{t('Canvas')}</span><code>{t('Auto (per-seed)')}</code>
+                    </div>
+                    <div className="pf-derived-row">
+                      <span>{t('WebGL')}</span><code>{t('Auto (per-seed)')}</code>
+                    </div>
+                    <div className="pf-derived-row">
+                      <span>{t('Audio')}</span><code>{t('Auto (per-seed)')}</code>
+                    </div>
+                    <div className="pf-derived-row">
+                      <span>{t('Client rects')}</span><code>{t('Auto (per-seed)')}</code>
+                    </div>
+                    <div className="pf-derived-row">
+                      <span>{t('Sensors')}</span><code>{t('Auto (per-seed)')}</code>
+                    </div>
+                    <div className="pf-derived-row">
+                      <span>{t('Fonts')}</span><code>{t('From hardware vector')}</code>
+                    </div>
+
+                    <div className="form-group" style={{ marginTop: 'var(--space-3)' }}>
+                      <label>{t('Ports to block')}</label>
+                      <div className="pf-chip-input">
+                        {blockedPorts.map((port) => (
+                          <span key={port} className="pf-chip">
+                            {port}
+                            <button
+                              type="button"
+                              aria-label={`${t('Remove')} ${port}`}
+                              onClick={() => setBlockedPorts(blockedPorts.filter((p) => p !== port))}
+                            >
+                              ×
+                            </button>
+                          </span>
+                        ))}
+                        <input
+                          value={portInput}
+                          inputMode="numeric"
+                          placeholder={t('add port…')}
+                          data-testid="blocked-port-input"
+                          onChange={(e) => setPortInput(e.target.value.replace(/[^0-9]/g, ''))}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' || e.key === ',') {
+                              e.preventDefault();
+                              const n = Number(portInput);
+                              if (Number.isInteger(n) && n >= 1 && n <= 65535 && !blockedPorts.includes(n)) {
+                                setBlockedPorts([...blockedPorts, n].sort((a, b) => a - b));
+                              }
+                              setPortInput('');
+                            } else if (e.key === 'Backspace' && !portInput && blockedPorts.length > 0) {
+                              setBlockedPorts(blockedPorts.slice(0, -1));
+                            }
+                          }}
+                          onBlur={() => {
+                            const n = Number(portInput);
+                            if (Number.isInteger(n) && n >= 1 && n <= 65535 && !blockedPorts.includes(n)) {
+                              setBlockedPorts([...blockedPorts, n].sort((a, b) => a - b));
+                            }
+                            setPortInput('');
+                          }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* ---------------- Column 3: PRIVACY + MEDIA ---------------- */}
+                <div className="profile-form-col">
+                  <div className="pf-section" id="pf-section-privacy">
+                    <div className="pf-section-label">{t('PRIVACY')}</div>
+                    <div className="form-group">
+                      <label>{t('WebRTC')}</label>
+                      <select
+                        value={webrtcPolicy}
+                        data-testid="webrtc-policy"
+                        onChange={(e) => setWebrtcPolicy(e.target.value as 'default' | 'disable_non_proxied_udp' | 'proxy')}
+                      >
+                        <option value="default">{t('Auto (browser default)')}</option>
+                        <option value="disable_non_proxied_udp">{t('Disable non-proxied UDP')}</option>
+                        <option value="proxy">{t('Proxy only')}</option>
+                      </select>
+                    </div>
+                    <div className="form-group">
+                      <label>{t('Do Not Track')}</label>
+                      <select
+                        value={doNotTrack}
+                        data-testid="do-not-track"
+                        onChange={(e) => setDoNotTrack(e.target.value as 'off' | 'on' | 'auto')}
+                      >
+                        <option value="auto">{t('Auto')}</option>
+                        <option value="off">{t('Off')}</option>
+                        <option value="on">{t('On')}</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="pf-section" id="pf-section-media">
+                    <div className="pf-section-label">{t('MEDIA DEVICES')}</div>
+                    {/*
+                      Device counts are synthesised by the stealth layer from the seed, the
+                      same as the noise above — exposing numeric steppers here would imply a
+                      per-profile override that does not exist.
+                    */}
+                    <div className="pf-derived-row"><span>{t('Mic in')}</span><code>{t('Auto (per-seed)')}</code></div>
+                    <div className="pf-derived-row"><span>{t('Speakers')}</span><code>{t('Auto (per-seed)')}</code></div>
+                    <div className="pf-derived-row"><span>{t('Webcam')}</span><code>{t('Auto (per-seed)')}</code></div>
+                  </div>
+
+                  <div className="pf-section">
+                    <div className="pf-section-label">{t('NOTES')}</div>
+                    <textarea
+                      rows={3}
+                      placeholder={t('Free-form notes…')}
+                      value={notes}
+                      onChange={(e) => setNotes(e.target.value)}
                     />
-                    <div style={{ marginTop: 8, display: 'flex', gap: 8 }}>
-                      <button className="btn primary" onClick={() => void saveVaultEntry()} disabled={busy}>
-                        {vaultForm.id ? t('Save') : t('Add')}
-                      </button>
-                      {vaultForm.id ? (
-                        <button className="btn" onClick={() => setVaultForm({ id: null, label: '', login: '', password: '', totp: '', notes: '' })}>
-                          {t('Cancel')}
-                        </button>
-                      ) : null}
-                    </div>
                   </div>
+                </div>
+              </div>
 
-                  <div className="table-container" style={{ marginTop: 10 }}>
-                    <table className="table">
-                      <thead>
-                        <tr>
-                          <th>{t('Label')}</th>
-                          <th>{t('Login')}</th>
-                          <th>{t('Password')}</th>
-                          <th style={{ width: '20%', textAlign: 'right' }}>{t('Actions')}</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {vaultEntries.length === 0 ? (
-                          <tr>
-                            <td colSpan={4} className="empty-cell" style={{ fontSize: 12.5, color: 'var(--text-muted)' }}>
-                              {t('No saved credentials yet. Passwords are encrypted (AES-256-GCM) and never leave this machine.')}
-                            </td>
-                          </tr>
-                        ) : (
-                          vaultEntries.map((e) => {
-                            const pwKey = `${e.id}:password`;
-                            const totpKey = `${e.id}:totp_secret`;
-                            return (
-                              <tr key={e.id}>
-                                <td style={{ fontSize: 12.5 }}>{e.label || '—'}</td>
-                                <td style={{ fontSize: 12.5 }}>{e.login || '—'}</td>
-                                <td style={{ fontSize: 12.5 }}>
-                                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                                    <code style={{ fontFamily: 'var(--font-mono)' }}>
-                                      {revealed[pwKey] || (e.has_password ? '******' : '—')}
-                                    </code>
-                                    {e.has_password ? (
-                                      <>
-                                        <button
-                                          className="btn-icon"
-                                          style={{ padding: '2px 6px' }}
-                                          onClick={() => void revealVaultField(e, 'password')}
-                                          title={t('Reveal / hide (15s)')}
-                                        >
-                                          <KeyIcon size={11} />
-                                        </button>
-                                        <button
-                                          className="btn-icon"
-                                          style={{ padding: '2px 6px' }}
-                                          onClick={() => revealed[pwKey] && copyVaultValue(revealed[pwKey])}
-                                          disabled={!revealed[pwKey]}
-                                          title={t('Copy value')}
-                                        >
-                                          {copiedValue && revealed[pwKey] === copiedValue ? <CheckIcon size={11} style={{ color: 'var(--ok)' }} /> : <CopyIcon size={11} />}
-                                        </button>
-                                      </>
-                                    ) : null}
-                                    {e.has_totp ? (
-                                      <code style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-muted)' }} title={revealed[totpKey] || t('TOTP secret stored')}>
-                                        {revealed[totpKey] ? `TOTP: ${revealed[totpKey]}` : 'TOTP: ******'}
-                                      </code>
-                                    ) : null}
-                                  </div>
-                                </td>
-                                <td>
-                                  <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
-                                    <button className="btn btn-sm" onClick={() => editVaultEntry(e)} disabled={busy}>
-                                      {t('Edit')}
-                                    </button>
-                                    <button className="btn btn-sm btn-danger" onClick={() => void deleteVaultEntry(e.id)} disabled={busy}>
-                                      <TrashIcon size={11} />
-                                    </button>
-                                  </div>
-                                </td>
-                              </tr>
-                            );
-                          })
-                        )}
-                      </tbody>
-                    </table>
-                  </div>
-                </>
-              ) : null}
-
-              {/* TAB 2: PROXY SETTINGS WITH LIVE CHECK */}
-              {modalTab === 'proxy' ? (
-                <>
-                  <div className="form-group">
+              {/* Proxy configuration, kept whole. */}
+              <div className="pf-section" id="pf-section-proxy">
+                <div className="pf-section-label">{t('PROXY')}</div>
+                                  <div className="form-group">
                     <label>Proxy Mode</label>
                     <div className="mode-selector">
                       <button
@@ -2469,13 +2563,12 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
                       ) : null}
                     </div>
                   ) : null}
-                </>
-              ) : null}
+              </div>
 
-              {/* TAB 3: FINGERPRINT LIVE PREVIEW */}
-              {modalTab === 'fingerprint' ? (
-                <>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              {/* Fingerprint preview + seed, kept whole. */}
+              <div className="pf-section" id="pf-section-fingerprint">
+                <div className="pf-section-label">{t('FINGERPRINT')}</div>
+                                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                     <label style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>Hardware Fingerprint</label>
                     <button
                       type="button"
@@ -2551,9 +2644,133 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
                       style={{ fontSize: 12, fontFamily: 'var(--font-mono)' }}
                     />
                   </div>
-                </>
+                </div>
+              </div>
+
+              {/* Vault (edit only), kept whole. */}
+              {modalMode === 'edit' ? (
+                <div className="pf-section" id="pf-section-vault">
+                  <div className="pf-section-label">{t('VAULT')}</div>
+                  <div className="form-group">
+                    <label>{vaultForm.id ? t('Edit entry') : t('Add entry')}</label>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                      <input
+                        placeholder={t('Label (e.g. main account)')}
+                        value={vaultForm.label}
+                        onChange={(e) => setVaultForm({ ...vaultForm, label: e.target.value })}
+                      />
+                      <input
+                        placeholder={t('Login')}
+                        value={vaultForm.login}
+                        onChange={(e) => setVaultForm({ ...vaultForm, login: e.target.value })}
+                      />
+                      <input
+                        type="password"
+                        placeholder={t('Password')}
+                        value={vaultForm.password}
+                        onChange={(e) => setVaultForm({ ...vaultForm, password: e.target.value })}
+                      />
+                      <input
+                        placeholder={t('TOTP secret (optional)')}
+                        value={vaultForm.totp}
+                        onChange={(e) => setVaultForm({ ...vaultForm, totp: e.target.value })}
+                      />
+                    </div>
+                    <input
+                      style={{ marginTop: 8 }}
+                      placeholder={t('Notes')}
+                      value={vaultForm.notes}
+                      onChange={(e) => setVaultForm({ ...vaultForm, notes: e.target.value })}
+                    />
+                    <div style={{ marginTop: 8, display: 'flex', gap: 8 }}>
+                      <button className="btn primary" onClick={() => void saveVaultEntry()} disabled={busy}>
+                        {vaultForm.id ? t('Save') : t('Add')}
+                      </button>
+                      {vaultForm.id ? (
+                        <button className="btn" onClick={() => setVaultForm({ id: null, label: '', login: '', password: '', totp: '', notes: '' })}>
+                          {t('Cancel')}
+                        </button>
+                      ) : null}
+                    </div>
+                  </div>
+
+                  <div className="table-container" style={{ marginTop: 10 }}>
+                    <table className="table">
+                      <thead>
+                        <tr>
+                          <th>{t('Label')}</th>
+                          <th>{t('Login')}</th>
+                          <th>{t('Password')}</th>
+                          <th style={{ width: '20%', textAlign: 'right' }}>{t('Actions')}</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {vaultEntries.length === 0 ? (
+                          <tr>
+                            <td colSpan={4} className="empty-cell" style={{ fontSize: 12.5, color: 'var(--text-muted)' }}>
+                              {t('No saved credentials yet. Passwords are encrypted (AES-256-GCM) and never leave this machine.')}
+                            </td>
+                          </tr>
+                        ) : (
+                          vaultEntries.map((e) => {
+                            const pwKey = `${e.id}:password`;
+                            const totpKey = `${e.id}:totp_secret`;
+                            return (
+                              <tr key={e.id}>
+                                <td style={{ fontSize: 12.5 }}>{e.label || '—'}</td>
+                                <td style={{ fontSize: 12.5 }}>{e.login || '—'}</td>
+                                <td style={{ fontSize: 12.5 }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                                    <code style={{ fontFamily: 'var(--font-mono)' }}>
+                                      {revealed[pwKey] || (e.has_password ? '******' : '—')}
+                                    </code>
+                                    {e.has_password ? (
+                                      <>
+                                        <button
+                                          className="btn-icon"
+                                          style={{ padding: '2px 6px' }}
+                                          onClick={() => void revealVaultField(e, 'password')}
+                                          title={t('Reveal / hide (15s)')}
+                                        >
+                                          <KeyIcon size={11} />
+                                        </button>
+                                        <button
+                                          className="btn-icon"
+                                          style={{ padding: '2px 6px' }}
+                                          onClick={() => revealed[pwKey] && copyVaultValue(revealed[pwKey])}
+                                          disabled={!revealed[pwKey]}
+                                          title={t('Copy value')}
+                                        >
+                                          {copiedValue && revealed[pwKey] === copiedValue ? <CheckIcon size={11} style={{ color: 'var(--ok)' }} /> : <CopyIcon size={11} />}
+                                        </button>
+                                      </>
+                                    ) : null}
+                                    {e.has_totp ? (
+                                      <code style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-muted)' }} title={revealed[totpKey] || t('TOTP secret stored')}>
+                                        {revealed[totpKey] ? `TOTP: ${revealed[totpKey]}` : 'TOTP: ******'}
+                                      </code>
+                                    ) : null}
+                                  </div>
+                                </td>
+                                <td>
+                                  <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
+                                    <button className="btn btn-sm" onClick={() => editVaultEntry(e)} disabled={busy}>
+                                      {t('Edit')}
+                                    </button>
+                                    <button className="btn btn-sm btn-danger" onClick={() => void deleteVaultEntry(e.id)} disabled={busy}>
+                                      <TrashIcon size={11} />
+                                    </button>
+                                  </div>
+                                </td>
+                              </tr>
+                            );
+                          })
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                  </div>
               ) : null}
-            </div>
 
             <div className="modal-footer">
               <button className="btn" onClick={() => setModalMode(null)}>Cancel</button>

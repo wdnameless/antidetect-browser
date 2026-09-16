@@ -14,7 +14,7 @@ describe('Leak Regression: Zero Host UDP/Egress Leak for Proxied Profiles', () =
     );
 
     // QUIC enabled via relay, WebRTC restricted to non-proxied udp disabled
-    expect(flags).toContain('--force-webrtc-ip-handling-policy=disable_non_proxied_udp');
+    expect(flags).toContain('--webrtc-ip-handling-policy=disable_non_proxied_udp');
     expect(flags).not.toContain('--disable-quic');
     // Ensure proxy-bypass-list excludes loopback only, never direct internet
     expect(flags).toContain('--proxy-bypass-list=<-loopback>');
@@ -28,7 +28,7 @@ describe('Leak Regression: Zero Host UDP/Egress Leak for Proxied Profiles', () =
 
     expect(flags).toContain('--disable-quic');
     expect(flags).toContain('--disable-webrtc');
-    expect(flags).toContain('--force-webrtc-ip-handling-policy=disable_non_proxied_udp');
+    expect(flags).toContain('--webrtc-ip-handling-policy=disable_non_proxied_udp');
   });
 
   it('fails closed for HTTP proxies by disabling QUIC and WebRTC completely', () => {

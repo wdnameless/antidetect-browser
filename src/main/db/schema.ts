@@ -216,6 +216,15 @@ export function migrate(db: Database): void {
   ensureColumn(db, 'profiles', 'launch_args', 'TEXT');
   // Profile window badge color (parity program: profile-window-badge).
   ensureColumn(db, 'profiles', 'color', 'TEXT');
+  // Per-profile privacy/fingerprint knobs exposed by the create form.
+  // `off`/`on` for doNotTrack (canonical strings, not booleans: the UI shows a third
+  // "Auto" state, which a boolean cannot represent).
+  ensureColumn(db, 'profiles', 'do_not_track', 'TEXT');
+  // JSON array of port numbers to block (e.g. [3389,5900]). Stored as TEXT because
+  // SQLite has no array type and the set is small and read whole.
+  ensureColumn(db, 'profiles', 'blocked_ports', 'TEXT');
+  // WebRTC IP handling policy: 'default' | 'disable_non_proxied_udp' | 'proxy'.
+  ensureColumn(db, 'profiles', 'webrtc_policy', 'TEXT');
   migrateProxyHealth(db);
   migratePreservedBrowserData(db);
   migrateTaskGroups(db);

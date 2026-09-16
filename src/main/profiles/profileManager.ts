@@ -44,6 +44,16 @@ export interface CreateProfileInput {
   launch_args?: string[];
   /** Profile badge color (3/6-digit hex; null clears). */
   color?: string | null;
+  /**
+   * Do Not Track: `'off'` sends nothing, `'on'` sends DNT: 1. A string rather than a
+   * boolean because the form also offers `'auto'`, which means "let the fingerprint
+   * decide" and is materially different from an explicit "off".
+   */
+  do_not_track?: 'off' | 'on' | 'auto' | null;
+  /** Ports to block from the page (e.g. 3389, 5900). Empty clears. */
+  blocked_ports?: number[];
+  /** WebRTC IP handling policy; null uses Chromium's default. */
+  webrtc_policy?: 'default' | 'disable_non_proxied_udp' | 'proxy' | null;
 }
 
 export interface ProfileRow {
@@ -69,6 +79,12 @@ export interface ProfileRow {
   launch_args: string | null;
   /** Profile badge color (canonical 6-digit hex or null). */
   color: string | null;
+  /** Do Not Track mode (`off` | `on` | `auto`); null = not set. */
+  do_not_track: string | null;
+  /** Ports to block, stored as a JSON array string. */
+  blocked_ports: string | null;
+  /** WebRTC IP handling policy; null = Chromium default. */
+  webrtc_policy: string | null;
 }
 
 export interface ProxyRow {
@@ -164,6 +180,12 @@ export interface LaunchConfig {
   profileName?: string | null;
   /** Set when a stealth-engine build is selected: id passed as --stealth-engine-profile. */
   stealthEngineProfileId?: string;
+  /** Do Not Track mode (`off` | `on` | `auto`); null/absent leaves Chromium's default. */
+  do_not_track?: string | null;
+  /** Ports to block from the page. */
+  blocked_ports?: number[];
+  /** WebRTC IP handling policy. */
+  webrtc_policy?: string | null;
 }
 export * from './temporaryRegistry';
 
@@ -193,6 +215,9 @@ export interface ProfileDetails {
   timezone: string | null;
   launch_args: string[];
   color: string | null;
+  do_not_track: string | null;
+  blocked_ports: number[];
+  webrtc_policy: string | null;
   proxy?: {
     id: string;
     type: ProxyType;
@@ -237,6 +262,57 @@ export function deriveBadgeInitials(name: string | null | undefined): string {
   const alnum = (name ?? '').replace(/[^\p{L}\p{N}]/gu, '');
   if (alnum.length === 0) return 'P';
   return alnum.slice(0, 2).toUpperCase();
+}
+
+/**
+ * Do Not Track mode, or null when unset.
+ *
+ * Rejects anything outside the three known modes rather than coercing: a typo silently
+ * becoming "off" would tell the operator they configured privacy they did not.
+ */
+export function normalizeDoNotTrack(input: string | null | undefined): string | null {
+  if (input === 'off' || input === 'on' || input === 'auto') return input;
+  if (input === null || input === undefined) return null;
+  throw new Error(`invalid do-not-track mode: '${String(input)}'`);
+}
+
+/**
+ * Ports to block, deduplicated and sorted, or [] when unset.
+ *
+ * Validates the 1..65535 range: a stray 0 or a value above 65535 cannot be expressed as a
+ * port, so accepting it would produce a Chromium switch that silently does nothing.
+ */
+export function normalizeBlockedPorts(input: number[] | null | undefined): number[] {
+  if (input === null || input === undefined) return [];
+  if (!Array.isArray(input)) throw new Error('blocked_ports must be an array of numbers');
+  const seen = new Set<number>();
+  for (const raw of input) {
+    const port = typeof raw === 'number' ? raw : Number(raw);
+    if (!Number.isInteger(port) || port < 1 || port > 65535) {
+      throw new Error(`invalid port: '${String(raw)}' (expected an integer 1-65535)`);
+    }
+    seen.add(port);
+  }
+  return [...seen].sort((a, b) => a - b);
+}
+
+/** WebRTC IP handling policy, or null for Chromium's default. */
+export function normalizeWebrtcPolicy(input: string | null | undefined): string | null {
+  if (input === 'default' || input === 'disable_non_proxied_udp' || input === 'proxy') return input;
+  if (input === null || input === undefined) return null;
+  throw new Error(`invalid WebRTC policy: '${String(input)}'`);
+}
+
+/** Parses the stored JSON port array back into numbers; tolerant of legacy NULL junk. */
+export function parseBlockedPortsColumn(raw: string | null | undefined): number[] {
+  if (typeof raw !== 'string' || raw.length === 0) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((p): p is number => typeof p === 'number' && Number.isInteger(p));
+  } catch {
+    return [];
+  }
 }
 
 /** '[XX] ' prefix for the launched window title; '' without a color. */
@@ -357,12 +433,16 @@ export function createProfile(input: CreateProfileInput): string {
   if (input.color !== undefined && input.color !== null && !badgeColor) {
     throw new Error(`invalid profile color: '${input.color}'`);
   }
+  const dnt = normalizeDoNotTrack(input.do_not_track);
+  const ports = normalizeBlockedPorts(input.blocked_ports);
+  const webrtc = normalizeWebrtcPolicy(input.webrtc_policy);
   db.prepare(
     `INSERT INTO profiles (
        id, name, group_id, proxy_id, fingerprint_id, device_id,
-       browser_type, user_agent, timezone, geolocation, start_urls, mobile_model_id, launch_args, color, status,
+       browser_type, user_agent, timezone, geolocation, start_urls, mobile_model_id, launch_args, color,
+       do_not_track, blocked_ports, webrtc_policy, status,
        created_at, updated_at
-     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'closed', ?, ?)`
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'closed', ?, ?)`
   ).run(
     profileId,
     input.name ?? null,
@@ -378,6 +458,9 @@ export function createProfile(input: CreateProfileInput): string {
     input.mobile_model_id ?? null,
     validatedArgs.length ? JSON.stringify(validatedArgs) : null,
     badgeColor,
+    dnt,
+    ports.length ? JSON.stringify(ports) : null,
+    webrtc,
     now,
     now
   );
@@ -665,6 +748,9 @@ export function getProfileDetails(id: string): ProfileDetails | null {
     timezone: p.timezone,
     launch_args: parseLaunchArgsColumn(p.launch_args),
     color: p.color ?? null,
+    do_not_track: p.do_not_track ?? null,
+    blocked_ports: parseBlockedPortsColumn(p.blocked_ports),
+    webrtc_policy: p.webrtc_policy ?? null,
     proxy,
     fingerprint,
     device,
@@ -1044,6 +1130,9 @@ export function updateProfile(
     mobile_model_id?: string | null;
     launch_args?: string[] | null;
     color?: string | null;
+    do_not_track?: 'off' | 'on' | 'auto' | null;
+    blocked_ports?: number[] | null;
+    webrtc_policy?: 'default' | 'disable_non_proxied_udp' | 'proxy' | null;
   }
 ): boolean {
   const db = getDb();
@@ -1120,6 +1209,19 @@ export function updateProfile(
     }
     sets.push('color = ?');
     params.push(badge);
+  }
+  if (updates.do_not_track !== undefined) {
+    sets.push('do_not_track = ?');
+    params.push(normalizeDoNotTrack(updates.do_not_track));
+  }
+  if (updates.blocked_ports !== undefined) {
+    const ports = normalizeBlockedPorts(updates.blocked_ports);
+    sets.push('blocked_ports = ?');
+    params.push(ports.length ? JSON.stringify(ports) : null);
+  }
+  if (updates.webrtc_policy !== undefined) {
+    sets.push('webrtc_policy = ?');
+    params.push(normalizeWebrtcPolicy(updates.webrtc_policy));
   }
 
   if (sets.length === 0) return true;
@@ -1569,6 +1671,9 @@ export function resolveLaunchConfig(id: string): LaunchConfig {
     screenOverride,
     launch_args: parseLaunchArgsColumn(profile.launch_args),
     color: profile.color ?? null,
+    do_not_track: profile.do_not_track ?? null,
+    blocked_ports: parseBlockedPortsColumn(profile.blocked_ports),
+    webrtc_policy: profile.webrtc_policy ?? null,
     profileName: profile.name ?? null,
     stealthEngineProfileId:
       (typeof process.env.ANTIDETECT_ENGINE_PROFILE === 'string' &&

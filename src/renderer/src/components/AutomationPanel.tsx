@@ -24,6 +24,9 @@ export function AutomationPanel() {
   const [busy, setBusy] = useState(false);
   const [copied, setCopied] = useState<'origin' | 'mcp' | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // The backend not answering is different from an MCP failure, and it is the cause of the
+  // "Failed to fetch" the operator actually sees: the request never reaches anything.
+  const [backendDown, setBackendDown] = useState(false);
   // Seeded from the value already applied at startup, so the control shows the state that is
   // actually in effect rather than a default that may disagree with the page.
   const [theme, setThemeState] = useState<Theme>(() => currentTheme());
@@ -33,8 +36,19 @@ export function AutomationPanel() {
 
   const refresh = useCallback(() => {
     checkHealth()
-      .then((res) => setApiOk(res.code === 0 && res.data?.status === 'ok'))
-      .catch(() => setApiOk(false));
+      .then((res) => {
+        const ok = res.code === 0 && res.data?.status === 'ok';
+        setApiOk(ok);
+        // Clear a stale reachability warning once the backend answers again.
+        if (ok) setBackendDown(false);
+      })
+      .catch(() => {
+        setApiOk(false);
+        // The health probe failing means the service is not there at all. Recorded as
+        // state (not an error banner) so the panel keeps polling and recovers on its own
+        // when the backend comes back, instead of showing a permanent failure.
+        setBackendDown(true);
+      });
     getMcpStatus()
       .then((res) => {
         if (res.code === 0) setMcp(res.data);
@@ -65,9 +79,25 @@ export function AutomationPanel() {
     call
       .then((res) => {
         if (res.code === 0 && res.data?.status) setMcp(res.data.status);
-        else refresh();
+        else {
+          // A non-zero code carries the server's own reason; showing it beats a generic
+          // "request failed".
+          setError(res.msg || t('The MCP server did not start.'));
+          refresh();
+        }
       })
-      .catch((err: unknown) => setError(err instanceof Error ? err.message : 'MCP request failed'))
+      .catch((err: unknown) => {
+        // A bare `fetch` failure surfaces as "Failed to fetch", which tells the operator
+        // nothing actionable — and the overwhelmingly common cause is that the local
+        // backend is not running, so the request never reached anything. Say that instead.
+        const raw = err instanceof Error ? err.message : String(err);
+        const unreachable = /failed to fetch|networkerror|load failed/i.test(raw);
+        setError(
+          unreachable
+            ? t('Cannot reach the local service. Is the backend running?')
+            : raw
+        );
+      })
       .finally(() => setBusy(false));
   };
 
@@ -127,7 +157,7 @@ export function AutomationPanel() {
           type="button"
           className="automation-action-btn"
           onClick={toggleMcp}
-          disabled={busy}
+          disabled={busy || backendDown}
           title={mcp?.running ? t('Stop the MCP server') : t('Start the MCP server')}
         >
           {t('MCP')}: {mcpLabel}
@@ -141,6 +171,12 @@ export function AutomationPanel() {
           {copied === 'mcp' ? t('Copied') : t('MCP config')}
         </button>
       </div>
+
+      {backendDown && (
+        <div className="automation-api-status" style={{ color: 'var(--warn)' }} role="status">
+          {t('Cannot reach the local service. Is the backend running?')}
+        </div>
+      )}
 
       {error && (
         <div className="automation-api-status" style={{ color: 'var(--danger)' }} role="alert">

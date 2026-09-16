@@ -319,7 +319,23 @@ export function startApi(): Promise<void> {
     socket.destroy();
   });
 
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
+    // A failed bind must reject, not hang. Without this handler `EADDRINUSE` surfaces as an
+    // unhandled error event: the process dies, the shell's readiness wait never sees the
+    // listening line, and the app shows a UI with no backend behind it. The message says
+    // whose port it is so the operator is not left guessing.
+    server.once('error', (err: NodeJS.ErrnoException) => {
+      if (err.code === 'EADDRINUSE') {
+        reject(
+          new Error(
+            `Port ${API_PORT} is already in use. Another NullTrace instance (or another program) holds it. ` +
+              `Close it, or start this one with a different API_PORT.`
+          )
+        );
+        return;
+      }
+      reject(err);
+    });
     server.listen(API_PORT, API_HOST, () => {
       console.log(
         `[antidetect] Local API listening on http://${API_HOST}:${API_PORT}` +

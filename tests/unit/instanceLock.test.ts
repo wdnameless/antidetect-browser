@@ -37,33 +37,87 @@ describe('instanceLock', () => {
   });
 
   describe('isProcessOurApp', () => {
-    it('returns true when command line contains Antidetect Browser.exe', () => {
-      const fakeExec = vi.fn().mockReturnValue(
-        'CommandLine\n"C:\\Program Files\\Antidetect Browser\\Antidetect Browser.exe" --profile=default'
-      );
-      expect(isProcessOurApp(12345, { execFileSync: fakeExec })).toBe(true);
-    });
-
-
-    it('returns true when command line contains node with our service or entry path', () => {
-      const fakeExec = vi.fn().mockReturnValue(
-        'CommandLine\nnode.exe dist/src/main/index.js'
-      );
-      expect(isProcessOurApp(12345, { execFileSync: fakeExec })).toBe(true);
-    });
-
-    it('returns false when command line belongs to an unrelated program (e.g. ast-grep node.exe)', () => {
-      const fakeExec = vi.fn().mockReturnValue(
-        'CommandLine\nnode.exe C:\\Users\\user\\.npm\\_npx\\ast-grep\\bin.js --scan'
-      );
-      expect(isProcessOurApp(12345, { execFileSync: fakeExec })).toBe(false);
-    });
-
-    it('returns undefined when probe throws or fails (unknown, fail-closed)', () => {
-      const fakeExec = vi.fn().mockImplementation(() => {
-        throw new Error('Process not found');
+    /**
+     * A fake `execFileSync` that answers per COMMAND, the way the real system does.
+     * The probe now consults `tasklist` first (because `wmic` is absent from
+     * Windows 11 / Server 2025), so a mock returning one canned string for every
+     * command cannot exercise the real decision path.
+     */
+    function fakeExec(answers: {
+      tasklist?: string | Error;
+      wmic?: string | Error;
+      powershell?: string | Error;
+    }) {
+      return vi.fn((file: string) => {
+        const key = file.startsWith('tasklist') ? 'tasklist' : file.startsWith('powershell') ? 'powershell' : 'wmic';
+        const answer = answers[key as keyof typeof answers];
+        if (answer === undefined) throw new Error(`${key} not available`);
+        if (answer instanceof Error) throw answer;
+        return answer;
       });
-      expect(isProcessOurApp(12345, { execFileSync: fakeExec })).toBeUndefined();
+    }
+
+    it('recognises our node backend when wmic is GONE but tasklist works', () => {
+      // The shipped regression: `wmic` was removed from the OS, the PowerShell fallback
+      // exceeded its timeout, the probe returned `undefined` for a live pid, and the
+      // caller failed closed — the service refused to start and the UI had no backend.
+      const exec = fakeExec({
+        tasklist: '"node.exe","4242","Console","1","50,388 K"',
+        wmic: new Error('wmic not found'),
+        powershell: 'node.exe dist/src/main/index.js',
+      });
+      expect(isProcessOurApp(4242, { execFileSync: exec })).toBe(true);
+    });
+
+    it('recognises our node backend from a backslash path too', () => {
+      const exec = fakeExec({
+        tasklist: '"node.exe","4242","Console","1","50,388 K"',
+        wmic: new Error('wmic not found'),
+        powershell: 'node.exe C:\\App\\dist\\src\\main\\index.js',
+      });
+      expect(isProcessOurApp(4242, { execFileSync: exec })).toBe(true);
+    });
+
+    it('recognises the packaged executable by image name alone', () => {
+      // No command line is needed when the image is unambiguous.
+      const exec = fakeExec({ tasklist: '"Antidetect Browser.exe","77","Console","1","10 K"' });
+      expect(isProcessOurApp(77, { execFileSync: exec })).toBe(true);
+    });
+
+    it('reports a DEAD pid as not-ours without consulting the command line', () => {
+      const exec = fakeExec({
+        tasklist: 'INFO: No tasks are running which match the specified criteria.',
+      });
+      expect(isProcessOurApp(999, { execFileSync: exec })).toBe(false);
+    });
+
+    it('reports an unrelated image as not-ours', () => {
+      const exec = fakeExec({ tasklist: '"chrome.exe","5","Console","1","10 K"' });
+      expect(isProcessOurApp(5, { execFileSync: exec })).toBe(false);
+    });
+
+    it('does not treat another Node tool as our backend', () => {
+      const exec = fakeExec({
+        tasklist: '"node.exe","4242","Console","1","50,388 K"',
+        wmic: 'CommandLine\nnode.exe C:\\Users\\user\\.npm\\_npx\\ast-grep\\bin.js --scan',
+      });
+      expect(isProcessOurApp(4242, { execFileSync: exec })).toBe(false);
+    });
+
+    it('stays conservative (undefined) when a live node pid cannot be identified', () => {
+      // Fail closed: we know the pid exists but cannot prove it is not ours, so the
+      // caller must NOT remove the lock and risk two services writing one database.
+      const exec = fakeExec({
+        tasklist: '"node.exe","4242","Console","1","50,388 K"',
+        wmic: new Error('wmic not found'),
+        powershell: new Error('powershell timed out'),
+      });
+      expect(isProcessOurApp(4242, { execFileSync: exec })).toBeUndefined();
+    });
+
+    it('returns undefined when every probe fails outright', () => {
+      const exec = fakeExec({ tasklist: new Error('probe failed') });
+      expect(isProcessOurApp(12345, { execFileSync: exec })).toBeUndefined();
     });
   });
 
@@ -143,6 +197,31 @@ describe('instanceLock', () => {
       fs.writeFileSync(LOCK_FILE, 'not-a-number-corrupted-content', 'utf8');
       acquireInstanceLock();
       expect(fs.readFileSync(LOCK_FILE, 'utf8').trim()).toBe(String(process.pid));
+    });
+
+    it('an unverifiable live holder STOPS the launch instead of being swallowed', () => {
+      // The shipped defect: the catch block only rethrew when the message contained
+      // "already running" — an unrelated string. Every other refusal was logged and
+      // ignored, so the service continued and died later on the busy port. The operator
+      // saw a UI with no backend ("failed to fetch", dead menus) and the reason existed
+      // only in a log file. A refusal must propagate so the shell can display it.
+      const heldPid = 88888;
+      fs.writeFileSync(LOCK_FILE, String(heldPid), 'utf8');
+
+      process.kill = vi.fn().mockImplementation((pid: number, signal?: string | number) => {
+        if (pid === heldPid && signal === 0) return true;
+        return true;
+      }) as never;
+      // Every probe fails, so the holder cannot be identified: fail closed.
+      setProcessInspectorExec(
+        vi.fn().mockImplementation(() => {
+          throw new Error('no probe available');
+        }) as never
+      );
+
+      expect(() => acquireInstanceLock()).toThrow(/could not be verified/i);
+      // And the lock must remain untouched — a lock we cannot verify is not ours to remove.
+      expect(fs.readFileSync(LOCK_FILE, 'utf8').trim()).toBe(String(heldPid));
     });
   });
 

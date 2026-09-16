@@ -282,9 +282,69 @@ export async function buildChromiumArgs(
   if (extensionsToLoad.length > 0) {
     args.push(`--load-extension=${extensionsToLoad.join(',')}`);
   }
+
+  // Per-profile privacy knobs from the create form, applied before the user's own extra
+  // switches so the documented last-wins rule still lets an operator override them.
+  //
+  // Every switch here was checked against the kernel binary itself (`chrome.dll` in the
+  // pinned fingerprint-chromium build). That check is not ceremony: Chromium accepts an
+  // unknown switch and silently ignores it, so a control wired to a non-existent flag looks
+  // implemented while doing nothing. `--fingerprint-screen-refresh-rate` was exactly that.
+
+  // Blocked ports: `--host-resolver-rules` refuses resolution outright, which needs no
+  // firewall rule and is the portable way to do this from inside the browser.
+  if (cfg.blocked_ports && cfg.blocked_ports.length > 0) {
+    const rules = cfg.blocked_ports.map((p) => `MAP *:${p} ~NOTFOUND`).join(',');
+    args.push(`--host-resolver-rules=${rules}`);
+  }
+
+  // WebRTC IP handling. The kernel exposes `webrtc-ip-handling-policy`; the
+  // `force-webrtc-ip-handling-policy` spelling used elsewhere in this codebase does NOT
+  // exist in the binary, so it was silently doing nothing (corrected alongside this change).
+  if (cfg.webrtc_policy && cfg.webrtc_policy !== 'default') {
+    args.push(`--webrtc-ip-handling-policy=${cfg.webrtc_policy}`);
+  }
+
+
   // Per-profile extra switches go LAST so Chromium's last-wins rule lets the
   // user override launcher defaults (parity program: extra-launch-args).
   return appendProfileArgs(args, cfg.launch_args);
+}
+
+/**
+ * Writes the `enable_do_not_track` preference into the profile's `Default/Preferences`.
+ *
+ * A malformed or absent Preferences file must not stop a launch: this is a privacy nicety,
+ * and a browser that refuses to start is strictly worse than one sending the wrong DNT
+ * header. A corrupt file is therefore replaced rather than propagated.
+ */
+export function applyDoNotTrackPref(userDataDir: string, enabled: boolean): boolean {
+  const profileDir = path.join(userDataDir, 'Default');
+  const prefsPath = path.join(profileDir, 'Preferences');
+  try {
+    fs.mkdirSync(profileDir, { recursive: true });
+    let prefs: Record<string, unknown> = {};
+    if (fs.existsSync(prefsPath)) {
+      try {
+        const parsed = JSON.parse(fs.readFileSync(prefsPath, 'utf8'));
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+          prefs = parsed as Record<string, unknown>;
+        }
+      } catch {
+        // Corrupt file: start clean rather than refusing to launch.
+        prefs = {};
+      }
+    }
+    if (enabled) {
+      prefs.enable_do_not_track = true;
+    } else {
+      delete prefs.enable_do_not_track;
+    }
+    fs.writeFileSync(prefsPath, JSON.stringify(prefs), 'utf8');
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export async function startProfile(cfg: LaunchConfig): Promise<StartResult> {
@@ -402,6 +462,14 @@ export async function startProfile(cfg: LaunchConfig): Promise<StartResult> {
     registerUdpRelayState(cfg.profileId, 'unavailable');
   }
   const args = await buildChromiumArgs(cfg, proxyServer, transportFlags);
+
+  // Do Not Track is a PREFERENCE, not a switch — see `applyDoNotTrackPref`. Written here,
+  // immediately before the spawn, because `buildChromiumArgs` is a pure argument builder
+  // (tests call it directly) and must not touch the filesystem.
+  if (cfg.do_not_track === 'on' || cfg.do_not_track === 'off') {
+    applyDoNotTrackPref(cfg.userDataDir, cfg.do_not_track === 'on');
+  }
+
   let child: ChildProcess;
   try {
     if (!fs.existsSync(executable) && executable !== 'chrome.exe') {

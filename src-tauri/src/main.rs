@@ -268,13 +268,29 @@ fn html_escape(s: &str) -> String {
         .replace('"', "&quot;")
 }
 
-fn perform_graceful_teardown(sidecar: &sidecar::SidecarManager, settings_dir: &Path, port: u16) {
-    let api_key = {
-        let key_file = settings_dir.join("api_key");
-        std::fs::read_to_string(&key_file).ok().map(|s| s.trim().to_string())
-    };
+/// Stops the backend on the way out.
+///
+/// The API key must be read from the DATA directory first, because that is where the backend
+/// writes it (`config.ts:getApiKey` → `DATA_DIR/api_key`). Reading only `settings_dir/api_key`
+/// — as this did — finds nothing whenever the operator has chosen a data folder, so the
+/// shutdown request went out unauthenticated, the backend answered 401, stayed alive, and
+/// left its instance lock behind for the next launch to misread as a crash.
+fn perform_graceful_teardown(
+    sidecar: &sidecar::SidecarManager,
+    data_dir: &Path,
+    settings_dir: &Path,
+    port: u16,
+) {
+    // Mirrors `get_api_key`'s resolution: data dir first, settings dir as the legacy fallback.
+    let api_key = read_key_file(&data_dir.join("api_key"))
+        .or_else(|| read_key_file(&settings_dir.join("api_key")));
 
     sidecar.terminate_graceful(port, api_key.as_deref());
+}
+
+/// Reads a key file, trimming whitespace; `None` when absent or unreadable.
+fn read_key_file(path: &Path) -> Option<String> {
+    std::fs::read_to_string(path).ok().map(|s| s.trim().to_string())
 }
 
 fn main() {
@@ -440,10 +456,11 @@ fn main() {
 
     let teardown_sidecar = Arc::clone(&sidecar_manager);
     let teardown_settings_dir = settings_dir.clone();
+    let teardown_data_dir = data_dir.clone();
 
     app.run(move |_app_handle, event| match event {
         RunEvent::ExitRequested { .. } | RunEvent::Exit => {
-            perform_graceful_teardown(&teardown_sidecar, &teardown_settings_dir, api_port);
+            perform_graceful_teardown(&teardown_sidecar, &teardown_data_dir, &teardown_settings_dir, api_port);
         }
         RunEvent::WindowEvent {
             label,
@@ -451,7 +468,7 @@ fn main() {
             ..
         } => {
             if label == "main" {
-                perform_graceful_teardown(&teardown_sidecar, &teardown_settings_dir, api_port);
+                perform_graceful_teardown(&teardown_sidecar, &teardown_data_dir, &teardown_settings_dir, api_port);
             }
         }
         _ => {}
@@ -524,5 +541,62 @@ mod data_dir_tests {
         let settings = tmp("empty");
         fs::write(settings.join("settings.json"), br#"{"dataDir":""}"#).unwrap();
         assert!(saved_data_dir(&settings).is_none());
+    }
+}
+
+#[cfg(test)]
+mod teardown_key_tests {
+    use super::read_key_file;
+    use std::fs;
+    use std::path::PathBuf;
+
+    fn tmp(name: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("nulltrace-tk-{}-{}", name, std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[test]
+    fn reads_and_trims_a_key_file() {
+        let dir = tmp("read");
+        fs::write(dir.join("api_key"), "  abc-123\n", ).unwrap();
+        assert_eq!(read_key_file(&dir.join("api_key")).as_deref(), Some("abc-123"));
+    }
+
+    #[test]
+    fn missing_key_file_is_none() {
+        let dir = tmp("missing");
+        assert!(read_key_file(&dir.join("api_key")).is_none());
+    }
+
+    /// The teardown must find the key where the BACKEND writes it.
+    ///
+    /// This is the defect: teardown read `settings_dir/api_key` while `config.ts:getApiKey`
+    /// writes `DATA_DIR/api_key`. With a chosen data folder those differ, so the shutdown
+    /// request carried no token, the backend answered 401, kept running, and left its lock
+    /// behind — which the next launch then misread as a crash.
+    #[test]
+    fn resolves_the_key_from_the_data_dir_first() {
+        let settings = tmp("settings");
+        let data = tmp("data");
+        fs::write(settings.join("api_key"), "legacy", ).unwrap();
+        fs::write(data.join("api_key"), "current", ).unwrap();
+
+        // Mirrors perform_graceful_teardown's resolution order.
+        let resolved = read_key_file(&data.join("api_key"))
+            .or_else(|| read_key_file(&settings.join("api_key")));
+        assert_eq!(resolved.as_deref(), Some("current"));
+    }
+
+    #[test]
+    fn falls_back_to_the_settings_dir_when_the_data_dir_has_none() {
+        let settings = tmp("settings-only");
+        let data = tmp("data-empty");
+        fs::write(settings.join("api_key"), "legacy", ).unwrap();
+
+        let resolved = read_key_file(&data.join("api_key"))
+            .or_else(|| read_key_file(&settings.join("api_key")));
+        assert_eq!(resolved.as_deref(), Some("legacy"));
     }
 }

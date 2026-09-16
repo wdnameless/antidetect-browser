@@ -38,6 +38,12 @@ export interface ProfileDetails {
   browser_type: string;
   user_agent: string | null;
   timezone: string | null;
+  /** Profile badge colour (canonical hex or null). Returned by the detail endpoint. */
+  color?: string | null;
+  launch_args?: string[];
+  do_not_track?: 'off' | 'on' | 'auto' | null;
+  blocked_ports?: number[] | null;
+  webrtc_policy?: 'default' | 'disable_non_proxied_udp' | 'proxy' | null;
   proxy?: {
     id: string;
     type: 'http' | 'https' | 'socks5' | 'ssh';
@@ -497,6 +503,9 @@ export const api = {
     user_agent?: string;
     timezone?: string;
     color?: string | null;
+    do_not_track?: 'off' | 'on' | 'auto' | null;
+    blocked_ports?: number[];
+    webrtc_policy?: 'default' | 'disable_non_proxied_udp' | 'proxy' | null;
   }) =>
     request<{ user_id: string }>('/api/v1/browser-profile/create', {
       method: 'POST',
@@ -523,6 +532,9 @@ export const api = {
     mobile_model_id?: string | null;
     user_agent?: string | null;
     timezone?: string | null;
+    do_not_track?: 'off' | 'on' | 'auto' | null;
+    blocked_ports?: number[] | null;
+    webrtc_policy?: 'default' | 'disable_non_proxied_udp' | 'proxy' | null;
   }) =>
     request<Record<string, never>>('/api/v1/browser-profile/update', {
       method: 'POST',
