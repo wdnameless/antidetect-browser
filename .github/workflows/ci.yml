@@ -184,10 +184,13 @@ jobs:
             --out dist-release
         shell: pwsh
 
+      # The signer's own output distinguishes the two cases, and the warning must repeat what
+      # it actually said rather than assume a password problem: a missing key and a wrong
+      # password need different fixes, and pointing at the wrong one wastes a tag.
       - name: Report missing updater metadata
         if: steps.manifest.outcome == 'failure'
         run: |
-          echo "::warning title=Updater metadata not produced::Signing failed, so latest.json was not published. The installers were built and will still be released, and in-app updates will report 'not configured'. Check that TAURI_SIGNING_PRIVATE_KEY_PASSWORD matches the password the private key was created with. See the 'Build updater manifest' step for the signer's error."
+          echo "::warning title=Updater metadata not produced::Signing failed, so latest.json was not published. The installers were built and will still be released, and in-app updates will report 'not configured'. The 'Build updater manifest' step above states the cause: if it says TAURI_SIGNING_PRIVATE_KEY is not set, add that secret; if it says 'Wrong password for that key', re-set TAURI_SIGNING_PRIVATE_KEY_PASSWORD to the exact password the key was created with (no trailing newline), or regenerate the keypair with -p \"\" so no password is needed. See docs/RELEASE.md."
         shell: bash
 
       - name: Upload Tauri artefacts
