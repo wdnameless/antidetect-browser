@@ -155,8 +155,20 @@ jobs:
       # assignment followed by backtick line continuations and a `.Replace()` call, which
       # pwsh cannot parse. It never ran, because the step is skipped without a signing key —
       # so the first release that actually had secrets was the first to fail here.
+      # A signing failure must degrade the release, not destroy it.
+      #
+      # The step above already treats a MISSING key as an honest degraded state: the
+      # installers publish without `latest.json`, and the app reports updates as "not
+      # configured" instead of failing. A key that is PRESENT but cannot sign — a wrong
+      # password, a rotated key — used to take the other path and fail the whole job, so a
+      # release produced nothing at all while the build itself had succeeded.
+      #
+      # Both cases now land in the same documented state. The failure is still loud
+      # (`::warning::` plus the signer's own error in the log), and it is visible in the app,
+      # so nothing is silently broken — the operator simply gets the installer they built.
       - name: Build updater manifest
-        if: env.TAURI_SIGNING_PRIVATE_KEY != ''
+        id: manifest
+        continue-on-error: true
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
@@ -172,10 +184,10 @@ jobs:
             --out dist-release
         shell: pwsh
 
-      - name: Note missing signing key
-        if: env.TAURI_SIGNING_PRIVATE_KEY == ''
+      - name: Report missing updater metadata
+        if: steps.manifest.outcome == 'failure'
         run: |
-          echo "::notice title=Updater metadata skipped::TAURI_SIGNING_PRIVATE_KEY is not configured, so latest.json was not produced. In-app updates will report 'not configured' rather than failing."
+          echo "::warning title=Updater metadata not produced::Signing failed, so latest.json was not published. The installers were built and will still be released, and in-app updates will report 'not configured'. Check that TAURI_SIGNING_PRIVATE_KEY_PASSWORD matches the password the private key was created with. See the 'Build updater manifest' step for the signer's error."
         shell: bash
 
       - name: Upload Tauri artefacts
