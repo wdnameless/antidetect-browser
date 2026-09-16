@@ -26,3 +26,27 @@ target/
 # Tauri generated schemas/capabilities — regenerated on build.
 src-tauri/gen/
 src-tauri/target/
+
+# Vendored Node runtime for the sidecar (~70 MB). Fetched and checksum-verified by
+# `npm run vendor:node`, so committing it would add tens of megabytes of binary to
+# every clone for something the build reproduces.
+src-tauri/binaries/
+
+# Updater release metadata (latest.json + .sig) produced by scripts/build-updater-manifest.mjs.
+# Generated per release and signed with a CI-only key, so it never belongs in the tree.
+dist-release/
+
+# Tauri signing keys — the PRIVATE key can publish updates on the app's behalf.
+# `tauri signer generate -w ~/.tauri/...` writes into the CURRENT DIRECTORY when the shell
+# does not expand `~`, which once put the key inside this repo (a public one). Guard the
+# literal `~` folder, the usual `.tauri` locations, and the key formats themselves.
+~/
+.tauri/
+**/.tauri/
+*.key
+*.key.pub
+
+# QA screenshots captured while verifying UI work. They are throwaway evidence, unreferenced
+# by any doc or source, and 16 of them accumulated in the repo root. Scoped to the root so a
+# future `assets/` directory with intentional images is unaffected.
+/*.png

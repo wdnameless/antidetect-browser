@@ -157,6 +157,72 @@ describe('launchArgs - buildChromiumArgs composition', () => {
   });
 });
 
+// The privacy knobs are only worth having if they reach the command line. Each switch name
+// below was verified against the pinned kernel binary (`chrome.dll`): Chromium accepts an
+// unknown switch and ignores it silently, so a wrong spelling looks implemented forever.
+describe('per-profile privacy knobs reach the browser', () => {
+  it('blocks ports through host-resolver-rules', async () => {
+    const args = await buildChromiumArgs({
+      profileId: 'p',
+      userDataDir: '/tmp/p',
+      blocked_ports: [3389, 5900],
+    });
+    const rule = args.find((a) => a.startsWith('--host-resolver-rules='));
+    expect(rule).toBeDefined();
+    expect(rule).toContain('MAP *:3389 ~NOTFOUND');
+    expect(rule).toContain('MAP *:5900 ~NOTFOUND');
+  });
+
+  it('emits nothing for ports when none are set', async () => {
+    const args = await buildChromiumArgs({ profileId: 'p', userDataDir: '/tmp/p' });
+    expect(args.some((a) => a.startsWith('--host-resolver-rules='))).toBe(false);
+  });
+
+  it('applies the WebRTC policy under the name the kernel knows', async () => {
+    const args = await buildChromiumArgs({
+      profileId: 'p',
+      userDataDir: '/tmp/p',
+      webrtc_policy: 'disable_non_proxied_udp',
+    });
+    expect(args).toContain('--webrtc-ip-handling-policy=disable_non_proxied_udp');
+    // The `force-` prefix does not exist in the binary; using it would be a silent no-op.
+    expect(args.some((a) => a.startsWith('--force-webrtc'))).toBe(false);
+  });
+
+  it('leaves WebRTC alone on the default policy', async () => {
+    const args = await buildChromiumArgs({
+      profileId: 'p',
+      userDataDir: '/tmp/p',
+      webrtc_policy: 'default',
+    });
+    expect(args.some((a) => a.includes('webrtc-ip-handling-policy'))).toBe(false);
+  });
+
+  it('never passes a Do Not Track switch, because the kernel has none', async () => {
+    // DNT is a preference, applied in `startProfile` via `applyDoNotTrackPref`. Adding a
+    // switch here would be dead weight the browser ignores.
+    const args = await buildChromiumArgs({
+      profileId: 'p',
+      userDataDir: '/tmp/p',
+      do_not_track: 'on',
+    });
+    expect(args.some((a) => a.includes('do-not-track'))).toBe(false);
+  });
+
+  it('keeps user launch_args able to override a privacy knob', async () => {
+    // Documented last-wins rule: the operator's own switches are appended after ours.
+    const args = await buildChromiumArgs({
+      profileId: 'p',
+      userDataDir: '/tmp/p',
+      webrtc_policy: 'proxy',
+      launch_args: ['--webrtc-ip-handling-policy=default'],
+    });
+    expect(args.indexOf('--webrtc-ip-handling-policy=default')).toBeGreaterThan(
+      args.indexOf('--webrtc-ip-handling-policy=proxy')
+    );
+  });
+});
+
 describe('stealth-engine-profile switch (add-engine-level-hardening 4.1)', () => {
   it('emits --stealth-engine-profile and dumps the profile JSON when set', async () => {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'engine-prof-'));

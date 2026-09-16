@@ -44,6 +44,8 @@ import preflightRoutes from './routes/preflight';
 import cookieRobotRoutes from './routes/cookieRobot';
 import settingsRoutes from './routes/settings';
 import { motionRouter } from './routes/motion';
+import { dataDirRouter } from './routes/dataDir';
+import { shutdownRouter } from './routes/shutdown';
 import { mcpRouter } from './routes/mcp';
 
 const LOOPBACK_HOST_RE = /^(127\.0\.0\.1|localhost|\[::1\])(:\d+)?$/i;
@@ -220,6 +222,8 @@ app.use(settingsRoutes);
 app.use(motionRouter);
 app.use('/api/v1/mcp', mcpRouter);
 
+  app.use('/api/v1/data', dataDirRouter);
+  app.use('/api/v1/shutdown', shutdownRouter);
   // JSON 404 for unknown routes (Express default would return HTML).
   app.use((_req: Request, res: Response) => {
     res.status(404).json({ code: -1, msg: 'not found', data: {} });
@@ -315,7 +319,23 @@ export function startApi(): Promise<void> {
     socket.destroy();
   });
 
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
+    // A failed bind must reject, not hang. Without this handler `EADDRINUSE` surfaces as an
+    // unhandled error event: the process dies, the shell's readiness wait never sees the
+    // listening line, and the app shows a UI with no backend behind it. The message says
+    // whose port it is so the operator is not left guessing.
+    server.once('error', (err: NodeJS.ErrnoException) => {
+      if (err.code === 'EADDRINUSE') {
+        reject(
+          new Error(
+            `Port ${API_PORT} is already in use. Another NullTrace instance (or another program) holds it. ` +
+              `Close it, or start this one with a different API_PORT.`
+          )
+        );
+        return;
+      }
+      reject(err);
+    });
     server.listen(API_PORT, API_HOST, () => {
       console.log(
         `[antidetect] Local API listening on http://${API_HOST}:${API_PORT}` +

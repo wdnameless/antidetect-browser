@@ -26,6 +26,12 @@ declare global {
         migrateDir: (target: string, migrateData: boolean) => Promise<{ ok: boolean; dir: string; migrated?: boolean; error?: string }>;
         setDirPath: (dir: string) => Promise<{ ok: boolean; dir: string }>;
         openDir: () => Promise<string>;
+        /**
+         * Restart the shell so a persisting change takes effect — the data directory is
+         * resolved once by the backend at startup, so relocating it cannot apply in place.
+         * Absent in a browser client, which the caller must tolerate.
+         */
+        restart: () => Promise<{ ok: boolean; error?: string }>;
       };
       logs?: {
         openDir: () => Promise<string>;

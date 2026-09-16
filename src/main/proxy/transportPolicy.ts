@@ -168,11 +168,15 @@ export function composeTransportFlags(result: TransportProbeResult | { status: T
     flags.push(`--proxy-bypass-list=<-loopback>`);
   }
 
+  // The kernel exposes `--webrtc-ip-handling-policy` (verified against `chrome.dll` in the
+  // pinned build). The `force-`-prefixed spelling these two lines used does NOT exist in the
+  // binary: Chromium accepts unknown switches and ignores them, so the leak protection these
+  // branches promise was never applied.
   if (result.status === 'SOCKS5_FULL_PASS') {
-    flags.push(`--force-webrtc-ip-handling-policy=disable_non_proxied_udp`);
+    flags.push(`--webrtc-ip-handling-policy=disable_non_proxied_udp`);
   } else if (result.status === 'CONSTRAINED') {
     flags.push(`--disable-quic`);
-    flags.push(`--force-webrtc-ip-handling-policy=disable_non_proxied_udp`);
+    flags.push(`--webrtc-ip-handling-policy=disable_non_proxied_udp`);
     flags.push(`--disable-webrtc`);
   }
 

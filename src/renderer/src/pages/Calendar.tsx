@@ -110,7 +110,7 @@ export function Calendar() {
           >
             ‹
           </button>
-          <span data-testid="calendar-month" style={{ fontSize: 13, color: '#fafafa', minWidth: 140, textAlign: 'center' }}>
+          <span data-testid="calendar-month" style={{ fontSize: 13, color: 'var(--text)', minWidth: 140, textAlign: 'center' }}>
             {cursor.toLocaleString(undefined, { month: 'long', year: 'numeric' })}
           </span>
           <button

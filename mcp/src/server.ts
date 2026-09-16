@@ -33,8 +33,14 @@ export class McpServer {
     this.toolRouter = options?.toolRouter || new ToolRouter();
     this.tokenManager = options?.tokenManager || new SessionTokenManager();
     this.nonceDefense = options?.nonceDefense || new NonceReplayDefense();
-    this.defaultScope = options?.defaultScope || 'standard';
-    this.allowedGatedEnv = options?.allowedGatedEnv;
+    // `ANTIDETECT_MCP_SCOPE` must apply to BOTH transports. It was previously read only on
+    // the stdio path (inside `startStdio`), so an operator who configured `admin` still got
+    // `standard` over HTTP — the transport this app actually uses — and the 12 destructive
+    // tools stayed refused with no visible reason. Reading it here makes the configured
+    // level the default for every request that does not carry a token scope.
+    const envScope = process.env.ANTIDETECT_MCP_SCOPE;
+    this.defaultScope = options?.defaultScope || (envScope === 'admin' ? 'admin' : 'standard');
+    this.allowedGatedEnv = options?.allowedGatedEnv ?? process.env.ANTIDETECT_MCP_GATED;
   }
 
   public async handleJsonRpcRequest(

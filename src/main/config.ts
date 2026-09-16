@@ -81,20 +81,171 @@ export function resolveDataDir(): string {
 }
 
 /**
- * Whether the operator has already answered "where should data live?" on a
- * portable launch. When they have not, the UI asks once and persists the answer.
+ * Whether this launch should ask the operator where to keep its data.
+ *
+ * This is the first-run prompt, and it applies to EVERY build, not just the portable one:
+ * an installed app puts profiles, the database, the browser kernel and downloaded
+ * extensions under the user profile, which may be on a small system drive. The operator gets
+ * to choose once, and the answer is honoured from then on.
+ *
+ * It deliberately returns false wherever the location is imposed rather than chosen:
+ *   - `ANTIDETECT_DATA_DIR` was set from outside — CI, tests and managed deployments pin the
+ *     path. The desktop shell also exports this variable, but only so the sidecar agrees with
+ *     the path the shell resolved; it marks that export with
+ *     `ANTIDETECT_DATA_DIR_FROM_SHELL`, which keeps a first run on the desktop prompting
+ *     instead of silently resolving to the default;
+ *   - server mode — a headless deployment has no one to click, and its paths come from the
+ *     environment;
+ *   - a directory or a mode was already recorded — never re-ask;
+ *   - the current directory already holds profiles — an install upgraded from a version that
+ *     never recorded a choice. Asking there would be an invitation to relocate away from
+ *     existing profiles, which looks exactly like losing them.
  */
-export function needsDataModeChoice(): boolean {
-  if (!isPortableMode()) return false;
-  const mode = readSettings().dataMode;
-  return mode !== 'portable' && mode !== 'system';
+export function needsFirstRunDataChoice(): boolean {
+  const shellExported = process.env.ANTIDETECT_DATA_DIR_FROM_SHELL === '1';
+  const pinnedExternally =
+    !shellExported && typeof process.env.ANTIDETECT_DATA_DIR === 'string' && process.env.ANTIDETECT_DATA_DIR.length > 0;
+  if (pinnedExternally) return false;
+  if (SERVER_MODE) return false;
+  const s = readSettings();
+  if (typeof s.dataDir === 'string' && s.dataDir.length > 0) return false;
+  if (s.dataMode === 'portable' || s.dataMode === 'system') return false;
+  // Existing data is itself proof that the location is settled. Without this an upgrade from
+  // a build that predates the prompt would ask a user with hundreds of profiles to start
+  // fresh, and the obvious answer — "pick a new folder" — would open an empty library.
+  //
+  // The marker must be something only real use can produce. `config.ts` eagerly creates the
+  // data dir, `profiles/`, `chromium/` and an empty database at import, so their mere
+  // existence proves nothing — an earlier revision checked the folders themselves and the
+  // prompt never fired. A NON-EMPTY profiles directory is the reliable signal: profile
+  // folders are only created when the operator actually runs a profile. An installed kernel
+  // is deliberately NOT used — a dev checkout leaves an empty `chromium/fingerprint-chromium`
+  // symlink, which would silently suppress the prompt on a fresh install.
+  const target = resolveDataDir();
+  if (hasProfileData(path.join(target, 'profiles'))) return false;
+  return true;
 }
 
-/** Persist the portable data-location choice. Takes effect on next start. */
-export function setDataMode(mode: 'portable' | 'system'): void {
-  const s = readSettings();
-  s.dataMode = mode;
-  writeSettings(s);
+/** True when `profilesDir` holds at least one entry, i.e. the app has been used for real. */
+function hasProfileData(profilesDir: string): boolean {
+  try {
+    return fs.readdirSync(profilesDir).length > 0;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * The directory that would be used if the operator accepts the default.
+ *
+ * Shown in the first-run prompt and used when they press "Use this folder" without picking
+ * anything, so the UI can state the actual path instead of describing it vaguely.
+ */
+export function defaultDataDir(): string {
+  if (isPortableMode()) return path.join(portableBaseDir() as string, 'data');
+  return path.join(settingsBase(), 'data');
+}
+
+/**
+ * Persist the first-run choice and report whether it was actually written.
+ *
+ * A concrete `dir` is stored under `dataDir` — the same key the resolver reads and Settings
+ * writes — and a `mode` records one of the two well-known layouts, clearing any earlier
+ * explicit path because a stale path would otherwise silently outrank the mode the operator
+ * just picked. Takes effect on the next start: `DATA_DIR` is resolved once at import time.
+ */
+export function setFirstRunDataChoice(choice: { dir?: string | null; mode?: 'portable' | 'system' }): { ok: boolean; error?: string } {
+  if (choice.dir && choice.dir.trim().length > 0) {
+    const s = readSettings();
+    s.dataDir = path.resolve(choice.dir.trim());
+    return tryWriteSettings(s);
+  }
+  if (choice.mode === 'portable' || choice.mode === 'system') {
+    const s = readSettings();
+    s.dataMode = choice.mode;
+    delete s.dataDir;
+    return tryWriteSettings(s);
+  }
+  return { ok: false, error: 'either dir or mode is required' };
+}
+
+/**
+ * True when the directory can actually hold the data: it exists or can be created, and is
+ * writable. A prompt that accepts an unwritable path (Program Files, a read-only share)
+ * would fail later with an opaque database error instead of at the moment of choosing.
+ *
+ * `create: false` answers the question WITHOUT touching the filesystem. The prompt checks a
+ * path on every blur while the operator is still typing, so the default must not create
+ * anything — an earlier revision did, and merely typing `…/settings.json` created a
+ * directory with that name, which then broke writing the real settings file.
+ */
+export function isUsableDataDir(dir: string, opts: { create?: boolean } = {}): { ok: boolean; error?: string } {
+  const create = opts.create !== false;
+  if (create) {
+    try {
+      fs.mkdirSync(dir, { recursive: true });
+    } catch (err) {
+      return { ok: false, error: `cannot create folder: ${(err as Error).message}` };
+    }
+  } else if (!fs.existsSync(dir)) {
+    // Does not exist yet: judge the nearest existing ancestor, since that is what a later
+    // create would have to write into.
+    let probe = path.dirname(path.resolve(dir));
+    while (!fs.existsSync(probe)) {
+      const parent = path.dirname(probe);
+      if (parent === probe) break;
+      probe = parent;
+    }
+    try {
+      fs.accessSync(probe, fs.constants.W_OK);
+    } catch {
+      return { ok: false, error: 'folder cannot be created there (parent is not writable)' };
+    }
+    return { ok: true };
+  }
+  try {
+    fs.accessSync(dir, fs.constants.W_OK);
+  } catch {
+    return { ok: false, error: 'folder is not writable' };
+  }
+  if (!fs.statSync(dir).isDirectory()) {
+    return { ok: false, error: 'a file already exists at this path' };
+  }
+  return { ok: true };
+}
+
+/**
+ * True when `dir` would collide with the app's own settings file.
+ *
+ * A directory at `settings.json` cannot be written to, so choosing that path would break
+ * settings permanently — including the record of the choice itself, which is why it must be
+ * refused rather than accepted and then reported as an unwritable file later.
+ */
+export function dataDirCollidesWithSettings(dir: string): boolean {
+  const resolved = path.resolve(dir);
+  if (resolved === path.resolve(settingsFile())) return true;
+  // Also refuse a parent that would swallow the settings directory, e.g. choosing the
+  // user profile itself puts data next to unrelated files and is almost always a misclick.
+  const base = path.resolve(settingsBase());
+  return base.startsWith(resolved + path.sep);
+}
+
+/**
+ * Persists settings and reports whether it worked.
+ *
+ * `writeSettings` intentionally swallows failures — settings are best-effort and must never
+ * take the service down. But a FIRST-RUN choice is not best-effort: reporting success while
+ * the file was never written sends the operator into a restart that silently resolves to the
+ * default folder, which looks identical to the choice being ignored.
+ */
+export function tryWriteSettings(s: Record<string, unknown>): { ok: boolean; error?: string } {
+  try {
+    fs.mkdirSync(settingsBase(), { recursive: true });
+    fs.writeFileSync(settingsFile(), JSON.stringify(s, null, 2), 'utf8');
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: (err as Error).message };
+  }
 }
 
 // KEEP: Preserves existing data directory location across updates.
@@ -192,6 +343,15 @@ export function getApiKey(): string {
   }
   return cachedApiKey;
 }
+/**
+ * In Tauri mode the host injects ANTIDETECT_TARGET_RESOURCES_DIR so the
+ * backend resolves bundled resources without referencing `process.resourcesPath`.
+ * Returns null when unset or empty.
+ */
+export function targetResourcesDir(): string | null {
+  const dir = process.env.ANTIDETECT_TARGET_RESOURCES_DIR?.trim();
+  return dir && dir.length > 0 ? dir : null;
+}
 
 /**
  * Directories that may hold the fingerprint-chromium kernel, in priority order:
@@ -205,8 +365,9 @@ export function getApiKey(): string {
 export function kernelBaseDirs(): string[] {
   const dirs: string[] = [];
   // Packaged app: kernel shipped inside resources/kernel (extraResources).
-  if (process.resourcesPath) {
-    dirs.push(path.join(process.resourcesPath, 'kernel', 'fingerprint-chromium'));
+  const resDir = targetResourcesDir();
+  if (resDir) {
+    dirs.push(path.join(resDir, 'kernel', 'fingerprint-chromium'));
   }
   dirs.push(path.join(CHROMIUM_DIR, 'fingerprint-chromium'));
   return dirs;
@@ -214,7 +375,7 @@ export function kernelBaseDirs(): string[] {
 
 /**
  * Locate the patched fingerprint-chromium executable.
- * Priority: CHROMIUM_PATH env -> packaged resources (process.resourcesPath/kernel) -> data dir.
+ * Priority: CHROMIUM_PATH env -> packaged resources (targetResourcesDir/kernel) -> data dir.
  */
 function findFingerprintChromium(): string | null {
   const scan = (base: string): string | null => {
@@ -309,8 +470,10 @@ export function getChromedriverPath(): string | null {
     return process.env.CHROMEDRIVER_PATH;
   }
   const candidates: string[] = [];
-  if (process.resourcesPath) candidates.push(path.join(process.resourcesPath, 'chromedriver', 'chromedriver.exe'));
+  const resDir = targetResourcesDir();
+  if (resDir) candidates.push(path.join(resDir, 'chromedriver', 'chromedriver.exe'));
   candidates.push(path.join(CHROMEDRIVER_DIR, 'chromedriver.exe'));
   candidates.push(path.join(CHROMEDRIVER_DIR, 'chromedriver-win64', 'chromedriver.exe'));
   return candidates.find((c) => fs.existsSync(c)) ?? null;
+
 }

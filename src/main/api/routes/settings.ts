@@ -29,23 +29,46 @@ router.post('/api/v1/settings/data-root/move', async (req: Request, res: Respons
 });
 
 // GET /api/v1/settings/security (capture protection + auto-lock)
-router.get('/api/v1/settings/security', (_req: Request, res: Response) => {
+/**
+ * MCP privilege level in effect.
+ *
+ * `standard` grants the 35 read/write tools and refuses the 12 destructive ones; `admin`
+ * additionally grants delete/restore/import/export. The env override wins so an operator can
+ * pin the level for a deployment, but the stored setting is what the UI edits.
+ */
+export function getMcpScope(): 'standard' | 'admin' {
+  const fromEnv = process.env.ANTIDETECT_MCP_SCOPE;
+  if (fromEnv === 'standard' || fromEnv === 'admin') return fromEnv;
+  const stored = getSetting('mcpScope');
+  return stored === 'admin' ? 'admin' : 'standard';
+}
+
+router.get('/api/v1/settings/security', (_req, res: Response) => {
   res.json({
     code: 0,
     msg: 'success',
     data: {
       captureProtection: getSetting('captureProtection') === true,
       autoLockMinutes: typeof getSetting('autoLockMinutes') === 'number' ? getSetting('autoLockMinutes') : 15,
+      // MCP privilege level. Read from settings, falling back to the env override so a
+      // deployment can pin it. `standard` is the safe default: the 12 destructive tools
+      // (delete/restore/import/export) stay refused until the operator opts in.
+      mcpScope: getMcpScope(),
     },
   });
 });
 
 // PUT /api/v1/settings/security — persists and applies immediately
 router.put('/api/v1/settings/security', (req: Request, res: Response) => {
-  const { captureProtection, autoLockMinutes } = req.body || {};
+  const { captureProtection, autoLockMinutes, mcpScope } = req.body || {};
   if (typeof captureProtection === 'boolean') setSetting('captureProtection', captureProtection);
   if (autoLockMinutes === null || (typeof autoLockMinutes === 'number' && autoLockMinutes >= 0)) {
     setSetting('autoLockMinutes', autoLockMinutes ?? 15);
+  }
+  if (typeof mcpScope === 'string') {
+    // Only the two scopes the MCP server actually implements are accepted; anything else
+    // would be stored and then silently behave as `standard`.
+    if (mcpScope === 'standard' || mcpScope === 'admin') setSetting('mcpScope', mcpScope);
   }
   // Apply live (service mode): re-init protection from the persisted settings.
   try {
@@ -66,6 +89,7 @@ router.put('/api/v1/settings/security', (req: Request, res: Response) => {
     data: {
       captureProtection: getSetting('captureProtection') === true,
       autoLockMinutes: getSetting('autoLockMinutes'),
+      mcpScope: getMcpScope(),
     },
   });
 });

@@ -49,30 +49,26 @@ export interface ArtifactVerificationResult {
 /**
  * Determine whether allowUnsignedDev flag can be honored.
  * CRITICAL RULE: Production / packaged builds MUST IGNORE --allow-unsigned-dev.
+ *
+ * Packaged signal: The Tauri shell sets ANTIDETECT_PACKAGED=1 and NODE_ENV=production
+ * in release builds. In dev builds, ANTIDETECT_PACKAGED is unset and NODE_ENV=development.
+ * An explicit opts.isPackaged (if provided) is honoured first.
+ * In a packaged/release build, --allow-unsigned-dev is strictly ignored and
+ * unsigned/tampered artifacts are refused.
  */
 export function isUnsignedDevAllowed(opts?: {
   allowUnsignedDev?: boolean;
   isPackaged?: boolean;
 }): boolean {
-  // Check electron app.isPackaged dynamically if opts.isPackaged is not provided
-  let electronPackaged: boolean | undefined = undefined;
-  if (opts?.isPackaged === undefined) {
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-var-requires
-      const electron = require('electron');
-      if (electron?.app?.isPackaged !== undefined) {
-        electronPackaged = electron.app.isPackaged;
-      }
-    } catch {
-      // Not running in Electron environment or not available
-    }
-  }
+  // Determine whether running in a packaged release build.
+  // Explicit option takes precedence (useful for tests); otherwise check ANTIDETECT_PACKAGED env.
+  const isPackaged =
+    opts?.isPackaged !== undefined
+      ? opts.isPackaged
+      : process.env.ANTIDETECT_PACKAGED === '1';
 
   // If explicitly packaged or running in production NODE_ENV, always false
-  const isProd =
-    opts?.isPackaged === true ||
-    electronPackaged === true ||
-    process.env.NODE_ENV === 'production';
+  const isProd = isPackaged || process.env.NODE_ENV === 'production';
   if (isProd) {
     return false;
   }

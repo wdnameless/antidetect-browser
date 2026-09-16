@@ -188,4 +188,42 @@ describe('FlowCanvas Component & UI Logic', () => {
     expect(validation.valid).toBe(false);
     expect(validation.errors.some(e => e.code === 'CYCLIC_LOOP_GUARD')).toBe(true);
   });
+
+  it('computes node drag and rendered positions consistently regardless of pan', () => {
+    // Convention: node.x / node.y are stored in canvas space.
+    // rendered position = node.x + pan.x, node.y + pan.y.
+    const pan = { x: 300, y: 150 };
+    const rect = { left: 50, top: 80 };
+    const initialNode = { x: 100, y: 120 };
+
+    // 1. Mouse down at client position (e.g. at the center of the node on screen)
+    // Screen position of node: left = 50 + 100 + 300 = 450, top = 80 + 120 + 150 = 350
+    const mouseDownClient = { x: 450 + 25, y: 350 + 15 };
+
+    // dragOffset should be relative to node top-left within node's own frame:
+    const dragOffset = {
+      x: mouseDownClient.x - rect.left - pan.x - initialNode.x, // (475 - 50 - 300 - 100) = 25
+      y: mouseDownClient.y - rect.top - pan.y - initialNode.y,   // (365 - 80 - 150 - 120) = 15
+    };
+    expect(dragOffset.x).toBe(25);
+    expect(dragOffset.y).toBe(15);
+
+    // 2. Drag cursor by 100px right, 50px down
+    const mouseMoveClient = {
+      x: mouseDownClient.x + 100,
+      y: mouseDownClient.y + 50,
+    };
+
+    const newX = Math.round((mouseMoveClient.x - rect.left - pan.x - dragOffset.x) / 10) * 10;
+    const newY = Math.round((mouseMoveClient.y - rect.top - pan.y - dragOffset.y) / 10) * 10;
+
+    // Stored node.x must change by exactly +100, node.y by +50
+    expect(newX - initialNode.x).toBe(100);
+    expect(newY - initialNode.y).toBe(50);
+
+    // Rendered position on screen also moves by exactly +100, +50
+    const oldRenderedX = initialNode.x + pan.x;
+    const newRenderedX = newX + pan.x;
+    expect(newRenderedX - oldRenderedX).toBe(100);
+  });
 });

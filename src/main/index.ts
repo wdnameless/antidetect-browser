@@ -27,11 +27,28 @@ import { logger, initLogger, flushLogs } from './util/logger';
 // Single-instance lock: two service instances would race on the DB file.
 // ---------------------------------------------------------------------------
 export const LOCK_FILE = path.join(DATA_DIR, 'service.lock');
+
+/**
+ * Raised when the instance lock is held by a process we cannot displace.
+ *
+ * Distinct from other lock failures (an unreadable file, a missing directory): those must
+ * never stop startup, while this one must. It exists because a plain string check once let
+ * the refusal fall through and the service went on to die obscurely on a busy port.
+ */
+export class InstanceLockHeldError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'InstanceLockHeldError';
+  }
+}
 export interface ProcessInspectorOptions {
   execFileSync?: (file: string, args: string[], options?: child_process.ExecFileSyncOptions) => string | Buffer;
 }
 
 let defaultExecFileSync = child_process.execFileSync;
+
+/** The injectable probe signature; helpers take this rather than the overloaded original. */
+type ExecRunner = NonNullable<ProcessInspectorOptions['execFileSync']>;
 
 export function setProcessInspectorExec(fn: typeof child_process.execFileSync | undefined): void {
   defaultExecFileSync = fn || child_process.execFileSync;
@@ -39,11 +56,22 @@ export function setProcessInspectorExec(fn: typeof child_process.execFileSync | 
 
 /**
  * Inspects the process command line / image name.
- * Allows 'Antidetect Browser.exe', 'electron', or 'node' running our service/entry script.
+ * Allows 'Antidetect Browser.exe' or 'node' running our service/entry script.
  * Returns true (our app), false (a different image), or undefined when the
- * probe failed entirely (wmic + powershell unavailable, access denied, ...).
+ * probe failed entirely (no probe available, access denied, ...).
  * A definite false lets the caller treat the lock as stale; an undefined must
  * be handled conservatively by callers (never remove a lock they can't verify).
+ *
+ * Windows probe order, and why it is this order:
+ *   1. `tasklist` — always present, ~40ms, and answers "does this pid still exist"
+ *      with its image name. On Windows 11 / Server 2025 `wmic` has been REMOVED
+ *      from the OS, and PowerShell's `Get-CimInstance` takes ~2.8s on a cold
+ *      start. The previous code tried `wmic` first and fell back to a 2000ms
+ *      PowerShell call, so on those systems the probe timed out and returned
+ *      `undefined` for a LIVE pid. Callers fail closed on `undefined`, so the
+ *      service refused to start and left the app with a dead backend.
+ *   2. `powershell Get-CimInstance` — only for the command line, when tasklist
+ *      confirmed the pid exists but reported an image we do not recognise.
  */
 export function isProcessOurApp(
   pid: number,
@@ -52,57 +80,38 @@ export function isProcessOurApp(
   const runner = options?.execFileSync || defaultExecFileSync;
   try {
     if (process.platform === 'win32') {
-      let cmdLine = '';
-      try {
-        const raw = runner(
-          'wmic',
-          ['process', 'where', `ProcessId=${pid}`, 'get', 'CommandLine'],
-          { encoding: 'utf8', timeout: 2000, stdio: ['pipe', 'pipe', 'ignore'] }
-        );
-        cmdLine = typeof raw === 'string' ? raw : raw ? raw.toString('utf8') : '';
-      } catch {
-        // Fallback to powershell Get-CimInstance if wmic is missing or fails
-        try {
-          const raw = runner(
-            'powershell.exe',
-            [
-              '-NoProfile',
-              '-NonInteractive',
-              '-Command',
-              `(Get-CimInstance Win32_Process -Filter "ProcessId = ${pid}").CommandLine`
-            ],
-            { encoding: 'utf8', timeout: 2000, stdio: ['pipe', 'pipe', 'ignore'] }
-          );
-          cmdLine = typeof raw === 'string' ? raw : raw ? raw.toString('utf8') : '';
-        } catch {
-          return undefined; // probe failed on both wmic and powershell
-        }
+      const imageName = winImageName(runner, pid);
+      if (imageName !== undefined) {
+        // The pid is gone: nothing holds the lock.
+        if (imageName === null) return false;
+        if (imageName.includes('antidetect')) return true;
+        // A recognisable, non-ours image is a definite "not us" without needing the
+        // command line at all — and `node.exe` is ambiguous because every Node tool
+        // on the machine shares that image name, so it must fall through.
+        if (imageName !== 'node.exe') return false;
       }
 
-      const normalized = (cmdLine || '').toLowerCase();
+      const cmdLine = winCommandLine(runner, pid);
+      if (cmdLine === undefined) return undefined; // probe failed entirely
+      const normalized = cmdLine.toLowerCase();
 
       // KEEP: Instance-lock executable name match for single-instance enforcement.
       if (normalized.includes('antidetect browser.exe') || normalized.includes('antidetect browser')) {
         return true;
       }
-      // Dev electron app
-      if (normalized.includes('electron')) {
-        return true;
-      }
       // Node running our service or entry point
-      // KEEP: Instance-lock process check for antidetect node/electron instances.
+      // KEEP: Instance-lock process check for antidetect node instances.
       if (
         normalized.includes('node') &&
         (normalized.includes('antidetect') ||
           normalized.includes('src\\main') ||
-          normalized.includes('dist/electron') ||
-          normalized.includes('dist\\electron') ||
           normalized.includes('dist/src/main') ||
           normalized.includes('dist\\src\\main'))
       ) {
         return true;
       }
-
+      // The command line WAS read and it is not ours: that is a definite "not our app",
+      // which lets the caller reclaim a recycled pid. Only a failed read is unknown.
       return false;
     } else {
       // POSIX fallback: check /proc/<pid>/cmdline or ps -p <pid> -o args=
@@ -114,13 +123,72 @@ export function isProcessOurApp(
         }).toLowerCase();
         if (!args.trim()) return false;
         // KEEP: POSIX instance-lock process check for antidetect.
-        if (args.includes('antidetect') || args.includes('electron')) return true;
+        if (args.includes('antidetect')) return true;
         if (args.includes('node') && (args.includes('main') || args.includes('service'))) return true;
       } catch {
         return undefined; // ps probe failed
       }
       return false;
     }
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Windows image name for `pid` via `tasklist`.
+ * Returns the lowercased image (e.g. `node.exe`), `null` when no such pid exists,
+ * or `undefined` when tasklist itself could not be run.
+ */
+function winImageName(runner: ExecRunner, pid: number): string | null | undefined {
+  try {
+    const raw = runner('tasklist', ['/FI', `PID eq ${pid}`, '/FO', 'CSV', '/NH'], {
+      encoding: 'utf8',
+      timeout: 4000,
+      stdio: ['pipe', 'pipe', 'ignore']
+    });
+    const out = typeof raw === 'string' ? raw : raw ? raw.toString('utf8') : '';
+    // tasklist reports a miss as "INFO: No tasks are running which match the criteria."
+    if (/no tasks are running/i.test(out)) return null;
+    // CSV: "node.exe","1234","Console","1","50,388 K"
+    const m = out.match(/^"([^"]+)"/m);
+    return m ? m[1].toLowerCase() : null;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Windows command line for `pid`, or `undefined` when it could not be read.
+ * `wmic` is tried first because it is far faster where it still exists; the
+ * PowerShell fallback needs a generous timeout, since a cold CIM start was
+ * measured at ~2.8s and a 2000ms budget timed out on healthy systems.
+ */
+function winCommandLine(runner: ExecRunner, pid: number): string | undefined {
+  try {
+    const raw = runner('wmic', ['process', 'where', `ProcessId=${pid}`, 'get', 'CommandLine'], {
+      encoding: 'utf8',
+      timeout: 4000,
+      stdio: ['pipe', 'pipe', 'ignore']
+    });
+    const out = typeof raw === 'string' ? raw : raw ? raw.toString('utf8') : '';
+    if (out.trim()) return out;
+  } catch {
+    // wmic is absent on Windows 11 / Server 2025; fall through to PowerShell.
+  }
+  try {
+    const raw = runner(
+      'powershell.exe',
+      [
+        '-NoProfile',
+        '-NonInteractive',
+        '-Command',
+        `(Get-CimInstance Win32_Process -Filter "ProcessId = ${pid}").CommandLine`
+      ],
+      { encoding: 'utf8', timeout: 15000, stdio: ['pipe', 'pipe', 'ignore'] }
+    );
+    const out = typeof raw === 'string' ? raw : raw ? raw.toString('utf8') : '';
+    return out.trim() ? out : undefined;
   } catch {
     return undefined;
   }
@@ -147,21 +215,21 @@ export function acquireInstanceLock(): void {
         if (alive) {
           const probed = isProcessOurApp(stalePid);
           if (probed === undefined) {
-            // The pid is alive but we cannot verify its image (no wmic, no
-            // powershell, access denied). Removing the lock here risks two
-            // services writing one database — fail closed instead.
+            // The pid is alive but we cannot verify its image (no probe available, access
+            // denied). Removing the lock here risks two services writing one database —
+            // fail closed, but LOUDLY: this stops the launch so the shell can show why.
             const msg = `Another process (pid ${stalePid}) holds the instance lock and its image could not be verified. Close it first or remove ${LOCK_FILE} manually.`;
             logger.warn('instance lock held by unverifiable process', { stalePid });
-            throw new Error(msg);
+            throw new InstanceLockHeldError(msg);
           }
           isRunningApp = probed;
         }
       }
 
       if (isRunningApp) {
-        throw new Error(
-          `Another instance is already running (pid ${stalePid}). Close it first.`
-        );
+        const msg = `Another instance is already running (pid ${stalePid}). Close it first.`;
+        logger.warn('instance lock held by our own app', { stalePid });
+        throw new InstanceLockHeldError(msg);
       }
 
       // Stale lock: pid dead, own pid, recycled pid of another image, or an
@@ -171,8 +239,16 @@ export function acquireInstanceLock(): void {
     }
     fs.writeFileSync(LOCK_FILE, String(process.pid), 'utf8');
   } catch (err) {
-    if ((err as Error).message.includes('already running')) throw err;
-    // lock file issues must never prevent startup
+    // A lock we are not allowed to take must STOP the launch, never be swallowed.
+    //
+    // This used to be a bare `catch` that only rethrew when the message contained
+    // "already running" — the unrelated string. Every other refusal (an unverifiable
+    // holder, our own app still running) was logged and then ignored, so the service
+    // carried on and died later at `listen()` on the busy port. The result was a
+    // running UI with no backend at all: "failed to fetch" and dead menus, with the
+    // real reason only in a log file.
+    if (err instanceof InstanceLockHeldError) throw err;
+    // Anything else (missing file, permissions) must still not block startup.
     logger.warn('instance lock warning', { error: (err as Error).message });
     console.error('[antidetect] instance lock warning:', (err as Error).message);
   }

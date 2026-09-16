@@ -364,7 +364,7 @@ describe('Transport Policy Flag Matrix & Relay State Tracking', () => {
       'socks5://127.0.0.1:1080'
     );
     expect(flags).toContain('--proxy-server=socks5://127.0.0.1:1080');
-    expect(flags).toContain('--force-webrtc-ip-handling-policy=disable_non_proxied_udp');
+    expect(flags).toContain('--webrtc-ip-handling-policy=disable_non_proxied_udp');
     expect(flags).not.toContain('--disable-quic');
   });
 
@@ -375,7 +375,7 @@ describe('Transport Policy Flag Matrix & Relay State Tracking', () => {
     );
     expect(flags).toContain('--proxy-server=socks5://127.0.0.1:1080');
     expect(flags).toContain('--disable-quic');
-    expect(flags).toContain('--force-webrtc-ip-handling-policy=disable_non_proxied_udp');
+    expect(flags).toContain('--webrtc-ip-handling-policy=disable_non_proxied_udp');
     expect(flags).toContain('--disable-webrtc');
   });
 
