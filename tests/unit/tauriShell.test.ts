@@ -16,11 +16,9 @@ describe('Tauri Desktop Shell', () => {
     expect(() => JSON.parse(content)).not.toThrow();
   });
 
-  it('identifier matches package.json appId (com.antidetect.browser)', () => {
-    const pkg = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
+  it('identifier preserves the application id (com.antidetect.browser)', () => {
     const tauriConf = JSON.parse(fs.readFileSync(tauriConfPath, 'utf8'));
-    expect(pkg.build?.appId).toBe('com.antidetect.browser');
-    expect(tauriConf.identifier).toBe(pkg.build.appId);
+    expect(tauriConf.identifier).toBe('com.antidetect.browser');
   });
 
   it('points the webview at the served UI rather than a bundled renderer copy', () => {
@@ -50,12 +48,13 @@ describe('Tauri Desktop Shell', () => {
     // Platform bundle sections
     expect(bundle.windows).toBeDefined();
     expect(bundle.linux).toBeDefined();
-    expect(bundle.macos).toBeDefined();
+    const macos = bundle.macos || bundle.macOS;
+    expect(macos).toBeDefined();
 
     // macOS must carry an AD-HOC identity ("-"), not a Developer ID. Unsigned arm64
     // code does not load on Apple Silicon, so `null` here would ship a build that
     // cannot start; a real certificate is unavailable without an Apple account.
-    expect(bundle.macos.signingIdentity).toBe('-');
+    expect(macos.signingIdentity).toBe('-');
   });
 
   it('src-tauri/Cargo.toml defines nulltrace-tauri-shell crate', () => {
@@ -94,6 +93,7 @@ describe('macOS ad-hoc signing is configured for the shell too', () => {
     // Silicon. "-" is codesign's ad-hoc identity and needs no certificate.
     const raw = fs.readFileSync(path.join(__dirname, '../..', 'src-tauri/tauri.conf.json'), 'utf8');
     const conf = JSON.parse(raw);
-    expect(conf.bundle?.macos?.signingIdentity).toBe('-');
+    const macos = conf.bundle?.macos || conf.bundle?.macOS;
+    expect(macos?.signingIdentity).toBe('-');
   });
 });

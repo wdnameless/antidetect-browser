@@ -556,6 +556,22 @@ export const api = {
       `/api/v1/logs/get?name=${encodeURIComponent(name)}&tail=${tail}`
     ),
   kernelInfo: () => request<{ installed: string | null }>('/api/v1/kernel/info'),
+  /** Install progress for the one-time kernel download (~425 MB, SHA-256 verified). */
+  kernelStatus: () =>
+    request<{
+      status: 'idle' | 'downloading' | 'verifying' | 'done' | 'error';
+      received: number;
+      total: number;
+      error?: string;
+      installed: string | null;
+      pinned: string;
+      installing: boolean;
+    }>('/api/v1/kernel/status'),
+  /** Download and verify the kernel. Idempotent; joins an in-flight download. */
+  kernelInstall: () =>
+    request<{ ok: boolean; installed: string | null; alreadyInstalled?: boolean }>('/api/v1/kernel/install', {
+      method: 'POST',
+    }),
   kernelCheckUpdate: () =>
     request<{ installed: string | null; latest: string | null; updateAvailable: boolean; releaseUrl?: string; error?: string }>(
       '/api/v1/kernel/check-update'
@@ -614,6 +630,22 @@ export const api = {
     request<{ current: string; found: Array<{ dir: string; isCurrent: boolean; dbSize: number; modified: number; profiles: number }> }>(
       '/api/v1/data/scan'
     ),
+  // First-run data location. The backend owns both the "is a choice due?" rule and the
+  // writability check, so the UI never has to second-guess where data will land.
+  firstRunData: () =>
+    request<{ needed: boolean; defaultDir: string; currentDir: string; portable: boolean }>(
+      '/api/v1/data/first-run'
+    ),
+  setFirstRunData: (dir: string) =>
+    request<{ ok: boolean; dir: string; restartRequired: boolean; error?: string }>('/api/v1/data/first-run', {
+      method: 'POST',
+      body: JSON.stringify({ dir }),
+    }),
+  checkFirstRunData: (dir: string) =>
+    request<{ ok: boolean; dir?: string; error?: string }>('/api/v1/data/first-run/check', {
+      method: 'POST',
+      body: JSON.stringify({ dir }),
+    }),
   proxyTest: (body: { type: string; host: string; port: number; username?: string; password?: string }) =>
     request<ProxyTestResult>('/api/v1/proxy/test', { method: 'POST', body: JSON.stringify(body) }),
   proxyCheck: (proxy_id: string) =>
@@ -1015,12 +1047,21 @@ export const api = {
     ),
   // ---- Task Groups ----
   securitySettingsGet: () =>
-    request<{ captureProtection: boolean; autoLockMinutes: number }>('/api/v1/settings/security'),
-  securitySettingsSet: (body: { captureProtection?: boolean; autoLockMinutes?: number | null }) =>
-    request<{ captureProtection: boolean; autoLockMinutes: number }>('/api/v1/settings/security', {
-      method: 'PUT',
-      body: JSON.stringify(body),
-    }),
+    request<{ captureProtection: boolean; autoLockMinutes: number; mcpScope: 'standard' | 'admin' }>(
+      '/api/v1/settings/security'
+    ),
+  securitySettingsSet: (body: {
+    captureProtection?: boolean;
+    autoLockMinutes?: number | null;
+    mcpScope?: 'standard' | 'admin';
+  }) =>
+    request<{ captureProtection: boolean; autoLockMinutes: number; mcpScope: 'standard' | 'admin' }>(
+      '/api/v1/settings/security',
+      {
+        method: 'PUT',
+        body: JSON.stringify(body),
+      }
+    ),
   taskGroupsList: () => request<{ list: TaskGroupItem[] }>('/api/task-groups'),
   taskGroupGet: (id: string) => request<TaskGroupItem>(`/api/task-groups/${encodeURIComponent(id)}`),
   taskGroupTasks: (id: string) =>
@@ -1093,4 +1134,5 @@ export const api = {
     request<{ ok: boolean; message?: string; status?: McpStatus }>('/api/v1/mcp/start', { method: 'POST' }),
   mcpStop: () =>
     request<{ ok: boolean; message?: string; status?: McpStatus }>('/api/v1/mcp/stop', { method: 'POST' }),
+  authState: () => request<{ hasPassword: boolean }>('/ui/auth-state'),
 };

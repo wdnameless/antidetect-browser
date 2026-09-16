@@ -27,10 +27,15 @@ let seams: ScreenProtectionSeams | null = null;
 let pollTimer: ReturnType<typeof setInterval> | null = null;
 
 /**
- * Injectable seams for tests: setContentProtection mirrors
- * BrowserWindow.setContentProtection (WDA_EXCLUDEFROMCAPTURE on Windows),
- * idle source mirrors powerMonitor.getSystemIdleTime, on mirrors
- * powerMonitor.on. Production passes the real Electron objects.
+ * Injectable seams for tests. In production the Tauri shell installs them from Rust
+ * (`src-tauri/src/screen.rs`), which provides the same three operations:
+ *   - `setContentProtection` → Tauri's `set_content_protected`
+ *     (`SetWindowDisplayAffinity(WDA_EXCLUDEFROMCAPTURE)` on Windows,
+ *     `NSWindowSharingType::None` on macOS);
+ *   - `getSystemIdleTime` → `GetLastInputInfo` on Windows;
+ *   - `on('lock-screen'|'suspend'|…)` → `WM_POWERBROADCAST` and
+ *     `WTSRegisterSessionNotification`/`WM_WTSSESSION_CHANGE` on Windows.
+ * There is no Electron in this path: it was removed with the rest of the desktop runtime.
  */
 export function setSeams(s: ScreenProtectionSeams | null): void {
   seams = s;
@@ -39,20 +44,11 @@ export function setSeams(s: ScreenProtectionSeams | null): void {
 export function initScreenProtection(options: ScreenProtectionOptions = {}): void {
   state.idleTimeoutMinutes = options.idleTimeoutMinutes ?? 15;
   state.locked = false;
-
-  // Wire system lock/suspend engagement (real or seam).
-  const hook = (event: 'lock-screen' | 'suspend' | 'resume' | 'unlock-screen', handler: () => void) => {
-    if (seams) {
-      seams.on(event, handler);
-    } else {
-      // Production: real Electron powerMonitor (loaded lazily; tests use seams).
-      const pm = require('electron') as { powerMonitor: { on(event: string, handler: () => void): void } };
-      pm.powerMonitor.on(event, handler);
-    }
-  };
-  hook('lock-screen', () => engageLock());
-  hook('suspend', () => engageLock());
-
+  // In Tauri / non-Electron mode without seams, system hooks are a no-op.
+  if (seams) {
+    seams.on('lock-screen', () => engageLock());
+    seams.on('suspend', () => engageLock());
+  }
   // Idle polling at 30s cadence; 0 disables.
   if (pollTimer) {
     clearInterval(pollTimer);
@@ -77,28 +73,15 @@ export function setCaptureProtection(enabled: boolean): void {
   state.captureProtection = enabled;
   if (seams) {
     seams.setContentProtection(enabled);
-  } else {
-    // Production: apply to every app window through Electron.
-    const { BrowserWindow } = require('electron') as { BrowserWindow: { getAllWindows(): Array<{ setContentProtection(value: boolean): void }> } };
-    for (const win of BrowserWindow.getAllWindows()) {
-      win.setContentProtection(enabled);
-    }
   }
+  // When seams are not configured (Tauri mode), this is a no-op that does not throw.
 }
 
 export function engageLock(): void {
   if (state.locked) return;
   state.locked = true;
   if (seams) return;
-  // Production: hide every window behind the unlock overlay.
-  try {
-    const { BrowserWindow } = require('electron') as { BrowserWindow: { getAllWindows(): Array<{ hide(): void }> } };
-    for (const win of BrowserWindow.getAllWindows()) {
-      win.hide();
-    }
-  } catch {
-    // Electron not available (tests without seams) — state-only lock.
-  }
+  // In non-Electron environment without seams, state-only lock (no windows to hide).
 }
 
 export function unlock(_token: string): void {

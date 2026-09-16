@@ -200,7 +200,15 @@ export function FlowCanvas() {
   );
   const resetFleetRun = useCallback(() => setFleetState(null), []);
   const [fleetRunError, setFleetRunError] = useState<string | null>(null);
-  // Responsive viewport and drawer states
+  // Responsive viewport and drawer states.
+  //
+  // Measured from the CANVAS CONTAINER, not `window.innerWidth`. The canvas shares the
+  // row with the 232px nav sidebar, so window width overstates the space available by that
+  // much: at a 1568px window the canvas has ~1336px, yet the old window-based check left
+  // the 260px palette expanded and the 320px inspector open, leaving the graph itself a
+  // narrow strip. A ResizeObserver reports what the canvas actually has, so collapsing the
+  // nav sidebar correctly gives the graph more room.
+  const containerRef = useRef<HTMLDivElement | null>(null);
   const [viewportWidth, setViewportWidth] = useState<number>(() =>
     typeof window !== 'undefined' ? window.innerWidth : 1440
   );
@@ -208,11 +216,18 @@ export function FlowCanvas() {
   const inspectorTriggerRef = useRef<HTMLButtonElement | null>(null);
 
   useEffect(() => {
-    const handleResize = () => {
-      setViewportWidth(window.innerWidth);
-    };
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
+    const el = containerRef.current;
+    if (!el) return;
+    const measure = () => setViewportWidth(el.getBoundingClientRect().width);
+    measure();
+    if (typeof ResizeObserver === 'undefined') {
+      // Older engines: fall back to window resize, still better than a stale first value.
+      window.addEventListener('resize', measure);
+      return () => window.removeEventListener('resize', measure);
+    }
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    return () => observer.disconnect();
   }, []);
 
   const isNarrow = viewportWidth < 1100;
@@ -702,9 +717,10 @@ export function FlowCanvas() {
       });
     }
 
-    if (draggingNodeId) {
-      const newX = Math.round((e.clientX - dragOffset.x - pan.x) / 10) * 10;
-      const newY = Math.round((e.clientY - dragOffset.y - pan.y) / 10) * 10;
+    if (draggingNodeId && canvasRef.current) {
+      const rect = canvasRef.current.getBoundingClientRect();
+      const newX = Math.round((e.clientX - rect.left - pan.x - dragOffset.x) / 10) * 10;
+      const newY = Math.round((e.clientY - rect.top - pan.y - dragOffset.y) / 10) * 10;
       setNodes(prev =>
         prev.map(n => (n.id === draggingNodeId ? { ...n, x: Math.max(20, newX), y: Math.max(20, newY) } : n))
       );
@@ -996,8 +1012,8 @@ export function FlowCanvas() {
     if (canvasRef.current) {
       const rect = canvasRef.current.getBoundingClientRect();
       setDragOffset({
-        x: e.clientX - rect.left - node.x,
-        y: e.clientY - rect.top - node.y,
+        x: e.clientX - rect.left - pan.x - node.x,
+        y: e.clientY - rect.top - pan.y - node.y,
       });
     }
   };
@@ -1101,6 +1117,7 @@ export function FlowCanvas() {
 
   return (
     <div
+      ref={containerRef}
       className="flow-canvas-container"
       data-testid="flow-canvas"
       style={{
@@ -2775,7 +2792,7 @@ export function FlowCanvas() {
             className="flow-config-inspector"
             data-testid="config-inspector"
             style={{
-              width: 320,
+              width: 'var(--flow-inspector-width)',
               borderLeft: '1px solid var(--border)',
               background: 'var(--panel)',
               display: 'flex',
@@ -2796,7 +2813,10 @@ export function FlowCanvas() {
           style={{
             position: 'absolute',
             top: 76,
-            right: isNarrow ? 16 : 336,
+            // Sits beside the inspector, so the offset is the inspector width plus its
+            // 16px gutter — previously a literal 336 that silently stopped matching when
+            // the inspector width changed.
+            right: isNarrow ? 16 : 'calc(var(--flow-inspector-width) + 16px)',
             width: isNarrow ? 'min(280px, calc(100vw - 32px))' : 'var(--flow-picker-width)',
             background: 'var(--panel)',
             backdropFilter: 'blur(12px)',

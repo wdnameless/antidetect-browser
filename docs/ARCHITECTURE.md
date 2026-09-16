@@ -13,19 +13,21 @@
 ## Обзор компонентов
 
 ```
-┌─ Electron UI (React + Vite + TS) ─────────────┐
-│  Профили · Прокси · Фингерпринты · Девайсы     │
-│  Настройки                                     │
-└───────────────┬───────────────────────────────┘
-                │ IPC (contextBridge)
+┌─ Tauri Desktop Shell (Rust + системный WebView) ┐
+│  webview (decorations: false) · Tray · Dialogs │
+│  Rust DPAPI (secrets.rs) · Screen/Idle Protection│
+└───────────────┬─────────────────────────────────┘
+                │ HTTP / loopback & bridge.js
                 ▼
-┌─ Local Service (Node/TS, внутри Electron main) ┐
+┌─ Local Service (автономный Node.js / TS REST) ─┐
+│  Запускается как sidecar или автономно         │
 │  config.ts        — пути, порты, API key        │
-│  db/              — SQLite (better-sqlite3)     │
+│  db/              — SQLite (sql.js WASM)        │
 │  profiles/        — CRUD профилей               │
 │  launcher/        — запуск/остановка Chromium   │
 │  api/             — Express REST :50325         │
-└───────────────┬───────────────────────────────┘
+└───────────────┬─────────────────────────────────┘
+```
                 │ spawn child_process
                 ▼
 ┌─ Браузерное ядро ─────────────────────────────┐
@@ -57,14 +59,13 @@
 
 | Слой | Технология | Обоснование |
 |---|---|---|
-| Десктоп | Electron | проверен, есть OSS-референсы антидетект-браузеров на Electron |
-| UI | React + Vite + TS | быстрый dev, типизация |
-| Сервис/API | Node.js + TS + Express | один язык с UI, лёгкий REST |
-| БД | SQLite (better-sqlite3) | локально, без сервера, синхронно и быстро |
-| Ядро | fingerprint-chromium | kernel-level спуфинг без написания патчей |
-| Валидация | zod | валидация входных данных API |
-
-Альтернатива UI (на будущее): Tauri (меньший размер бинарника). Для MVP — Electron.
+| Десктопная оболочка | Tauri v2 (Rust) | лёгкий нативный бинарник, системный WebView (WebView2 под Windows), нативные диалоги и трей, меньший footprint памяти |
+| UI | React + Vite + TS | быстрый dev, единый код для веб-сервиса и десктопного окна |
+| Сервис/API | Node.js + TS + Express | полностью автономный локальный сервис (запускается без оболочки или как sidecar в десктопе) |
+| БД | SQLite (sql.js WASM) | автономная работа без нативных бинарных модулей и без пересборки под ABI оболочки |
+| Ядро | fingerprint-chromium | kernel-level спуфинг без написания C++ патчей, скачивается при первом старте |
+| Валидация | zod | строгая валидация входных данных Local API |
+Десктопным билдом является оболочка Tauri v2 (`src-tauri/`). Electron удалён полностью: исходники, зависимости и скрипты сборки. Обновления подписываются minisign-ключом, публичная половина которого лежит в `tauri.conf.json`, а приватная — только в CI-секрете.
 
 ## Модель данных (SQLite)
 
@@ -132,12 +133,26 @@ antidetect browser/
 ├── tsconfig.base.json
 ├── .gitignore                 # node_modules, dist, data/, *.log
 ├── .editorconfig
-├── electron/
-│   ├── main.ts                # окно + запуск Local Service
-│   ├── preload.ts             # contextBridge
-│   └── tsconfig.json
+├── src-tauri/                 # десктопная оболочка Tauri v2 (Rust)
+│   ├── src/
+│   │   ├── main.rs            # окно, команды, жизненный цикл
+│   │   ├── sidecar.rs         # запуск/остановка Node-бэкенда
+│   │   ├── screen.rs          # capture-protection + Win32 idle/power/session
+│   │   ├── secrets.rs         # DPAPI (CurrentUser) + слой Electron safeStorage
+│   │   ├── tray.rs            # системный трей
+│   │   ├── updater.rs         # проверка/установка обновлений
+│   │   └── bridge.js          # внедряемый мост window.antidetect
+│   ├── capabilities/          # ACL для IPC с удалённого origin
+│   ├── windows/portable.nsi   # шаблон single-file portable артефакта
+│   └── tauri.conf.json
+├── mcp/                       # MCP-сервер (отдельная точка входа, запускается приложением)
+│   ├── src/                   # tools, auth (scope), audit
+│   └── dist/                  # собирается и поставляется в бандле
+├── scripts/                   # build-portable, vendor-node, copy-prod-deps,
+│                              # build-updater-manifest, ensure-kernel, ensure-chromedriver
+├── resources/                 # release-keyring.json (доверенные ключи релиза)
 ├── src/
-│   ├── main/                  # бэкенд (Node, внутри Electron main)
+│   ├── main/                  # автономный бэкенд (Node.js REST-сервис)
 │   │   ├── index.ts           # bootstrap сервиса
 │   │   ├── config.ts          # пути/порты/API key
 │   │   ├── db/

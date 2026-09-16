@@ -23,12 +23,6 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      # electron@44 dropped its postinstall hook, so the binary is fetched
-      # lazily by the first require('electron') — which happens inside the
-      # security suites, within their 20s test timeout. Provision it up front.
-      - name: Provision Electron binary
-        run: node node_modules/electron/install.js
-
       - name: Typecheck
         run: npm run typecheck
 
@@ -79,21 +73,26 @@ jobs:
         run: python -m pytest packages/sdk-python/tests -q
 
   release:
-    # Build and publish installer-free artefacts when a v* tag is pushed.
+    name: Release Tauri Desktop Shell (${{ matrix.os }})
+    # Build and publish release artefacts when a v* tag is pushed.
     #
     # Windows only, and that is a deliberate, recorded limitation rather than an
-    # oversight. The build scripts are Windows-hardcoded in three places:
-    #   - scripts/ensure-chromedriver.mjs fetches `win64/chromedriver-win64.zip`
-    #   - scripts/ensure-kernel.mjs pins `ungoogled-chromium_..._windows_x64.zip` and its
-    #     SHA256, so any other platform fails the digest check
-    #   - src/main/config.ts looks for `chrome.exe` and only falls back to
-    #     `Google\Chrome\Application\chrome.exe`
-    # Upstream does publish Linux and macOS kernels, so this is fixable — but it cannot be
-    # verified from here (no Linux or macOS runner in this workspace), and shipping an
-    # unverified platform build is worse than not shipping one. Linux/macOS stay in the
-    # matrix comment, not in the build, until they can be built and checked.
+    # oversight. Upstream browser kernel downloads and verification are Windows-only;
+    # shipping unverified platform builds is worse than not shipping them.
     #
-    # No signing credentials are required or expected.
+    # macOS (arm64) and Linux targets are configured (bundle.macOS.signingIdentity="-" ad-hoc,
+    # linux categories/targets), but configuration only — no artefacts published (R10).
+    # Note that macOS ad-hoc signing is configured though unsigned here.
+    #
+    # Matrix entries for ubuntu-latest and macos-14 remain commented out below: upstream
+    # platform kernel downloads and host test harnesses are not available in CI, and shipping
+    # unverified platform builds is worse than not shipping them.
+    #
+    # matrix:
+    #   - os: ubuntu-latest
+    #     platform: linux
+    #   - os: macos-14
+    #     platform: mac
     if: startsWith(github.ref, 'refs/tags/v')
     needs: [test, sdk]
     strategy:
@@ -102,15 +101,7 @@ jobs:
         include:
           - os: windows-latest
             platform: win
-            artifact: NullTrace-portable-win-x64
-          # Tracked as a gap, not enabled: adding `linux`/`mac` here today produces a
-          # build that fails on the pinned Windows kernel digest.
-          # - os: ubuntu-latest
-          #   platform: linux
-          #   artifact: NullTrace-portable-linux-x64
-          # - os: macos-14
-          #   platform: mac
-          #   artifact: NullTrace-portable-mac-arm64
+            artifact: NullTrace-tauri-win-x64
     runs-on: ${{ matrix.os }}
     permissions:
       contents: write
@@ -125,77 +116,80 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      # A platform-specific break must be caught here rather than shipped, so the
-      # gates run on every runner, not just the Windows one.
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Verify Tauri CLI
+        run: npx tauri --version
+
       - name: Typecheck
         run: npm run typecheck
 
       - name: Unit tests
         run: npm test
 
-      # The kernel/chromedriver fetch must run explicitly. npm only fires `pre<name>` for
-      # the exact script name, and we no longer call `dist:win`, so `predist:win` would
-      # never run — and a build without the kernel silently falls back to system Chrome,
-      # which is the defect this release exists to fix.
-      - name: Prepare kernel and driver
-        run: npm run predist:${{ matrix.platform }}
+      - name: Build backend, renderer and vendored runtime
+        run: npm run build && npm run copy:prod-deps && npm run vendor:node
 
-      # `dist/` is gitignored, so a fresh checkout has no bundle at all. Compile it before
-      # packaging — main and renderer both.
-      - name: Build application bundle
-        run: npm run build
+      - name: Build Tauri shell and portable artefact
+        run: npx tauri build --bundles nsis && npm run tauri:build:portable
 
-      # electron-builder auto-detects CI and attempts its own GitHub publish, which then
-      # fails for a missing GH_TOKEN and kills the build before the artefact exists.
-      # `--publish never` stops the build at the artefact — softprops below does the publish.
-      # Verified this does NOT suppress `latest.yml`: a --publish never run emits it with
-      # the correct sha512 and size, which is what electron-updater needs.
-      - name: Build installer and portable artefact
-        run: npx electron-builder --${{ matrix.platform }} --publish never
+      - name: Test Tauri shell backend tests
+        run: npx vitest run tests/unit/tauriShell.test.ts tests/unit/tauriBridgeAndShell.test.ts
 
-      - name: Upload artefact
+      - name: Test Tauri Rust shell
+        run: cargo test --manifest-path src-tauri/Cargo.toml
+
+      # Both artefacts land in the same directory: `tauri build` writes the NSIS installer,
+      # and `tauri:build:portable` compiles our own portable launcher beside it. There is no
+      # separate portable output directory — an earlier revision globbed a path nothing
+      # created, which would have published an empty release.
+      #
+      # Updater metadata. Signed with a minisign key whose PUBLIC half is embedded in
+      # src-tauri/tauri.conf.json. The private key must be a repository secret; without it
+      # the step is skipped rather than emitting an unsigned manifest, because a latest.json
+      # with an empty signature makes the updater refuse every release while the UI reports
+      # the check as fine — worse than having no updater metadata at all.
+      - name: Build updater manifest
+        if: env.TAURI_SIGNING_PRIVATE_KEY != ''
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          SETUP=$(ls src-tauri/target/release/bundle/nsis/NullTrace_*_x64-setup.exe | head -1)
+          node scripts/build-updater-manifest.mjs `
+            --version "${{ github.ref_name }}".Replace('v','') `
+            --url "https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/$(Split-Path $SETUP -Leaf)" `
+            --artefact "$SETUP" `
+            --out dist-release
+        shell: pwsh
+
+      - name: Note missing signing key
+        if: env.TAURI_SIGNING_PRIVATE_KEY == ''
+        run: |
+          echo "::notice title=Updater metadata skipped::TAURI_SIGNING_PRIVATE_KEY is not configured, so latest.json was not produced. In-app updates will report 'not configured' rather than failing."
+        shell: bash
+
+      - name: Upload Tauri artefacts
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}
           path: |
-            release/*.exe
-            release/*.blockmap
-            release/latest*.yml
+            src-tauri/target/release/bundle/nsis/*.exe
+            dist-release/*
           if-no-files-found: error
 
-      # `latest.yml` and the blockmap MUST be published alongside the installer: this is
-      # what electron-updater fetches to discover and verify an update. A release carrying
-      # only the .exe cannot update itself — the in-app update check reports "latest" while
-      # a newer version exists, silently.
+      # Publish release assets to GitHub release on tagged push.
+      #
+      # `latest.json` and the `.sig` are included when they were produced above; the updater
+      # endpoint resolves to `releases/latest/download/latest.json`, so the asset must sit at
+      # the release root. Without a signing key they are simply absent and the app reports
+      # updates as "not configured" — an honest state rather than a failing one.
       - name: Publish release assets
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            release/*.exe
-            release/*.blockmap
-            release/latest*.yml
+            src-tauri/target/release/bundle/nsis/*.exe
+            dist-release/latest.json
+            dist-release/*.sig
           fail_on_unmatched_files: false
-
-  tauri:
-    name: Tauri Desktop Shell (Additive / Non-blocking)
-    runs-on: windows-latest
-    continue-on-error: true
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version-file: .nvmrc
-          cache: npm
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Verify Tauri shell test
-        run: npx vitest run tests/unit/tauriShell.test.ts
-
-      - name: Test sidecar lifecycle module
-        run: cargo test --manifest-path src-tauri/Cargo.toml

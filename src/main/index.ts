@@ -39,7 +39,7 @@ export function setProcessInspectorExec(fn: typeof child_process.execFileSync | 
 
 /**
  * Inspects the process command line / image name.
- * Allows 'Antidetect Browser.exe', 'electron', or 'node' running our service/entry script.
+ * Allows 'Antidetect Browser.exe' or 'node' running our service/entry script.
  * Returns true (our app), false (a different image), or undefined when the
  * probe failed entirely (wmic + powershell unavailable, access denied, ...).
  * A definite false lets the caller treat the lock as stale; an undefined must
@@ -85,24 +85,17 @@ export function isProcessOurApp(
       if (normalized.includes('antidetect browser.exe') || normalized.includes('antidetect browser')) {
         return true;
       }
-      // Dev electron app
-      if (normalized.includes('electron')) {
-        return true;
-      }
       // Node running our service or entry point
-      // KEEP: Instance-lock process check for antidetect node/electron instances.
+      // KEEP: Instance-lock process check for antidetect node instances.
       if (
         normalized.includes('node') &&
         (normalized.includes('antidetect') ||
           normalized.includes('src\\main') ||
-          normalized.includes('dist/electron') ||
-          normalized.includes('dist\\electron') ||
           normalized.includes('dist/src/main') ||
           normalized.includes('dist\\src\\main'))
       ) {
         return true;
       }
-
       return false;
     } else {
       // POSIX fallback: check /proc/<pid>/cmdline or ps -p <pid> -o args=
@@ -114,7 +107,7 @@ export function isProcessOurApp(
         }).toLowerCase();
         if (!args.trim()) return false;
         // KEEP: POSIX instance-lock process check for antidetect.
-        if (args.includes('antidetect') || args.includes('electron')) return true;
+        if (args.includes('antidetect')) return true;
         if (args.includes('node') && (args.includes('main') || args.includes('service'))) return true;
       } catch {
         return undefined; // ps probe failed
