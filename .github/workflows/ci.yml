@@ -150,17 +150,25 @@ jobs:
       # the step is skipped rather than emitting an unsigned manifest, because a latest.json
       # with an empty signature makes the updater refuse every release while the UI reports
       # the check as fine — worse than having no updater metadata at all.
+      # Written in PowerShell because the runner is Windows and the step is declared
+      # `shell: pwsh`. The previous version was a mixture: a bash `$(ls ... | head -1)`
+      # assignment followed by backtick line continuations and a `.Replace()` call, which
+      # pwsh cannot parse. It never ran, because the step is skipped without a signing key —
+      # so the first release that actually had secrets was the first to fail here.
       - name: Build updater manifest
         if: env.TAURI_SIGNING_PRIVATE_KEY != ''
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: |
-          SETUP=$(ls src-tauri/target/release/bundle/nsis/NullTrace_*_x64-setup.exe | head -1)
+          $setup = (Get-ChildItem src-tauri/target/release/bundle/nsis -Filter 'NullTrace_*_x64-setup.exe' | Select-Object -First 1).FullName
+          if (-not $setup) { throw 'NSIS installer not found; cannot build the updater manifest.' }
+          $version = '${{ github.ref_name }}'.Replace('v', '')
+          $leaf = Split-Path $setup -Leaf
           node scripts/build-updater-manifest.mjs `
-            --version "${{ github.ref_name }}".Replace('v','') `
-            --url "https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/$(Split-Path $SETUP -Leaf)" `
-            --artefact "$SETUP" `
+            --version $version `
+            --url "https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/$leaf" `
+            --artefact $setup `
             --out dist-release
         shell: pwsh
 
