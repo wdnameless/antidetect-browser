@@ -399,6 +399,10 @@ fn main() {
                 script_path: Some(resolved_script),
                 args: vec![],
                 env: vec![],
+                // The version Tauri baked in from tauri.conf.json. The installed artefact
+                // does not ship package.json, so this is the only value that is right on a
+                // user's machine.
+                app_version: Some(app.package_info().version.to_string()),
                 readiness_timeout: Duration::from_secs(30),
                 readiness_signal: sidecar::ReadinessSignal::RealString(
                     "[antidetect] Local API listening on".to_string(),

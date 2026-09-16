@@ -21,6 +21,13 @@ pub struct SidecarConfig {
     pub script_path: Option<PathBuf>,
     pub args: Vec<String>,
     pub env: Vec<(String, String)>,
+    /// The shell's own version, passed to the backend so it can report it.
+    ///
+    /// Tauri injects this from `tauri.conf.json` at build time, which makes it the only
+    /// source that is correct in an INSTALLED build: the packaged artefacts do not ship
+    /// `package.json`, so a backend reading the file worked in development and answered
+    /// "unknown" on the operator's machine.
+    pub app_version: Option<String>,
     pub readiness_timeout: Duration,
     pub readiness_signal: ReadinessSignal,
 }
@@ -35,6 +42,7 @@ impl Default for SidecarConfig {
             script_path: None,
             args: vec![],
             env: vec![],
+            app_version: None,
             readiness_timeout: Duration::from_secs(15),
             readiness_signal: ReadinessSignal::RealString(
                 "[antidetect] Local API listening on".to_string(),
@@ -133,6 +141,9 @@ impl SidecarManager {
         cmd.env("API_PORT", config.port.to_string());
         cmd.env("API_HOST", "127.0.0.1");
         cmd.env("ANTIDETECT_SETTINGS_DIR", &config.settings_dir);
+        if let Some(ref v) = config.app_version {
+            cmd.env("ANTIDETECT_APP_VERSION", v);
+        }
         if let Some(ref res) = config.resources_dir {
             cmd.env("ANTIDETECT_TARGET_RESOURCES_DIR", res);
         }

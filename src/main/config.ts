@@ -269,11 +269,19 @@ export const API_PORT = Number(process.env.API_PORT || 50325);
  * admits it does not know.
  */
 export const APP_VERSION: string = (() => {
+  // The desktop shell knows its version exactly — Tauri injects it from tauri.conf.json at
+  // build time — so it passes it down. That is the authoritative channel: the installed
+  // artefact does NOT ship package.json, so reading the file worked in development and
+  // returned "unknown" in the build the operator actually runs.
+  const fromShell = process.env.ANTIDETECT_APP_VERSION;
+  if (typeof fromShell === 'string' && fromShell.trim().length > 0) return fromShell.trim();
+
+  // Standalone service (npm run service): walk up for package.json. Compiled output lives
+  // under dist/src/main, so this climbs several levels.
   let dir = __dirname;
   for (let i = 0; i < 6; i++) {
-    const candidate = path.join(dir, 'package.json');
     try {
-      const pkg = JSON.parse(fs.readFileSync(candidate, 'utf8')) as { version?: string };
+      const pkg = JSON.parse(fs.readFileSync(path.join(dir, 'package.json'), 'utf8')) as { version?: string };
       if (typeof pkg.version === 'string' && pkg.version.length > 0) return pkg.version;
     } catch {
       // keep walking up
@@ -282,6 +290,8 @@ export const APP_VERSION: string = (() => {
     if (parent === dir) break;
     dir = parent;
   }
+  // Never invent a number: an endpoint reporting a version it made up is worse than one
+  // that admits it does not know.
   return 'unknown';
 })();
 
