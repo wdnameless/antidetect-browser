@@ -275,7 +275,7 @@ fn html_escape(s: &str) -> String {
 /// — as this did — finds nothing whenever the operator has chosen a data folder, so the
 /// shutdown request went out unauthenticated, the backend answered 401, stayed alive, and
 /// left its instance lock behind for the next launch to misread as a crash.
-fn perform_graceful_teardown(
+pub(crate) fn perform_graceful_teardown(
     sidecar: &sidecar::SidecarManager,
     data_dir: &Path,
     settings_dir: &Path,

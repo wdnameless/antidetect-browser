@@ -6,7 +6,29 @@ export type UpdateStatus =
   | { state: 'not-available'; info: UpdateInfo }
   | { state: 'downloading'; percent: number; bytesPerSecond: number; transferred: number; total: number }
   | { state: 'downloaded'; info: UpdateInfo }
+  /** Staged and being applied: the portable swap is running, or the installer is launching. */
+  | { state: 'installing' }
   | { state: 'error'; message: string };
+
+/**
+ * The raw payload the shell emits on `update:status` (`UpdateStatusEvent` in
+ * `src-tauri/src/updater.rs`).
+ *
+ * It is NOT `UpdateStatus`. The Rust side reports the plugin's vocabulary —
+ * `checking-for-update` / `update-not-available` / `update-available` / `download-progress` /
+ * `update-downloaded` / `error` — and carries progress in a nested `progress` object. Two
+ * defects came from treating the two as the same shape: the footer landed every state as
+ * `undefined` and reported a failure no matter what happened, and Settings switched on
+ * `'available'`/`'downloading'`, strings the shell never sends, so its update panel rendered
+ * nothing and its Download/Restart buttons were unreachable. `normalizeUpdateStatus` is the
+ * single translation point; both consumers go through it.
+ */
+export interface UpdateStatusEventPayload {
+  state: string;
+  message?: string;
+  info?: UpdateInfo;
+  progress?: { transferred: number; total: number; percent: number } | null;
+}
 
 export interface UpdateInfo {
   version?: string;
@@ -40,7 +62,11 @@ declare global {
         check: () => Promise<void>;
         download: () => Promise<void>;
         quitAndInstall: () => Promise<void>;
-        onStatus: (cb: (status: UpdateStatus) => void) => () => void;
+        /**
+         * Receives the shell's raw `update:status` payload — NOT `UpdateStatus`. Pass it through
+         * `normalizeUpdateStatus` before rendering; the two vocabularies differ.
+         */
+        onStatus: (cb: (status: UpdateStatusEventPayload) => void) => () => void;
       };
       /**
        * Frameless window controls. Present only in the Electron shell — a browser

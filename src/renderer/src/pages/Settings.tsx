@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { getApiBase, api } from '../api';
 import type { UpdateStatus } from '../global';
+import { isUpdatesUnconfigured, normalizeUpdateStatus } from '../updateStatus';
 import { useI18n, type Lang } from '../i18n';
 import { SettingsIcon, RefreshIcon, CopyIcon, CheckIcon } from '../icons';
 import { SyncSettings } from './SyncSettings';
@@ -273,7 +274,12 @@ export function Settings() {
       }).catch(() => undefined);
     });
     if (window.antidetect?.update?.onStatus) {
-      const off = window.antidetect.update.onStatus(setStatus);
+      // Go through the same translation the footer uses. This panel used to subscribe to the
+      // shell's raw payload but switch on the UI's vocabulary — `'available'`, `'downloading'` —
+      // which the shell never sends (it says `update-available`, `download-progress`), so every
+      // state fell through to no branch, the panel rendered nothing, and the Download and
+      // Restart buttons were unreachable.
+      const off = window.antidetect.update.onStatus((s) => setStatus(normalizeUpdateStatus(s)));
       return off;
     }
   }, []);
@@ -369,6 +375,16 @@ export function Settings() {
             </span>
           </div>
         );
+      case 'installing':
+        // The portable swap and the installer both run after this state arrives; on Windows the
+        // installed build exits to run the NSIS setup, and the portable build exits so its
+        // launcher unlocks. Say what is happening, because the window is about to disappear.
+        return (
+          <div className="setting-row">
+            <span className="setting-label">{t('Installing…')}</span>
+            <span className="hint" style={{ margin: 0 }}>{t('Applying the update...')}</span>
+          </div>
+        );
       case 'downloaded':
         return (
           <div className="setting-row">
@@ -381,11 +397,7 @@ export function Settings() {
           </div>
         );
       case 'error': {
-        const isReleaseMissing =
-          status.message?.includes('Could not fetch a valid release JSON') ||
-          status.message?.includes('404') ||
-          status.message?.includes('release JSON');
-        if (isReleaseMissing) {
+        if (isUpdatesUnconfigured(status)) {
           return (
             <div>
               <p className="hint" style={{ color: 'var(--text-secondary)' }}>

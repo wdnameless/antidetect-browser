@@ -42,3 +42,44 @@ launcher, and MUST NOT write an installer in its place.
 - **WHEN** the update is applied
 - **THEN** the launcher file MUST be replaced by that artefact, and the application MUST
   restart as the new version
+
+### Requirement: The portable swap waits for the running application to exit
+The portable launcher is not resident — it extracts the shell, starts it, and exits — so its
+file is already writable while the application runs. The swap MUST therefore wait for the
+running application process itself to exit before replacing the launcher, and MUST NOT start
+the replacement while the previous process may still hold the backend port or the instance
+lock.
+
+#### Scenario: The swap does not start a second instance
+- **GIVEN** a running portable build whose launcher file is not locked
+- **WHEN** the update is applied
+- **THEN** the launcher MUST NOT be replaced, and no new instance MUST be started, until the
+  running application process has exited
+
+### Requirement: A failed swap is reported and changes nothing
+If the running application does not exit within the deadline, or the launcher cannot be
+replaced, the swap MUST leave the launcher unchanged, MUST leave the staged artefact in place
+for a later attempt, MUST record the failure where an operator can find it, and MUST NOT start
+any process — so that a failed update cannot appear to have succeeded by relaunching the old
+version.
+
+#### Scenario: A locked launcher leaves the running build untouched
+- **GIVEN** a staged portable artefact and a launcher that cannot be replaced
+- **WHEN** the swap gives up
+- **THEN** the launcher MUST be unchanged, the staged artefact MUST remain, a failure record
+  MUST be written, and no process MUST be started
+
+### Requirement: The update flow can be completed from the control that reports it
+Where the interface reports that an update is available, that same control MUST be able to
+carry the update to completion — download, install and relaunch — without requiring the
+operator to find a separate screen. The flow MUST NOT start without an operator action.
+
+#### Scenario: Acting on the reported update finishes the update
+- **GIVEN** a build reporting that an update is available
+- **WHEN** the operator activates that control once
+- **THEN** the update MUST proceed through download and install to a running new version
+
+#### Scenario: Progress is visible where the update was announced
+- **GIVEN** an update that has begun downloading
+- **WHEN** the download reports progress
+- **THEN** the progress MUST be shown by the same control that announced the update

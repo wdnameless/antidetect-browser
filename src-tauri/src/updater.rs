@@ -18,6 +18,8 @@ use tauri::{AppHandle, Emitter};
 use tauri_plugin_updater::{Update, UpdaterExt};
 
 /// Update status event emitted on `update:status` channel.
+/// Valid states: "checking-for-update", "update-available", "update-not-available",
+/// "download-progress", "update-downloaded", "installing", "error".
 /// Serialized with camelCase to match `src/renderer/src/pages/Settings.tsx` and `global.d.ts`:
 /// `{ state: string, message?: string, info?: { version: string, releaseDate?: string, notes?: string }, progress?: { transferred: number, total: number, percent: number } }`
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -389,7 +391,28 @@ pub fn check(app: &AppHandle) {
         );
 
         let target = update_channel_target();
-        let updater = match app_handle.updater_builder().target(target).build() {
+        #[cfg(target_os = "windows")]
+        let builder = {
+            let app_h = app_handle.clone();
+            app_handle.updater_builder().target(target).on_before_exit(move || {
+                // Defect addressed: Update::install on Windows calls ShellExecuteW then std::process::exit(0)
+                // bypassing Tauri RunEvent::Exit, which orphaned the Node backend and left port 50325
+                // and the instance lock held. Running graceful teardown in on_before_exit terminates the sidecar
+                // cleanly before the hard process exit.
+                use tauri::Manager;
+                let state = app_h.state::<crate::AppState>();
+                crate::perform_graceful_teardown(
+                    &state.sidecar,
+                    &state.data_dir,
+                    &state.settings_dir,
+                    state.api_port,
+                );
+            })
+        };
+        #[cfg(not(target_os = "windows"))]
+        let builder = app_handle.updater_builder().target(target);
+
+        let updater = match builder.build() {
             Ok(u) => u,
             Err(e) => {
                 emit_status(
@@ -620,6 +643,21 @@ pub fn install(app: &AppHandle) {
             return;
         }
 
+        // Emit installing state before initiating swap/installation
+        emit_status(
+            &app_handle,
+            UpdateStatusEvent {
+                state: "installing".to_string(),
+                message: Some("Installing update...".to_string()),
+                info: Some(UpdateInfoPayload {
+                    version: target_version.clone(),
+                    release_date: None,
+                    notes: None,
+                }),
+                progress: None,
+            },
+        );
+
         // Branch on Portable vs Installed
         if is_portable_mode() {
             println!("[updater::install] Running in portable mode; initiating portable self-update swap");
@@ -629,7 +667,7 @@ pub fn install(app: &AppHandle) {
                         &app_handle,
                         UpdateStatusEvent {
                             state: "update-downloaded".to_string(),
-                            message: Some("Update staged successfully. Please restart the application to complete installation.".to_string()),
+                            message: Some("Update staged successfully. Restarting application to complete installation...".to_string()),
                             info: Some(UpdateInfoPayload {
                                 version: target_version,
                                 release_date: None,
@@ -638,6 +676,12 @@ pub fn install(app: &AppHandle) {
                             progress: None,
                         },
                     );
+                    // Allow the emitted status event to flush to the webview before exiting
+                    std::thread::sleep(std::time::Duration::from_millis(300));
+                    // Exit application: triggers Tauri's RunEvent::Exit which executes perform_graceful_teardown,
+                    // stopping the Node backend, releasing port 50325, and unlocking the portable executable
+                    // so the detached PowerShell helper can replace it and relaunch.
+                    app_handle.exit(0);
                 }
                 Err(e) => {
                     eprintln!("[updater::install] Portable self-update failed: {e}");
@@ -744,15 +788,90 @@ pub fn is_portable_mode() -> bool {
         .unwrap_or(false)
 }
 /// Constructs the Windows detached swap script command.
-/// Detached helper waits for current process lock to release via `ping`, moves `.new` to current exe, and restarts.
-pub fn build_windows_swap_command(staged_path: &Path, target_exe_path: &Path) -> (String, Vec<String>) {
-    let staged_str = staged_path.display().to_string();
-    let target_str = target_exe_path.display().to_string();
-    let cmd_line = format!(
-        "ping -n 3 127.0.0.1 >nul & move /Y \"{}\" \"{}\" & start \"\" \"{}\"",
-        staged_str, target_str, target_str
+///
+/// Defect addressed: Previously emitted `ping -n 3 127.0.0.1 >nul & move /Y "<staged>" "<target>" & start "" "<target>"`.
+/// A fixed ~2s ping wait had a severe race condition with process exit; when the target binary was still
+/// running and locked, `move /Y` failed with "Access is denied" without error checking, and `start`
+/// unconditionally relaunched the OLD un-updated binary while orphaning the staged update.
+///
+/// The helper now waits for two things, in order:
+///
+/// 1. **`wait_pid` to exit** — the app's own PID. This is required even though the file lock is
+///    checked below, because the target is the *launcher* and the launcher is not resident: it
+///    extracts the shell and `Exec`s it, then exits. Its file is therefore already unlocked while
+///    the app runs, so a move-only helper would swap and relaunch immediately — starting the new
+///    version while the old process still held the backend port and the single-instance mutex.
+/// 2. **The move to succeed** — `Move-Item -LiteralPath ... -Force` retried for up to 90 seconds,
+///    which covers a genuine lock (antivirus scanning the image, a slow close, a re-run launcher).
+///
+/// If the move deadline expires, a breadcrumb `<target>.update-failed` is written and the script
+/// exits non-zero WITHOUT launching anything, so a failed update cannot masquerade as a successful
+/// one by relaunching the old binary.
+pub fn build_windows_swap_command(staged_path: &Path, target_exe_path: &Path, wait_pid: u32) -> (String, Vec<String>) {
+    let target_str = target_exe_path.display().to_string().replace('\'', "''");
+    let staged_str = staged_path.display().to_string().replace('\'', "''");
+
+    // Two gates, in order, because the target file and the backend port are released by
+    // different things.
+    //
+    // Waiting for the PID first is not redundant with the retry loop: the launch target is the
+    // *launcher*, and the launcher does not stay resident — it extracts and `Exec`s the shell,
+    // then exits. So its file is already unlocked while the app is still running, and a move-only
+    // helper would replace and relaunch it immediately, starting the new version while the old
+    // one still held port 50325 and the single-instance mutex. That race is why the wait exists.
+    // The retry loop stays as the second gate for a genuinely locked file (an antivirus scan
+    // holding the image, a slow close, a re-running launcher).
+    let script = format!(
+        concat!(
+            "$target = '{target}'; ",
+            "$staged = '{staged}'; ",
+            "$failedBreadcrumb = $target + '.update-failed'; ",
+            "$waitPid = {pid}; ",
+            "$exitDeadline = (Get-Date).AddSeconds(120); ",
+            "$exited = $false; ",
+            "while ((Get-Date) -lt $exitDeadline) {{ ",
+            "if ($null -eq (Get-Process -Id $waitPid -ErrorAction SilentlyContinue)) {{ $exited = $true; break }}; ",
+            "Start-Sleep -Milliseconds 250; ",
+            "}}; ",
+            "if (-not $exited) {{ ",
+            "Set-Content -LiteralPath $failedBreadcrumb -Value ('The running application did not exit, so nothing was replaced and nothing was started. Staged payload remains at: ' + $staged) -Encoding utf8; ",
+            "exit 1; ",
+            "}}; ",
+            "$deadline = (Get-Date).AddSeconds(90); ",
+            "$replaced = $false; ",
+            "while ((Get-Date) -lt $deadline) {{ ",
+            "try {{ ",
+            "Move-Item -LiteralPath $staged -Destination $target -Force -ErrorAction Stop; ",
+            "$replaced = $true; ",
+            "break; ",
+            "}} catch {{ ",
+            "Start-Sleep -Milliseconds 400; ",
+            "}} ",
+            "}}; ",
+            "if (-not $replaced) {{ ",
+            "Set-Content -LiteralPath $failedBreadcrumb -Value ('Update replacement timed out. Staged payload remains at: ' + $staged) -Encoding utf8; ",
+            "exit 1; ",
+            "}}; ",
+            "Remove-Item -LiteralPath $failedBreadcrumb -Force -ErrorAction SilentlyContinue; ",
+            "Start-Process -FilePath $target;"
+        ),
+        target = target_str,
+        staged = staged_str,
+        pid = wait_pid
     );
-    ("cmd".to_string(), vec!["/C".to_string(), cmd_line])
+
+    (
+        "powershell".to_string(),
+        vec![
+            "-NoProfile".to_string(),
+            "-WindowStyle".to_string(),
+            "Hidden".to_string(),
+            "-ExecutionPolicy".to_string(),
+            "Bypass".to_string(),
+            "-Command".to_string(),
+            script,
+        ],
+    )
 }
 
 /// Writes verified bytes to `<exe_dir>/<name>.new`, prepares and spawns detached swap script on Windows.
@@ -778,10 +897,18 @@ pub fn apply_portable_update(bytes: &[u8]) -> Result<(), String> {
     // 2. Launch detached swap helper
     #[cfg(target_os = "windows")]
     {
+        use std::os::windows::process::CommandExt;
         use std::process::Command;
-        let (prog, args) = build_windows_swap_command(&staged_file, &target_exe);
+
+        // CREATE_NO_WINDOW (0x08000000) prevents a cmd/powershell console window from flashing
+        // when the detached swap helper process launches.
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+
+        let (prog, args) = build_windows_swap_command(&staged_file, &target_exe, std::process::id());
         let mut cmd = Command::new(prog);
         cmd.args(args);
+        cmd.creation_flags(CREATE_NO_WINDOW);
+
         // Spawn detached process
         match cmd.spawn() {
             Ok(_) => {
@@ -1062,15 +1189,72 @@ mod tests {
 
     #[test]
     fn test_build_windows_swap_command() {
-        let staged = Path::new("D:\\app\\app.exe.new");
-        let target = Path::new("D:\\app\\app.exe");
-        let (prog, args) = build_windows_swap_command(staged, target);
-        assert_eq!(prog, "cmd");
-        assert_eq!(args.len(), 2);
-        assert_eq!(args[0], "/C");
-        assert!(args[1].contains("ping -n 3 127.0.0.1 >nul"));
-        assert!(args[1].contains("move /Y \"D:\\app\\app.exe.new\" \"D:\\app\\app.exe\""));
-        assert!(args[1].contains("start \"\" \"D:\\app\\app.exe\""));
+        let staged = Path::new("D:\\app with spaces\\app.exe.new");
+        let target = Path::new("D:\\app with spaces\\app.exe");
+        let (prog, args) = build_windows_swap_command(staged, target, 4242);
+
+        assert_eq!(prog, "powershell");
+        assert_eq!(args.len(), 7);
+        assert_eq!(args[0], "-NoProfile");
+        assert_eq!(args[1], "-WindowStyle");
+        assert_eq!(args[2], "Hidden");
+        assert_eq!(args[3], "-ExecutionPolicy");
+        assert_eq!(args[4], "Bypass");
+        assert_eq!(args[5], "-Command");
+
+        let script = &args[6];
+        println!("Generated swap script:\n{}", script);
+
+        // Script contains retry loop over Move-Item -LiteralPath with target and staged
+        assert!(script.contains("Move-Item -LiteralPath $staged -Destination $target -Force -ErrorAction Stop"));
+        assert!(script.contains("Start-Sleep -Milliseconds 400"));
+        assert!(script.contains("AddSeconds(90)"));
+
+        // Bound paths appear escaped in script
+        assert!(script.contains("$target = 'D:\\app with spaces\\app.exe'"));
+        assert!(script.contains("$staged = 'D:\\app with spaces\\app.exe.new'"));
+
+        // Failure path writes breadcrumb and exits 1 without launching target
+        assert!(script.contains("$failedBreadcrumb = $target + '.update-failed'"));
+        assert!(script.contains("Set-Content -LiteralPath $failedBreadcrumb"));
+        assert!(script.contains("exit 1"));
+
+        // Success path cleans breadcrumb and starts process
+        assert!(script.contains("Remove-Item -LiteralPath $failedBreadcrumb -Force -ErrorAction SilentlyContinue"));
+        assert!(script.contains("Start-Process -FilePath $target"));
+
+        // No longer relies on ping
+        assert!(!script.contains("ping"));
+
+        // The launcher is NOT resident — it Execs the shell and exits, so its file is already
+        // unlocked while the app runs. Without waiting for the app's own PID the helper would
+        // swap and relaunch the target immediately, racing the old process for the backend port
+        // and the single-instance mutex.
+        assert!(script.contains("$waitPid = 4242"));
+        assert!(script.contains("Get-Process -Id $waitPid"));
+        assert!(
+            script.find("Get-Process -Id $waitPid").unwrap() < script.find("Move-Item").unwrap(),
+            "the PID wait MUST precede the move, or the port race returns"
+        );
+        // The target must only ever be started on the success side of the failure branch, so a
+        // failed update cannot masquerade as a successful one by relaunching the old binary.
+        assert!(
+            script.find("Start-Process").unwrap() > script.find("exit 1").unwrap(),
+            "Start-Process must sit after the failure branch"
+        );
+    }
+
+    #[test]
+    fn test_build_windows_swap_command_single_command_arg() {
+        let staged = Path::new("C:\\Path\\To'Quote\\Staged.new");
+        let target = Path::new("C:\\Path\\To'Quote\\Target.exe");
+        let (prog, args) = build_windows_swap_command(staged, target, 7);
+        assert_eq!(prog, "powershell");
+        // Ensure -Command flag is followed by exactly one argument
+        assert_eq!(args[5], "-Command");
+        assert_eq!(args.len(), 7);
+        // Single quotes are properly doubled for PowerShell
+        assert!(args[6].contains("To''Quote"));
     }
 
     #[test]

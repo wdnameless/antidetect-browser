@@ -1,5 +1,70 @@
 # Changelog
 
+## [0.6.5] - 2026-09-18
+
+### Fixed — the update pill said "Update available" and then did nothing
+
+The sidebar control was wired to **check only**. It reported the available version and stopped,
+because `download()` and `quitAndInstall()` existed solely behind buttons inside
+Settings → Updates — not where anyone looks when they wonder whether they are current. Nothing
+in the footer could reach the end of the flow.
+
+Clicking it now authorises the whole sequence and the footer advances itself as the shell
+reports each step: `check → download → install → relaunch`. The same control shows the live
+percentage while the artefact arrives and says **Installing…** while it is applied. The flow
+still only ever starts from a click — a background check cannot begin a download on its own.
+
+Two more defects were found in the same panel while fixing it, and they are why the settings
+page looked dead:
+
+- **Settings' update panel rendered nothing.** It subscribed to the shell's payload but switched
+  on the *UI's* vocabulary — `'available'`, `'downloading'` — while the shell emits
+  `update-available`, `download-progress`, `update-downloaded`. Every state fell through to no
+  branch, so the panel was empty and its **Download** and **Restart & install** buttons were
+  unreachable. The footer had its own private mapping and dropped `download-progress`
+  entirely, so progress could never have been shown there either. Both now translate through one
+  tested function (`src/renderer/src/updateStatus.ts`), which is what stops them drifting apart
+  again.
+
+### Fixed — the portable build could not replace itself
+
+Even with a download path, the portable swap was impossible as written:
+`ping -n 3 … & move /Y … & start …`. Three things were wrong, each verified by experiment:
+
+1. **Nothing ever closed the app.** The portable branch emitted "staged successfully, please
+   restart" and returned — it never exited. With a live process holding the target,
+   `move /Y` answers **"Access is denied. 0 file(s) moved."**, the staged file survives, the
+   move fails, and `start` then relaunches the **old** binary. That is precisely the operator's
+   report: click, nothing happens.
+2. **The `ping` was a race, not a synchronisation.** It waited a fixed ~2 s regardless of
+   whether the process had released the file, and neither checked the move's result nor surfaced
+   a failure.
+3. **The wait had to be for the *app*, not for the file.** The swap target is the launcher, and
+   the launcher does not stay resident — it extracts the shell, `Exec`s it, then exits. Its file
+   is therefore already unlocked while the app is still running, so a move-only helper would
+   replace and relaunch it immediately, starting the new version while the old one still held
+   port 50325 and the single-instance mutex — two instances racing for the same backend.
+
+The helper now waits for the app's own PID to exit, then replaces the launcher with a retrying,
+verified move, and starts the new build only after that succeeds. If the app never exits, or the
+file stays locked, it writes `<target>.update-failed`, exits non-zero, leaves the staged payload
+in place for a retry, and **starts nothing** — so a failed update can no longer masquerade as a
+successful one by quietly relaunching the old version.
+
+Verified by executing the generated script rather than reading it: against a *running* process
+holding the target it waited, then replaced the file atomically once the holder exited; against
+a locked target it exited `1`, wrote the breadcrumb, left the target byte-identical and kept the
+staged file.
+
+### Fixed — the installed build's updater orphaned the backend
+
+`tauri-plugin-updater`'s Windows install path ends in `ShellExecuteW` followed by
+`std::process::exit(0)`. That hard exit does not run Tauri's `RunEvent::Exit`, so the graceful
+teardown never happened: the Node backend kept running, holding port 50325 and the instance
+lock, and the next launch found a lock it misreads as a crash. The updater now runs the same
+teardown through the plugin's `on_before_exit` hook, so the sidecar is stopped and the port
+released before the installer takes over.
+
 ## [0.6.4] - 2026-09-18
 
 ### Added — profiles from another data folder can be brought across

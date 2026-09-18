@@ -1,9 +1,16 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import { initApiKey, api, setApiKey } from './api';
 import { LoginScreen } from './LoginScreen';
 import { FirstRunDataDir } from './FirstRunDataDir';
 import { useI18n } from './i18n';
 import { PRODUCT_NAME, TAGLINE_PRIMARY } from './brand';
+import {
+  normalizeUpdateStatus,
+  nextUpdateAction,
+  presentUpdate,
+  updateActionKey,
+} from './updateStatus';
+import type { UpdateStatus, UpdateStatusEventPayload } from './global';
 import {
   SIDEBAR_COLLAPSED_KEY,
   getStoredSidebarCollapsed,
@@ -180,7 +187,13 @@ export function App() {
   const [runningCount, setRunningCount] = useState<number>(0);
   const [syncConnected, setSyncConnected] = useState<boolean>(false);
   const activeDest = getActiveDestination(page);
-  const [kernelUpdateState, setKernelUpdateState] = useState<{ status: string; info?: { version?: string }; error?: string } | null>(null);
+  const [kernelUpdateState, setKernelUpdateState] = useState<UpdateStatus | null>(null);
+  /**
+   * Whether the operator has asked for the update, which is what authorises the flow to run to
+   * completion without further clicks. Set by the footer control; never set by an automatic
+   * check, so a background check can never start a download behind the operator's back.
+   */
+  const [updateFlowActive, setUpdateFlowActive] = useState<boolean>(false);
   // Reported by the backend, not hardcoded: the footer used to claim "v0.6.0" while the
   // service answered "0.0.1" to /status, so neither number could be trusted after a bump.
   const [appVersion, setAppVersion] = useState<string>('');
@@ -197,29 +210,52 @@ export function App() {
 
   useEffect(() => {
     // The shell emits `update:status` with a payload shaped { state, message, info, progress }
-    // (see UpdateStatusEvent in src-tauri/src/updater.rs). This listener used to read
-    // `status`/`error`, neither of which exists on that payload, so every state landed as
-    // `undefined` and the footer reported the check as failed no matter what actually
-    // happened. `Settings.tsx` already read `state` correctly — this aligns the two.
+    // (see UpdateStatusEvent in src-tauri/src/updater.rs). The translation to the UI's own
+    // vocabulary lives in `updateStatus.ts` because `Settings.tsx` renders the same states and
+    // the two had drifted: this listener dropped `download-progress`, so progress could never
+    // appear, and Settings switched on strings the shell never sends at all.
     const apiObj = window.antidetect as (typeof window.antidetect & {
-      onUpdateStatus?: (cb: (s: { state: string; message?: string; info?: { version?: string } }) => void) => () => void;
+      onUpdateStatus?: (cb: (s: UpdateStatusEventPayload) => void) => () => void;
     }) | undefined;
     const unsub = apiObj?.onUpdateStatus?.((s) => {
       setHasRunUpdateCheck(true);
-      // Map the shell's vocabulary onto the one the footer renders. The Rust side says
-      // `checking-for-update` / `update-not-available`; the UI says `checking` / `up-to-date`.
-      const state =
-        s.state === 'checking-for-update' || s.state === 'checking'
-          ? 'checking'
-          : s.state === 'update-not-available'
-            ? 'up-to-date'
-            : s.state === 'update-downloaded'
-              ? 'downloaded'
-              : s.state;
-      setKernelUpdateState({ status: state, info: s.info, error: s.message });
+      setKernelUpdateState(normalizeUpdateStatus(s));
     });
     return () => unsub?.();
   }, []);
+
+  /**
+   * Drive the whole update from the footer control: check → download → install.
+   *
+   * The pill used to call only `update.check()`, so it reported "Update available" and stopped —
+   * `download()` and `quitAndInstall()` existed only behind buttons in Settings, which is not
+   * where an operator looks when they wonder whether they are current. Clicking the control is
+   * the consent; from there the flow runs to completion on its own.
+   *
+   * Only the most recent dispatch is remembered: StrictMode re-runs effects on the same state,
+   * and the shell re-emits `download-progress` many times per second, so an unguarded effect
+   * would fetch the artefact twice and then try to install it twice. A new offer carries a new
+   * version, which changes the key and makes the flow actionable again.
+   */
+  const lastDispatchRef = useRef<string>('');
+  useEffect(() => {
+    if (!updateFlowActive) return;
+    const action = nextUpdateAction(kernelUpdateState);
+    if (!action) return;
+    const key = updateActionKey(action, kernelUpdateState);
+    if (lastDispatchRef.current === key) return;
+    lastDispatchRef.current = key;
+
+    const apiObj = window.antidetect as (typeof window.antidetect & {
+      update?: { download?: () => Promise<void>; quitAndInstall?: () => Promise<void> };
+    }) | undefined;
+    if (action === 'download') {
+      void apiObj?.update?.download?.();
+    } else {
+      void apiObj?.update?.quitAndInstall?.();
+    }
+  }, [updateFlowActive, kernelUpdateState]);
+
 
   const openDocs = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -348,43 +384,15 @@ export function App() {
     void api.workspaceSetActive(ws).catch(() => undefined);
   };
 
-  // Footer version line. Kept as plain derived strings so the render stays readable and
-  // the "not configured yet" case (no published update metadata) reads as a state rather
-  // than a failure — the endpoint genuinely has nothing to serve until a release publishes
-  // latest.json, and presenting that as an error was misleading.
-  const updatesNotConfigured =
-    kernelUpdateState?.status === 'error' &&
-    Boolean(kernelUpdateState.error?.includes('Could not fetch a valid release JSON'));
-  const updateTitle = !hasRunUpdateCheck
-    ? 'Update check has not run'
-    : kernelUpdateState?.status === 'checking'
-      ? 'Checking for updates...'
-      : updatesNotConfigured
-      ? 'Automatic updates are not configured for this build yet'
-      : kernelUpdateState?.status === 'update-available'
-        ? `Update available: ${kernelUpdateState.info?.version ?? 'new'}`
-        : kernelUpdateState?.status === 'downloading'
-          ? 'Downloading update...'
-          : kernelUpdateState?.status === 'downloaded'
-            ? 'Update downloaded (ready to install)'
-            : kernelUpdateState?.status === 'error'
-              ? `Update error: ${kernelUpdateState.error ?? 'failed'}`
-              : 'Up to date';
-  const updateLabel = !hasRunUpdateCheck
-    ? t('Not checked')
-    : kernelUpdateState?.status === 'checking'
-      ? t('Checking...')
-      : updatesNotConfigured
-      ? t('Updates not configured')
-      : kernelUpdateState?.status === 'update-available'
-        ? t('Update available')
-        : kernelUpdateState?.status === 'downloading'
-          ? t('Downloading...')
-          : kernelUpdateState?.status === 'downloaded'
-            ? t('Restart to update')
-            : kernelUpdateState?.status === 'error'
-              ? t('Check failed')
-              : t('Up to date');
+  // Footer version line. The state → text mapping lives in `updateStatus.ts` so the footer and
+  // Settings cannot drift apart again (they had: the footer dropped `download-progress`, and
+  // Settings switched on strings the shell never sent, leaving its panel empty).
+  const updateView = presentUpdate(kernelUpdateState, hasRunUpdateCheck);
+  const updateTitle = t(updateView.titleKey);
+  const updateLabel =
+    updateView.percent !== null
+      ? `${t(updateView.labelKey)} ${updateView.percent}%`
+      : t(updateView.labelKey);
 
   if (!ready) {
     return (
@@ -501,10 +509,12 @@ export function App() {
             /*
              * The version line is the update control.
              *
-             * It used to be a passive label reading "Not checked" with no way to act on it —
-             * the only working button lived in Settings, which is not where an operator looks
-             * when they wonder whether they are current. Clicking now runs the check and
-             * reports the outcome in place; the same action remains in Settings.
+             * It used to be a passive label reading "Not checked", then a check-only button:
+             * clicking it reported "Update available" and stopped, because `download()` and
+             * `quitAndInstall()` lived only behind buttons in Settings. Clicking here now
+             * authorises the whole flow — check → download → install → relaunch — and the
+             * effect above advances each step as the shell reports it. A state that cannot
+             * proceed (up to date, error) simply stops there and says so.
              *
              * Rendered as a button, not a div with onClick, so it is keyboard reachable and
              * announced as interactive.
@@ -513,7 +523,7 @@ export function App() {
               type="button"
               className="sidebar-version"
               data-testid="check-updates"
-              title={t('Check for updates')}
+              title={updateTitle}
               aria-label={t('Check for updates')}
               onClick={() => {
                 const apiObj = window.antidetect as (typeof window.antidetect & {
@@ -523,14 +533,16 @@ export function App() {
                   // No shell bridge (a browser-served client): say so rather than appearing
                   // to do nothing.
                   setHasRunUpdateCheck(true);
+                  setUpdateFlowActive(false);
                   setKernelUpdateState({
-                    status: 'error',
-                    error: 'Updates are only available in the desktop application.',
+                    state: 'error',
+                    message: 'Updates are only available in the desktop application.',
                   });
                   return;
                 }
                 setHasRunUpdateCheck(true);
-                setKernelUpdateState({ status: 'checking' });
+                setUpdateFlowActive(true);
+                setKernelUpdateState({ state: 'checking' });
                 void apiObj.update.check();
               }}
               style={{
