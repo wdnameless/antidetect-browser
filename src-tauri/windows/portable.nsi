@@ -38,11 +38,19 @@ SetCompressor /SOLID "zlib"
 !define OUTFILE "{{out_file}}"
 !define KEYRINGSRCPATH "{{keyring_path}}"
 
+; The launcher IS the file the operator sees and double-clicks, so it has to wear the
+; product mark. Without this directive NSIS compiles its own default (`modern-install.ico`)
+; into the exe: the shell inside carried the brand icon while the launcher around it did
+; not. MUI would have applied `MUI_ICON` for us, but `MUI_INSERT` only runs when a page
+; macro is inserted, and this installer is silent and has no pages.
+!define ICONPATH "{{icon_path}}"
+
 Name "${PRODUCTNAME} Portable"
 OutFile "${OUTFILE}"
 RequestExecutionLevel user
 SilentInstall silent
 AutoCloseWindow true
+Icon "${ICONPATH}"
 
 VIProductVersion "${VERSIONWITHBUILD}"
 VIAddVersionKey "ProductName" "${PRODUCTNAME} Portable"

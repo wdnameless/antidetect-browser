@@ -52,6 +52,10 @@ const nodeExe = path.join(ROOT, 'src-tauri', 'binaries', 'node-x86_64-pc-windows
 const distDir = path.join(ROOT, 'dist');
 const mcpDistDir = path.join(ROOT, 'mcp', 'dist');
 const keyringPath = path.join(ROOT, 'resources', 'release-keyring.json');
+// The launcher's own icon. Tauri's bundler applies `bundle.icon` to the shell and the
+// installers it generates, but this portable launcher is compiled by our own NSIS template —
+// nothing else was putting the mark on it, so it shipped with the NSIS default.
+const iconPath = path.join(ROOT, 'src-tauri', 'icons', 'icon.ico');
 
 for (const [label, p] of [
   ['shell executable', shellExe],
@@ -59,6 +63,7 @@ for (const [label, p] of [
   ['dist/ (backend + renderer)', distDir],
   ['mcp/dist (MCP server)', mcpDistDir],
   ['release keyring', keyringPath],
+  ['launcher icon', iconPath],
 ]) {
   if (!fs.existsSync(p)) {
     throw new Error(
@@ -154,6 +159,7 @@ let nsi = template
   .replace(/\{\{main_binary_path\}\}/g, nsisPath(shellExe))
   .replace(/\{\{node_binary_path\}\}/g, nsisPath(nodeExe))
   .replace(/\{\{keyring_path\}\}/g, nsisPath(keyringPath))
+  .replace(/\{\{icon_path\}\}/g, nsisPath(iconPath))
   .replace(/\{\{out_file\}\}/g, nsisPath(outFile));
 
 nsi = renderEach(nsi, 'dist_files', [1], () => renderFileTree(distFiles, 'dist'));

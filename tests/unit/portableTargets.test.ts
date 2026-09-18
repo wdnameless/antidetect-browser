@@ -63,4 +63,26 @@ describe('Tauri Packaging Targets and Portable Pipeline (release 0.5.0)', () => 
     expect(Array.isArray(externalBin)).toBe(true);
     expect(externalBin).toContain('binaries/node');
   });
+
+  // Three artefacts reach the operator: the shell, Tauri's NSIS setup (and the uninstaller
+  // it writes), and our own portable launcher. Only the shell had the brand mark — the other
+  // two shipped the stock NSIS `modern-install.ico`, because nothing wired the icon in.
+  // A test rather than a build-time check: the failure is invisible until someone looks at
+  // the .exe in Explorer, which is exactly how it survived a release.
+  it('every Windows artefact is wired to the brand icon', () => {
+    const iconPath = path.join(root, 'src-tauri', 'icons', 'icon.ico');
+    expect(fs.existsSync(iconPath)).toBe(true);
+
+    // NSIS setup + its uninstaller: without these, Tauri compiles its own default in.
+    expect(tauriConf.bundle?.windows?.nsis?.installerIcon).toBe('icons/icon.ico');
+    expect(tauriConf.bundle?.windows?.nsis?.uninstallerIcon).toBe('icons/icon.ico');
+
+    // Portable launcher: our template compiles it, so the icon has to arrive via a define.
+    const template = fs.readFileSync(path.join(root, 'src-tauri', 'windows', 'portable.nsi'), 'utf8');
+    expect(template).toMatch(/^\s*Icon\s+"\$\{ICONPATH\}"/m);
+
+    // and the build script must actually substitute that placeholder.
+    expect(buildPortableScript).toMatch(/icon_path/);
+    expect(buildPortableScript).toMatch(/'icons',\s*'icon\.ico'/);
+  });
 });

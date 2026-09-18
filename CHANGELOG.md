@@ -1,5 +1,41 @@
 # Changelog
 
+## [0.6.3] - 2026-09-18
+
+Both defects below shipped in 0.6.2 and are fixed here — the artefacts, not the source.
+
+**The launcher wore the wrong icon.** The portable `.exe` — the file the operator actually
+double-clicks — carried the stock NSIS `modern-install.ico`, while the shell inside it carried
+the brand mark. `src-tauri/windows/portable.nsi` had no `Icon` directive: MUI2 would have
+applied `MUI_ICON`, but `MUI_INSERT` only runs when a page macro is inserted, and this
+installer is silent with no pages. The same omission left the NSIS setup and its
+`uninstall.exe` on the stock icon, since Tauri's `installerIcon`/`uninstallerIcon` were unset.
+Fixed in three places — the template, the build script that substitutes it, and
+`tauri.conf.json` — and proven by parsing the PE resource directory: every `RT_ICON` frame in
+the rebuilt launcher is byte-identical to a frame of `src-tauri/icons/icon.ico`, and the
+extracted icon resource is byte-identical to the whole file.
+
+**"MCP won't turn on" was a stale payload, not a broken server.** The endpoint returned the
+bare status object without the `{code,msg,data}` envelope every other route uses, so the panel
+— which checks `res.code === 0` — read `undefined` and drew `MCP: Off` beside a server holding
+47 tools. The source fix landed after both the 0.6.2 portable (`09:48`) and the operator's
+download (`09:00`) were built, so the running app never had it. Verified end-to-end on the
+rebuilt payload: `/api/v1/mcp/status` answers the envelope, `POST /mcp/start` brings the child
+up on a free loopback port, and the panel renders **`MCP: 47 tools`** instead of Off.
+
+**Auto-update now actually publishes.** The 0.6.2 release carried only the two `.exe` assets:
+the signing step failed with `Wrong password for that key`, so it degraded (by design) and
+`latest.json` was never published, leaving the updater endpoint pointing at a 404. The
+keypair and its password are correct — verified locally with `tauri signer sign` followed by
+`cargo run --example verify_minisign`, which prints `SIGNATURE VALID` against the public key
+embedded in `tauri.conf.json`. The fix is the CI secret, not the code.
+
+The data directory is also worth knowing about when the panel asks for credentials:
+`panel_auth.json` lives in the *data* directory, not in the settings directory that records
+that choice, so a password set before the data directory was moved is not the password the
+running app checks. `GET /ui/auth-state` answers `hasPassword:false` there, and `POST
+/ui/setup` on `http://127.0.0.1:50325/ui` writes a fresh one.
+
 ## [0.6.0] - 2026-09-15
 
 Electron is gone for real this release. The version number is 0.6.0 rather than 0.5.0 because
