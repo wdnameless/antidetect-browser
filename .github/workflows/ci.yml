@@ -182,11 +182,26 @@ jobs:
           if (-not $setup) { throw 'NSIS installer not found; cannot build the updater manifest.' }
           $version = '${{ github.ref_name }}'.Replace('v', '')
           $leaf = Split-Path $setup -Leaf
-          node scripts/build-updater-manifest.mjs `
-            --version $version `
-            --url "https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/$leaf" `
-            --artefact $setup `
-            --out dist-release
+          # The portable launcher is named NullTrace-<version>-portable-win-x64.exe — NOT
+          # `..._x64-portable.exe`. The underscore form matches nothing, which would publish
+          # `latest.json` without the portable entry and leave every portable build with no
+          # update path at all — silently, because an absent key reads as "no update available".
+          $portable = (Get-ChildItem src-tauri/target/release/bundle/nsis -Filter 'NullTrace-*-portable-win-x64.exe' | Select-Object -First 1).FullName
+          $cmd = @(
+            'scripts/build-updater-manifest.mjs',
+            '--version', $version,
+            '--url', "https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/$leaf",
+            '--artefact', $setup,
+            '--out', 'dist-release'
+          )
+          if ($portable) {
+            $portableLeaf = Split-Path $portable -Leaf
+            $cmd += @(
+              '--portable-artefact', $portable,
+              '--portable-url', "https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/$portableLeaf"
+            )
+          }
+          node @cmd
         shell: pwsh
 
       # The signer's own output distinguishes the two cases, and the warning must repeat what

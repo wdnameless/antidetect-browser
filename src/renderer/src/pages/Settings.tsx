@@ -191,6 +191,7 @@ export function Settings() {
   const [scanBusy, setScanBusy] = useState(false);
   const [scanResults, setScanResults] = useState<Array<{ dir: string; profiles: number; modified: number; dbSize: number }>>([]);
   const [migrating, setMigrating] = useState(false);
+  const [transferringDir, setTransferringDir] = useState<string | null>(null);
 
   const checkKernel = (): void => {
     setKernelChecking(true);
@@ -584,23 +585,57 @@ export function Settings() {
                           </strong>{' '}
                           <span style={{ color: 'var(--text-muted)' }}>{new Date(f.modified).toLocaleString()}</span>
                         </span>
-                        <button
-                          type="button"
-                          className="btn btn-sm primary"
-                          disabled={f.profiles <= 0}
-                          onClick={() => {
-                            void window.antidetect?.data.setDirPath?.(f.dir).then((r) => {
-                              if (r.ok) {
-                                setDataDir(r.dir);
-                                setDataDirMsg(t('Folder changed. Restart the app to apply.'));
-                              } else {
-                                setDataDirMsg(t('Could not switch to this folder.'));
-                              }
-                            });
-                          }}
-                        >
-                          {t('Use this folder')}
-                        </button>
+                        <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexShrink: 0 }}>
+                          {/* Transfer profiles into current folder without switching directories (decision D1). */}
+                          <button
+                            type="button"
+                            className="btn btn-sm"
+                            disabled={f.profiles <= 0 || transferringDir !== null}
+                            onClick={() => {
+                              setTransferringDir(f.dir);
+                              setDataDirMsg('');
+                              void import('../api').then(({ api }) => {
+                                api.dataTransfer(f.dir)
+                                  .then((res) => {
+                                    setTransferringDir(null);
+                                    if (res.code === 0 && res.data) {
+                                      const { created, skipped } = res.data;
+                                      const transferredPart = `${t('Transferred')} ${created} ${created === 1 ? 'profile' : 'profiles'}`;
+                                      const skippedPart = skipped > 0 ? `, ${skipped} ${t('already present')}` : '';
+                                      const hintPart = ` (${t('open Profiles to see them')})`;
+                                      setDataDirMsg(`${transferredPart}${skippedPart}${hintPart}`);
+                                    } else {
+                                      setDataDirMsg(res.msg || res.data?.error || t('Transfer failed'));
+                                    }
+                                  })
+                                  .catch((err: unknown) => {
+                                    setTransferringDir(null);
+                                    setDataDirMsg(err instanceof Error ? err.message : t('Transfer failed'));
+                                  });
+                              });
+                            }}
+                          >
+                            {transferringDir === f.dir ? t('Transferring…') : t('Transfer profiles here')}
+                          </button>
+                          {/* Keep original switch behavior intact for operators who really want to point to the other folder. */}
+                          <button
+                            type="button"
+                            className="btn btn-sm primary"
+                            disabled={f.profiles <= 0}
+                            onClick={() => {
+                              void window.antidetect?.data.setDirPath?.(f.dir).then((r) => {
+                                if (r.ok) {
+                                  setDataDir(r.dir);
+                                  setDataDirMsg(t('Folder changed. Restart the app to apply.'));
+                                } else {
+                                  setDataDirMsg(t('Could not switch to this folder.'));
+                                }
+                              });
+                            }}
+                          >
+                            {t('Use this folder')}
+                          </button>
+                        </div>
                       </div>
                     ))}
                   </div>

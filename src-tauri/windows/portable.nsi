@@ -86,7 +86,9 @@ Section "Main"
 
   ; Relocatable data: config.ts resolves DATA_DIR from this variable.
   System::Call 'Kernel32::SetEnvironmentVariable(t "PORTABLE_EXECUTABLE_DIR", t "$EXEDIR")'
-
+  ; Self-update target: an in-app update must replace the launcher (the file the operator owns
+  ; in their application folder), not the extracted shell under %LOCALAPPDATA%\NullTrace\portable\<version>\.
+  System::Call 'Kernel32::SetEnvironmentVariable(t "PORTABLE_EXECUTABLE_FILE", t "$EXEPATH")'
   ; Working directory must be the extracted root, or the shell resolves dist/ relative
   ; to wherever the launcher happened to be invoked from.
   SetOutPath "$LOCALAPPDATA\NullTrace\portable\${VERSION}"

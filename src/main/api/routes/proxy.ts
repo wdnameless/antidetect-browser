@@ -5,7 +5,9 @@ import * as path from 'path';
 import * as xm from '../../proxy/proxyManager';
 import * as pm from '../../profiles/profileManager';
 import { listBackups, restoreBackup } from '../../util/backupManager';
-import { DATA_DIR } from '../../config';
+import initSqlJs, { Database as SqlJsDatabase, SqlValue } from 'sql.js';
+import { DATA_DIR, getDataDir } from '../../config';
+import { getDb, flushDb } from '../../db';
 
 const router = Router();
 
@@ -286,6 +288,243 @@ router.get('/api/v1/data/scan', async (_req, res) => {
   }
   found.sort((a, b) => b.modified - a.modified);
   res.json({ code: 0, msg: 'success', data: { current, found } });
+});
+const transferSchema = z.object({
+  from: z.string().min(1),
+});
+
+/**
+ * POST /api/v1/data/transfer
+ *
+ * Imports profiles and their direct dependencies (groups, proxies, fingerprints,
+ * devices) from an un-used data folder into the active antidetect database.
+ * Source is opened read-only with sql.js; destination writes use INSERT OR IGNORE
+ * keyed on the primary key so existing records are preserved unchanged.
+ */
+router.post('/api/v1/data/transfer', async (req, res) => {
+  const parsed = transferSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.json({
+      code: -1,
+      msg: 'invalid body: from is required',
+      data: { ok: false, from: '', created: 0, skipped: 0, dependencies: 0, error: 'invalid body: from is required' },
+    });
+    return;
+  }
+
+  const fromDir = parsed.data.from;
+  const resolvedFrom = path.resolve(fromDir);
+  const currentDataDir = path.resolve(getDataDir() || DATA_DIR);
+
+  if (resolvedFrom.toLowerCase() === currentDataDir.toLowerCase()) {
+    res.json({
+      code: -1,
+      msg: 'source is the data folder in use',
+      data: { ok: false, from: fromDir, created: 0, skipped: 0, dependencies: 0, error: 'source is the data folder in use' },
+    });
+    return;
+  }
+
+  const dbPath = path.join(resolvedFrom, 'antidetect.db');
+  if (!fs.existsSync(dbPath)) {
+    res.json({
+      code: -1,
+      msg: 'source database missing',
+      data: { ok: false, from: fromDir, created: 0, skipped: 0, dependencies: 0, error: 'source database missing' },
+    });
+    return;
+  }
+
+  let sourceDb: SqlJsDatabase;
+  try {
+    const SQL = await initSqlJs();
+    const bytes = fs.readFileSync(dbPath);
+    sourceDb = new SQL.Database(bytes);
+    // Validate it is actually a readable sqlite db
+    sourceDb.exec('SELECT 1');
+  } catch (err) {
+    res.json({
+      code: -1,
+      msg: 'source database unreadable or corrupt',
+      data: {
+        ok: false,
+        from: fromDir,
+        created: 0,
+        skipped: 0,
+        dependencies: 0,
+        error: `source database unreadable or corrupt: ${(err as Error).message}`,
+      },
+    });
+    return;
+  }
+
+  try {
+    const dstDb = getDb();
+
+    interface ColumnInfo {
+      name: string;
+      type: string;
+      notNull: boolean;
+      hasDefault: boolean;
+    }
+
+    // Destination schema for a table, including what SQLite will NOT let us omit. The source
+    // may be an older build with fewer columns, so the insert has to satisfy every NOT NULL
+    // column the destination declares without looking it up by hand per table.
+    const destColumnInfo = (table: string): ColumnInfo[] => {
+      try {
+        const rows = dstDb.prepare(`PRAGMA table_info(${table})`).all() as Array<{
+          name: string;
+          type: string;
+          notnull: number;
+          dflt_value: unknown;
+        }>;
+        return rows.map((r) => ({
+          name: r.name,
+          type: String(r.type || ''),
+          notNull: Number(r.notnull) === 1,
+          hasDefault: r.dflt_value !== null && r.dflt_value !== undefined,
+        }));
+      } catch {
+        return [];
+      }
+    };
+
+    const sourceColumns = (table: string): string[] => {
+      try {
+        const q = sourceDb.exec(`PRAGMA table_info(${table})`);
+        if (!q.length) return [];
+        return q[0].values.map((v: unknown[]) => String(v[1]));
+      } catch {
+        return [];
+      }
+    };
+
+    /**
+     * A value for a NOT NULL destination column the source does not carry.
+     *
+     * `INSERT OR IGNORE` does NOT fail on this: SQLite skips the row and reports zero changes,
+     * which is indistinguishable from "the row was already there". Without this the import
+     * would silently drop profiles and then report them as already present — a transfer that
+     * says it worked and moved nothing. A timestamp column gets "now" so the row looks like
+     * what it is (imported today); everything else gets a benign zero value of its affinity.
+     */
+    const fillerValue = (column: ColumnInfo): string | number => {
+      const type = column.type.toUpperCase();
+      if (column.name.endsWith('_at') || type.includes('INT')) return Date.now();
+      if (type.includes('REAL') || type.includes('FLOA') || type.includes('DOUB')) return 0;
+      return '';
+    };
+
+    const tablesInFkOrder = ['groups', 'proxies', 'fingerprints', 'devices', 'profiles'];
+    let created = 0;
+    let skipped = 0;
+    let dependencies = 0;
+
+    dstDb.exec('BEGIN TRANSACTION');
+    try {
+      for (const table of tablesInFkOrder) {
+        const srcCols = sourceColumns(table);
+        if (srcCols.length === 0) continue;
+        const dstInfo = destColumnInfo(table);
+        if (dstInfo.length === 0) continue;
+
+        const dstNames = dstInfo.map((c) => c.name);
+        const commonCols = srcCols.filter((col) => dstNames.includes(col));
+        if (commonCols.length === 0) continue;
+
+        // Columns the source cannot supply but the destination requires. `id` is the key we
+        // already have; a column with a DEFAULT does not need one.
+        const fillers = dstInfo.filter(
+          (c) => c.notNull && !c.hasDefault && !commonCols.includes(c.name) && c.name !== 'id',
+        );
+
+        const insertCols = [...commonCols, ...fillers.map((c) => c.name)];
+        const quotedCols = insertCols.map((c) => `"${c}"`).join(', ');
+        const placeholders = insertCols.map(() => '?').join(', ');
+        const insertStmt = dstDb.prepare(`INSERT OR IGNORE INTO ${table} (${quotedCols}) VALUES (${placeholders})`);
+
+        const queryRes = sourceDb.exec(`SELECT ${commonCols.map((c) => `"${c}"`).join(', ')} FROM ${table}`);
+        if (!queryRes.length || !queryRes[0].values) continue;
+
+        for (const rowValues of queryRes[0].values) {
+          const params = [...rowValues, ...fillers.map(fillerValue)];
+          const resRun = insertStmt.run(...params);
+          const inserted = resRun.changes > 0;
+
+          if (table !== 'profiles') {
+            if (inserted) dependencies += 1;
+            continue;
+          }
+
+          if (inserted) {
+            created += 1;
+            continue;
+          }
+
+          // Zero changes has two very different causes: the id is already here, or the row
+          // violated a constraint and was skipped. Reporting the second as "already present"
+          // is how a transfer can claim success and move nothing, so the id is looked up
+          // rather than inferred.
+          const idIndex = commonCols.indexOf('id');
+          const rowId = idIndex >= 0 ? rowValues[idIndex] : undefined;
+          const exists =
+            rowId !== undefined &&
+            (dstDb.prepare(`SELECT 1 AS present FROM ${table} WHERE id = ?`).get(rowId) as { present?: number } | undefined)
+              ?.present === 1;
+
+          if (exists) {
+            skipped += 1;
+          } else {
+            throw new Error(
+              `${table} row ${String(rowId)} could not be imported and is not already present — ` +
+                'the insert was refused by the destination schema',
+            );
+          }
+        }
+      }
+      dstDb.exec('COMMIT');
+    } catch (err) {
+      try {
+        dstDb.exec('ROLLBACK');
+      } catch {
+        // rollback is best-effort; the original error is the one worth reporting
+      }
+      throw err;
+    }
+
+    flushDb();
+
+    res.json({
+      code: 0,
+      msg: 'success',
+      data: {
+        ok: true,
+        from: fromDir,
+        created,
+        skipped,
+        dependencies,
+      },
+    });
+  } catch (err) {
+    console.error('[DEBUG-XFER] transfer failed:', err);
+    res.json({
+      code: -1,
+      msg: (err as Error).message,
+      data: {
+        ok: false,
+        from: fromDir,
+        created: 0,
+        skipped: 0,
+        dependencies: 0,
+        error: (err as Error).message,
+      },
+    });
+  } finally {
+    try {
+      sourceDb.close();
+    } catch {}
+  }
 });
 
 const restoreSchema = z.object({ name: z.string().regex(/^antidetect-\d{4}-\d{2}-\d{2}-\d{2}-\d{2}\.db$|^antidetect-[\w.-]+\.db$/) });

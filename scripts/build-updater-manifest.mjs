@@ -35,12 +35,15 @@ const version = arg('version');
 const notes = arg('notes') ?? '';
 const url = arg('url');
 const artefact = arg('artefact');
+const portableArtefact = arg('portable-artefact');
+const portableUrl = arg('portable-url');
 const outDir = arg('out') ?? 'dist-release';
 
 if (!version || !url || !artefact) {
   console.error(
     'Usage: node scripts/build-updater-manifest.mjs --version <v> --url <release asset url> ' +
-      '--artefact <path to the built installer> [--notes <text>] [--out <dir>]',
+      '--artefact <path to the built installer> [--portable-artefact <path>] [--portable-url <url>] ' +
+      '[--notes <text>] [--out <dir>]',
   );
   process.exit(2);
 }
@@ -66,37 +69,57 @@ fs.mkdirSync(path.resolve(ROOT, outDir), { recursive: true });
 const sigPath = path.resolve(ROOT, outDir, `${path.basename(artefact)}.sig`);
 const jsonPath = path.resolve(ROOT, outDir, 'latest.json');
 
-// `tauri signer sign` reads the key from the environment and writes <file>.sig.
-const sign = spawnSync(
-  process.platform === 'win32' ? 'npx.cmd' : 'npx',
-  ['tauri', 'signer', 'sign', path.resolve(ROOT, artefact)],
-  {
-    cwd: ROOT,
-    env: {
-      ...process.env,
-      TAURI_SIGNING_PRIVATE_KEY: privateKey,
-      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: process.env.TAURI_SIGNING_PRIVATE_KEY_PASSWORD ?? '',
+function signFile(filePath, targetSigPath) {
+  // `tauri signer sign` reads the key from the environment and writes <file>.sig.
+  const sign = spawnSync(
+    process.platform === 'win32' ? 'npx.cmd' : 'npx',
+    ['tauri', 'signer', 'sign', path.resolve(ROOT, filePath)],
+    {
+      cwd: ROOT,
+      env: {
+        ...process.env,
+        TAURI_SIGNING_PRIVATE_KEY: privateKey,
+        TAURI_SIGNING_PRIVATE_KEY_PASSWORD: process.env.TAURI_SIGNING_PRIVATE_KEY_PASSWORD ?? '',
+      },
+      encoding: 'utf8',
+      shell: process.platform === 'win32',
     },
-    encoding: 'utf8',
-    shell: process.platform === 'win32',
-  },
-);
-if (sign.status !== 0) {
-  console.error('[updater-manifest] signing failed:\n' + (sign.stderr || sign.stdout));
-  process.exit(1);
+  );
+  if (sign.status !== 0) {
+    console.error(`[updater-manifest] signing failed for ${filePath}:\n` + (sign.stderr || sign.stdout));
+    process.exit(1);
+  }
+
+  // The CLI writes the signature beside the artefact; move it into the release dir.
+  const cliSig = path.resolve(ROOT, `${filePath}.sig`);
+  if (fs.existsSync(cliSig)) fs.renameSync(cliSig, targetSigPath);
+  if (!fs.existsSync(targetSigPath)) {
+    console.error(`[updater-manifest] no .sig produced for ${filePath} — refusing to write latest.json`);
+    process.exit(1);
+  }
+  const sigContent = fs.readFileSync(targetSigPath, 'utf8').trim();
+  if (sigContent.length === 0) {
+    console.error(`[updater-manifest] signature file is empty for ${filePath} — refusing to write latest.json`);
+    process.exit(1);
+  }
+  return sigContent;
 }
 
-// The CLI writes the signature beside the artefact; move it into the release dir.
-const cliSig = path.resolve(ROOT, `${artefact}.sig`);
-if (fs.existsSync(cliSig)) fs.renameSync(cliSig, sigPath);
-if (!fs.existsSync(sigPath)) {
-  console.error('[updater-manifest] no .sig produced — refusing to write latest.json');
-  process.exit(1);
-}
-const signature = fs.readFileSync(sigPath, 'utf8').trim();
-if (signature.length === 0) {
-  console.error('[updater-manifest] signature file is empty — refusing to write latest.json');
-  process.exit(1);
+const signature = signFile(artefact, sigPath);
+
+let portableSignature = null;
+let portableSigPath = null;
+if (portableArtefact) {
+  if (!fs.existsSync(portableArtefact)) {
+    console.error(`[updater-manifest] portable artefact not found: ${portableArtefact}`);
+    process.exit(1);
+  }
+  if (!portableUrl) {
+    console.error('[updater-manifest] --portable-url required when --portable-artefact is provided');
+    process.exit(2);
+  }
+  portableSigPath = path.resolve(ROOT, outDir, `${path.basename(portableArtefact)}.sig`);
+  portableSignature = signFile(portableArtefact, portableSigPath);
 }
 
 // Only the Windows entry is produced. macOS and Linux are configured but not built on this
@@ -108,9 +131,14 @@ const manifest = {
   pub_date: new Date().toISOString(),
   platforms: {
     'windows-x86_64': { signature, url },
+    ...(portableSignature && portableUrl
+      ? { 'windows-x86_64-portable': { signature: portableSignature, url: portableUrl } }
+      : {}),
   },
 };
-
 fs.writeFileSync(jsonPath, JSON.stringify(manifest, null, 2), 'utf8');
 console.log(`[updater-manifest] wrote ${path.relative(ROOT, jsonPath)}`);
 console.log(`[updater-manifest] wrote ${path.relative(ROOT, sigPath)}`);
+if (portableSigPath) {
+  console.log(`[updater-manifest] wrote ${path.relative(ROOT, portableSigPath)}`);
+}

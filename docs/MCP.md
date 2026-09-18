@@ -44,6 +44,46 @@ The token is the running instance's API key, shown masked in the Automation API 
 changes if the app's data folder is reset; regenerate the bundle or read the current key
 from the panel if calls start returning 401.
 
+## How it runs
+
+Four pieces, and the boundaries between them are where the bugs live.
+
+**The app owns the lifecycle.** `src/main/mcpService.ts` is a singleton in the backend. It
+picks a free loopback port, resolves the entry, spawns `node <entry>` as a child process, and
+waits for the port to accept a connection before reporting success — `running` describes a real
+socket, not a spawn that was merely attempted. If the child dies, the status flips back on its
+own. The child's stderr is captured, so a failed start is reportable instead of a toggle that
+does nothing.
+
+**Where the entry lives.** `mcp/dist/mcp/src/index.js` — one directory deeper than expected,
+because `mcp/src/browser.ts` imports from `../../src/main/motion/*`, which makes TypeScript
+compute a project root above `mcp/`. It is never resolved from `process.cwd()`: in a portable
+install the working directory is wherever the operator launched the exe from, so a
+cwd-relative path cannot point at the app's own files. The candidates are the explicit
+override, the bundled resources directory, then the directories around the running executable.
+Node's own resolution also needs help: the entry sits in `mcp/dist/...` while its dependencies
+live in a sibling `dist/node_modules`, which is not an ancestor of the entry, so `mcpService`
+sets `NODE_PATH` from the roots the layout actually uses.
+
+**The server is a client.** `mcp/src/tools.ts` talks to the app's own Local API through
+`@antidetect/sdk` using `ANTIDETECT_API_URL` and `ANTIDETECT_API_TOKEN`. Browser control goes
+the rest of the way over the profile's CDP endpoint, which the app already exposes. Nothing
+listens beyond loopback, in either direction.
+
+**Two transports, one implementation.** `stdio` (what a desktop agent client uses, and what
+the generated bundle entry hands off to) and HTTP on loopback for the app's own panel. Both go
+through the same `handleJsonRpcRequest`, and the configured privilege scope is read once in the
+constructor so it applies to both — it was previously read only on the stdio path, which meant
+an operator who configured `admin` still got `standard` over HTTP, the transport the app
+actually uses.
+
+**What a call passes through.** A tool call is checked against a prohibited list, then against
+the privilege tier: `standard` covers reads and safe actions, and 12 destructive tools
+(`profiles.delete`, `cookies.import`, `trash.delete_forever`, …) are refused unless the scope is
+`admin`. Nonces are validated to stop replays, and every decision — allow, deny, or error — is
+appended to a hash-chained audit log so the history cannot be edited after the fact. Arguments
+are redacted before they reach that log: credentials would otherwise be recorded verbatim.
+
 ## Transports
 
 - **stdio** — the default, and what desktop agent clients use. Spawning `index.js` is enough.
@@ -85,8 +125,9 @@ loopback, and so does the MCP HTTP transport.
 
 | Symptom | Cause |
 |---|---|
-| Panel says "MCP: Off" but the server runs | Should not happen: `/api/v1/mcp/status` answers the standard `{code,msg,data}` envelope. If it recurs, check that route's shape. |
+| Panel says "MCP: Off" but the server runs | The status route is not answering the standard `{code,msg,data}` envelope. The panel reads `res.code === 0` and treats anything else as Off, so a bare status object renders exactly like a stopped server. This shipped once: `/api/v1/mcp/status` returned the raw status while every other route answered the envelope, and the footer said Off beside a server holding 47 tools. Check the route's shape first — it is the only thing that produces this symptom. |
 | "Cannot reach the local service" | The backend is not running — the MCP panel is a client of it. |
 | Agent spawns the server, gets no output | The entry must be run as the main module. Use the generated `index.js`, not a `require` of the built file. |
 | `401` from tool calls | The token is stale; regenerate the bundle. |
+| "MCP entry … was not found" | `mcp/dist/mcp/src/index.js` is missing from the payload. It is not resolved from the working directory — see *Where the entry lives*. |
 | A destructive tool is rejected | The bundle is `standard`. Regenerate with `admin`, or raise it in Settings → Security. |

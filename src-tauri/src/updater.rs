@@ -388,7 +388,8 @@ pub fn check(app: &AppHandle) {
             },
         );
 
-        let updater = match app_handle.updater() {
+        let target = update_channel_target();
+        let updater = match app_handle.updater_builder().target(target).build() {
             Ok(u) => u,
             Err(e) => {
                 emit_status(
@@ -704,13 +705,39 @@ pub fn install(app: &AppHandle) {
     });
 }
 
+/// Returns the update channel target based on execution mode.
+/// For the portable build, this resolves to "windows-x86_64-portable" so it pulls
+/// the self-extracting portable launcher instead of the NSIS setup installer.
+pub fn update_channel_target() -> String {
+    if is_portable_mode() {
+        "windows-x86_64-portable".to_string()
+    } else {
+        "windows-x86_64".to_string()
+    }
+}
+
+/// Resolves the executable path that should be updated during portable self-update.
+/// Prefers `PORTABLE_EXECUTABLE_FILE` when set and pointing to an existing file (the launcher);
+/// falls back to `current_exe()` otherwise.
+pub fn resolve_portable_target_exe() -> Result<PathBuf, String> {
+    if let Ok(file_var) = std::env::var("PORTABLE_EXECUTABLE_FILE") {
+        let trimmed = file_var.trim();
+        if !trimmed.is_empty() {
+            let candidate = PathBuf::from(trimmed);
+            if candidate.is_file() {
+                return Ok(candidate);
+            }
+        }
+    }
+    std::env::current_exe().map_err(|e| format!("Cannot locate current exe: {e}"))
+}
+
 /// Detects whether the app is running in portable mode, matching backend `isPortableMode()`.
 pub fn is_portable_mode() -> bool {
     std::env::var("PORTABLE_EXECUTABLE_DIR")
         .map(|v| !v.trim().is_empty())
         .unwrap_or(false)
 }
-
 /// Constructs the Windows detached swap script command.
 /// Detached helper waits for current process lock to release via `ping`, moves `.new` to current exe, and restarts.
 pub fn build_windows_swap_command(staged_path: &Path, target_exe_path: &Path) -> (String, Vec<String>) {
@@ -726,10 +753,10 @@ pub fn build_windows_swap_command(staged_path: &Path, target_exe_path: &Path) ->
 /// Writes verified bytes to `<exe_dir>/<name>.new`, prepares and spawns detached swap script on Windows.
 /// On any failure, running executable remains untouched and error is returned.
 pub fn apply_portable_update(bytes: &[u8]) -> Result<(), String> {
-    let current_exe = std::env::current_exe().map_err(|e| format!("Cannot locate current exe: {e}"))?;
-    let exe_dir = current_exe.parent().ok_or("Cannot locate exe directory")?;
+    let target_exe = resolve_portable_target_exe()?;
+    let exe_dir = target_exe.parent().ok_or("Cannot locate exe directory")?;
 
-    let file_name = current_exe
+    let file_name = target_exe
         .file_name()
         .and_then(|s| s.to_str())
         .ok_or("Invalid exe file name")?;
@@ -747,7 +774,7 @@ pub fn apply_portable_update(bytes: &[u8]) -> Result<(), String> {
     #[cfg(target_os = "windows")]
     {
         use std::process::Command;
-        let (prog, args) = build_windows_swap_command(&staged_file, &current_exe);
+        let (prog, args) = build_windows_swap_command(&staged_file, &target_exe);
         let mut cmd = Command::new(prog);
         cmd.args(args);
         // Spawn detached process
@@ -755,7 +782,7 @@ pub fn apply_portable_update(bytes: &[u8]) -> Result<(), String> {
             Ok(_) => {
                 println!(
                     "[updater::apply_portable_update] Detached swap helper spawned for {}",
-                    current_exe.display()
+                    target_exe.display()
                 );
             }
             Err(e) => {
@@ -769,7 +796,7 @@ pub fn apply_portable_update(bytes: &[u8]) -> Result<(), String> {
     #[cfg(not(target_os = "windows"))]
     {
         // Non-windows atomic rename
-        fs::rename(&staged_file, &current_exe).map_err(|e| {
+        fs::rename(&staged_file, &target_exe).map_err(|e| {
             let _ = fs::remove_file(&staged_file);
             format!("Failed to replace binary: {e}")
         })?;
@@ -1057,5 +1084,59 @@ mod tests {
         let nonexistent_keyring = Path::new("nonexistent-keyring.json");
         let res = verify_artifact(fake_bytes, "2.0.0", nonexistent_keyring);
         assert!(res.is_err());
+    }
+    #[test]
+    fn test_update_channel_target_reflects_portable_mode() {
+        static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+        let _lock = ENV_LOCK.lock().unwrap();
+        let orig = std::env::var("PORTABLE_EXECUTABLE_DIR").ok();
+
+        // Portable mode active
+        std::env::set_var("PORTABLE_EXECUTABLE_DIR", r"D:\NullTracePortable");
+        assert_eq!(update_channel_target(), "windows-x86_64-portable");
+
+        // Portable mode inactive
+        std::env::remove_var("PORTABLE_EXECUTABLE_DIR");
+        assert_eq!(update_channel_target(), "windows-x86_64");
+
+        // Restore
+        if let Some(val) = orig {
+            std::env::set_var("PORTABLE_EXECUTABLE_DIR", val);
+        }
+    }
+
+    #[test]
+    fn test_resolve_portable_target_exe_prefers_existing_launcher() {
+        static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+        let _lock = ENV_LOCK.lock().unwrap();
+        let orig = std::env::var("PORTABLE_EXECUTABLE_FILE").ok();
+        // Create a temporary file to act as the launcher in std::env::temp_dir()
+        let temp_dir = std::env::temp_dir().join(format!("nulltrace_test_{}", std::process::id()));
+        let _ = fs::create_dir_all(&temp_dir);
+        let fake_launcher = temp_dir.join("NullTrace-Portable.exe");
+        fs::write(&fake_launcher, b"fake portable launcher").unwrap();
+        // When PORTABLE_EXECUTABLE_FILE points to an existing file
+        std::env::set_var("PORTABLE_EXECUTABLE_FILE", fake_launcher.to_str().unwrap());
+        let resolved = resolve_portable_target_exe().unwrap();
+        assert_eq!(resolved, fake_launcher);
+
+        // When PORTABLE_EXECUTABLE_FILE points to a non-existent file
+        std::env::set_var(
+            "PORTABLE_EXECUTABLE_FILE",
+            temp_dir.join("non-existent.exe").to_str().unwrap(),
+        );
+        let fallback_resolved = resolve_portable_target_exe().unwrap();
+        assert_eq!(fallback_resolved, std::env::current_exe().unwrap());
+
+        // When PORTABLE_EXECUTABLE_FILE is unset
+        std::env::remove_var("PORTABLE_EXECUTABLE_FILE");
+        let unset_resolved = resolve_portable_target_exe().unwrap();
+        assert_eq!(unset_resolved, std::env::current_exe().unwrap());
+
+        // Restore
+        if let Some(val) = orig {
+            std::env::set_var("PORTABLE_EXECUTABLE_FILE", val);
+        }
+        let _ = fs::remove_dir_all(&temp_dir);
     }
 }

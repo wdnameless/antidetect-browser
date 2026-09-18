@@ -655,6 +655,11 @@ export const api = {
     request<{ current: string; found: Array<{ dir: string; isCurrent: boolean; dbSize: number; modified: number; profiles: number }> }>(
       '/api/v1/data/scan'
     ),
+  dataTransfer: (from: string) =>
+    request<{ ok: boolean; from: string; created: number; skipped: number; dependencies: number; error?: string }>(
+      '/api/v1/data/transfer',
+      { method: 'POST', body: JSON.stringify({ from }) }
+    ),
   // First-run data location. The backend owns both the "is a choice due?" rule and the
   // writability check, so the UI never has to second-guess where data will land.
   firstRunData: () =>

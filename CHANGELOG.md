@@ -1,5 +1,45 @@
 # Changelog
 
+## [0.6.4] - 2026-09-18
+
+### Added — profiles from another data folder can be brought across
+
+The recovery scan already *found* a folder holding your profiles; the only thing it offered
+was **Use this folder**, which switches the working folder and restarts. If you preferred the
+folder you were already using, the profiles were stranded. Settings → Data Folder → *Recover
+old data* now offers **Transfer profiles here** beside that switch.
+
+Transfer is an import into the folder in use, not a relocation: the data-root setting never
+changes, the source folder is opened read-only and keeps its profiles, and anything already in
+the destination keeps its own values — a matching id is counted as *already present* rather
+than overwritten. Fingerprints, devices, proxies and groups are carried over first, so a
+transferred profile can be launched straight away. The counts reported are the rows actually
+written.
+
+Two defects had to be fixed to make it honest. `INSERT OR IGNORE` does **not** fail when a
+NOT NULL column is missing — SQLite skips the row and reports zero changes, which is exactly
+what a duplicate reports, so the first version counted silent drops as "already present" and
+could claim success while moving nothing. Destination NOT NULL columns the source does not
+carry are now filled (a timestamp column gets "now"), and "already present" is established by
+looking the id up, not inferred from a change count.
+
+### Fixed — the portable build updated itself with an installer
+
+An in-app update on the portable `.exe` fetched the NSIS **setup** and wrote it over the
+launcher — the portable build would have replaced itself with an installer. Two separate
+faults: the release metadata offered one platform entry (the installer), and the swap targeted
+the extracted shell rather than the launcher the operator owns. `latest.json` now publishes a
+`windows-x86_64-portable` entry built from the portable artefact with its own signature, the
+shell selects the entry matching how it was launched, and the portable launcher exports its own
+path so the update replaces the right file and restarts.
+
+### Fixed — tests wrote into the operator's settings file
+
+`tests/setup.ts` redirected the data directory but not the settings directory, so the
+data-folder tests persisted their temporary paths into the real `~/.antidetect/settings.json`.
+Harmless to the running app (which reads its own settings directory) and fixed anyway: the
+sandbox now covers both.
+
 ## [0.6.3] - 2026-09-18
 
 Both defects below shipped in 0.6.2 and are fixed here — the artefacts, not the source.
