@@ -125,11 +125,16 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
-      - name: Unit tests
-        run: npm test
-
+      # Build BEFORE testing. `mcpBundle.test.ts` exercises the bundle builder, which reads the
+      # compiled `mcp/dist/mcp/src/index.js` and vendors from `dist/node_modules` — neither
+      # exists on a fresh checkout. The `test` job has always built first; this job tested
+      # first, so the suite passed locally (a developer's tree is already built) and failed on
+      # every tag, taking the whole release with it. Same order as `test`, deliberately.
       - name: Build backend, renderer and vendored runtime
         run: npm run build && npm run copy:prod-deps && npm run vendor:node
+
+      - name: Unit tests
+        run: npm test
 
       - name: Build Tauri shell and portable artefact
         run: npx tauri build --bundles nsis && npm run tauri:build:portable
