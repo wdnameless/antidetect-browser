@@ -122,15 +122,36 @@ if (portableArtefact) {
   portableSignature = signFile(portableArtefact, portableSigPath);
 }
 
-// Only the Windows entry is produced. macOS and Linux are configured but not built on this
-// runner, and inventing entries for artefacts that do not exist would make those platforms
-// fail on a URL that 404s rather than reporting an honest "no update".
+// Windows entries.
+//
+// The key names here are not conventional, and that is deliberate. `tauri-plugin-updater`
+// resolves a release by probing `{os}-{arch}-{bundle_type}` and then `{os}-{arch}` — so a build
+// that passes no explicit target (every release before this one) probes
+// `windows-x86_64-nsis` first, because BOTH the portable launcher and the installed app are the
+// same binary Tauri patched as bundle type `nsis`.
+//
+// That makes the obvious layout actively dangerous: with the installer published under
+// `windows-x86_64` (the usual place), a portable build on an older release downloads an
+// INSTALLER and swaps it over its own launcher. The portable channel cannot be fixed by adding
+// a key, because an old build never looks for one.
+//
+// So the two keys an older portable build can reach — `windows-x86_64-nsis` and the bare
+// `windows-x86_64` — must both carry the PORTABLE launcher, and `windows-x86_64-nsis` is
+// deliberately not published at all. Builds from this release on pass an explicit target
+// (`updater.rs::update_channel_target`) and land on `windows-x86_64-portable` or
+// `windows-x86_64-setup`, so neither has to share a key with the other.
+//
+// Known edge: an INSTALLED build older than this release probes the bare key, so it is offered
+// the portable launcher rather than an installer. It is left running — the launcher extracts
+// beside it rather than replacing anything — and reinstalling from the setup fixes it. That is
+// the safer side of the trade: an installer over a portable build destroys the app.
 const manifest = {
   version,
   notes,
   pub_date: new Date().toISOString(),
   platforms: {
-    'windows-x86_64': { signature, url },
+    'windows-x86_64-setup': { signature, url },
+    'windows-x86_64': { signature: portableSignature ?? signature, url: portableUrl ?? url },
     ...(portableSignature && portableUrl
       ? { 'windows-x86_64-portable': { signature: portableSignature, url: portableUrl } }
       : {}),

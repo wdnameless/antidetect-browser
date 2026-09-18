@@ -706,13 +706,18 @@ pub fn install(app: &AppHandle) {
 }
 
 /// Returns the update channel target based on execution mode.
-/// For the portable build, this resolves to "windows-x86_64-portable" so it pulls
-/// the self-extracting portable launcher instead of the NSIS setup installer.
+///
+/// Both channels are named explicitly, and neither reuses a key the plugin would probe on its
+/// own. Without an explicit target the plugin resolves `{os}-{arch}-{bundle_type}` and then
+/// `{os}-{arch}`, and it cannot distinguish the two builds: the portable launcher and the
+/// installed app carry the same shell, patched as bundle type `nsis`. The keys are therefore
+/// `windows-x86_64-portable` and `windows-x86_64-setup` — a name the plugin never generates —
+/// so each build can only ever receive its own artefact.
 pub fn update_channel_target() -> String {
     if is_portable_mode() {
         "windows-x86_64-portable".to_string()
     } else {
-        "windows-x86_64".to_string()
+        "windows-x86_64-setup".to_string()
     }
 }
 
@@ -1095,9 +1100,10 @@ mod tests {
         std::env::set_var("PORTABLE_EXECUTABLE_DIR", r"D:\NullTracePortable");
         assert_eq!(update_channel_target(), "windows-x86_64-portable");
 
-        // Portable mode inactive
+        // Portable mode inactive — the INSTALLER channel. Named `-setup`, a key the plugin
+        // never generates itself, so a portable build cannot reach it through the fallback.
         std::env::remove_var("PORTABLE_EXECUTABLE_DIR");
-        assert_eq!(update_channel_target(), "windows-x86_64");
+        assert_eq!(update_channel_target(), "windows-x86_64-setup");
 
         // Restore
         if let Some(val) = orig {

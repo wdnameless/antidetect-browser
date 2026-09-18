@@ -26,12 +26,26 @@ looking the id up, not inferred from a change count.
 ### Fixed — the portable build updated itself with an installer
 
 An in-app update on the portable `.exe` fetched the NSIS **setup** and wrote it over the
-launcher — the portable build would have replaced itself with an installer. Two separate
-faults: the release metadata offered one platform entry (the installer), and the swap targeted
-the extracted shell rather than the launcher the operator owns. `latest.json` now publishes a
-`windows-x86_64-portable` entry built from the portable artefact with its own signature, the
-shell selects the entry matching how it was launched, and the portable launcher exports its own
-path so the update replaces the right file and restarts.
+launcher — the portable build would have replaced itself with an installer. Getting this right
+took more than adding a key, because the plugin resolves a release by probing
+`{os}-{arch}-{bundle_type}` and then `{os}-{arch}`, and it cannot tell the two builds apart:
+the portable launcher and the installed app carry the same shell, patched as bundle type `nsis`.
+A portable build that passes no target — every release before this one — therefore probes
+`windows-x86_64-nsis`, then the bare `windows-x86_64`.
+
+That makes the conventional layout the dangerous one: with the installer under
+`windows-x86_64`, an older portable build downloads an installer and swaps it over its own
+launcher. So the two keys such a build can reach both carry the **portable** artefact, and the
+installer is published under `windows-x86_64-setup` — a name the plugin never generates. Builds
+from this release on pass an explicit target and land on `windows-x86_64-portable` or
+`windows-x86_64-setup`, so neither shares a key with the other. The swap also targets the
+launcher the operator owns (`PORTABLE_EXECUTABLE_FILE`) rather than the extracted copy the next
+launch would discard.
+
+Known edge: an INSTALLED build older than this release probes the bare key and is offered the
+portable launcher instead of an installer. It is left running — the launcher extracts beside it
+rather than replacing anything — and reinstalling from the setup settles it. That is the safer
+side of the trade, since an installer over a portable build destroys the app.
 
 ### Fixed — tests wrote into the operator's settings file
 
