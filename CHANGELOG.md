@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.6.9] - 2026-09-19
+
+### Removed — the sidebar can no longer be collapsed
+
+The operator pointed at the collapse control in the sidebar footer and said remove it. The
+feature went with it: the button, the `Ctrl/Cmd+B` shortcut, the remembered `sidebar.collapsed`
+preference, the 52px rail styling, and the strings that named them.
+
+Removing only the button was considered and rejected. It would have left a sidebar that a
+stray `Ctrl+B` could shrink to a 52px strip with nothing on screen saying how to undo that —
+a state you can enter and not leave. The reference product this interface follows has a fixed
+240px column and no collapse at all, so the whole feature was the thing to delete.
+
+Verified in the running app: the sidebar measures 240px, no toggle button renders, `Ctrl+B`
+leaves the width and the stored preference untouched, and all seven destinations stay
+reachable with their labels.
+
 ## [0.6.8] - 2026-09-19
 
 ### Changed — the interface now follows the reference product's layout

@@ -11,11 +11,7 @@ import {
 } from './updateStatus';
 import type { UpdateStatus, UpdateStatusEventPayload } from './global';
 import {
-  SIDEBAR_COLLAPSED_KEY,
-  getStoredSidebarCollapsed,
-  persistSidebarCollapsed,
   computeRunningCount,
-  isToggleShortcut
 } from './sidebarLogic';
 import { Profiles } from './pages/Profiles';
 import { Groups } from './pages/Groups';
@@ -181,7 +177,6 @@ export function App() {
   const [page, setPage] = useState<Page>('profiles');
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
   const [workspace, setWorkspace] = useState('personal');
-  const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(() => getStoredSidebarCollapsed());
   const [runningCount, setRunningCount] = useState<number>(0);
   const [syncConnected, setSyncConnected] = useState<boolean>(false);
   const activeDest = getActiveDestination(page);
@@ -316,26 +311,6 @@ export function App() {
     };
   }, [initSession]);
 
-  const toggleSidebar = useCallback(() => {
-    setSidebarCollapsed((prev) => {
-      const next = !prev;
-      persistSidebarCollapsed(next);
-      return next;
-    });
-  }, []);
-
-  // Keyboard shortcut Ctrl/Cmd+B
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (isToggleShortcut(e)) {
-        e.preventDefault();
-        toggleSidebar();
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [toggleSidebar]);
-
   // Fetch running profiles count & sync status
   useEffect(() => {
     if (!ready) return;
@@ -407,7 +382,7 @@ export function App() {
   return (
     <div className="app">
       <aside
-        className={`sidebar ${sidebarCollapsed ? 'collapsed' : ''}`}
+        className="sidebar"
         aria-label="Navigation sidebar"
       >
         <div className="sidebar-content">
@@ -440,9 +415,7 @@ export function App() {
                           key={dest.key}
                           type="button"
                           className={`nav-item ${isDestActive ? 'active' : ''}`}
-                          data-tooltip={itemLabel}
                           aria-label={itemLabel}
-                          title={sidebarCollapsed ? itemLabel : undefined}
                           onClick={() => {
                             if (dest.key !== 'profiles') setSelectedGroupId(null);
                             setPage(dest.key);
@@ -451,14 +424,9 @@ export function App() {
                           <div className="nav-item-icon-wrapper">
                             <Icon size={16} />
                             {isCloud && syncConnected && <span className="sync-dot" title="Cloud connected" />}
-                            {isProfiles && runningCount > 0 && sidebarCollapsed && (
-                              <span className="nav-badge" title={`${runningCount} ${t('running')}`}>
-                                {runningCount}
-                              </span>
-                            )}
                           </div>
                           <span className="nav-label">{itemLabel}</span>
-                          {isProfiles && runningCount > 0 && !sidebarCollapsed && (
+                          {isProfiles && runningCount > 0 && (
                             <span className="nav-badge">{runningCount}</span>
                           )}
                         </button>
@@ -476,90 +444,63 @@ export function App() {
         </div>
 
         <div className="sidebar-footer">
-          <AutomationPanel />
-          {!sidebarCollapsed && (
-            /*
-             * The version line is the update control.
-             *
-             * It used to be a passive label reading "Not checked", then a check-only button:
-             * clicking it reported "Update available" and stopped, because `download()` and
-             * `quitAndInstall()` lived only behind buttons in Settings. Clicking here now
-             * authorises the whole flow — check → download → install → relaunch — and the
-             * effect above advances each step as the shell reports it. A state that cannot
-             * proceed (up to date, error) simply stops there and says so.
-             *
-             * Rendered as a button, not a div with onClick, so it is keyboard reachable and
-             * announced as interactive.
-             */
-            <button
-              type="button"
-              className="sidebar-version"
-              data-testid="check-updates"
-              title={updateTitle}
-              aria-label={t('Check for updates')}
-              onClick={() => {
-                const apiObj = window.antidetect as (typeof window.antidetect & {
-                  update?: { check?: () => Promise<void> };
-                }) | undefined;
-                if (!apiObj?.update?.check) {
-                  // No shell bridge (a browser-served client): say so rather than appearing
-                  // to do nothing.
-                  setHasRunUpdateCheck(true);
-                  setUpdateFlowActive(false);
-                  setKernelUpdateState({
-                    state: 'error',
-                    message: 'Updates are only available in the desktop application.',
-                  });
-                  return;
-                }
-                setHasRunUpdateCheck(true);
-                setUpdateFlowActive(true);
-                setKernelUpdateState({ state: 'checking' });
-                void apiObj.update.check();
-              }}
-              style={{
-                background: 'none',
-                border: 'none',
-                padding: 0,
-                cursor: 'pointer',
-                textAlign: 'left',
-                width: '100%',
-                font: 'inherit',
-                color: 'inherit',
-              }}
-            >
-              <strong style={{ color: 'var(--text-secondary)', fontWeight: 600 }}>
-                {appVersion ? `${PRODUCT_NAME} v${appVersion}` : PRODUCT_NAME}
-              </strong>
-              <div style={{ marginTop: 2 }}>{updateLabel}</div>
-            </button>
-          )}
-
+          {/*
+           * The version line is the update control.
+           *
+           * It used to be a passive label reading "Not checked", then a check-only button:
+           * clicking it reported "Update available" and stopped, because `download()` and
+           * `quitAndInstall()` lived only behind buttons in Settings. Clicking here now
+           * authorises the whole flow — check → download → install → relaunch — and the
+           * effect above advances each step as the shell reports it. A state that cannot
+           * proceed (up to date, error) simply stops there and says so.
+           *
+           * Rendered as a button, not a div with onClick, so it is keyboard reachable and
+           * announced as interactive.
+           *
+           * It is no longer conditional: the sidebar cannot collapse any more, so there is
+           * no state in which the version would be hidden.
+           */}
           <button
             type="button"
-            className="sidebar-toggle-btn"
-            onClick={toggleSidebar}
-            title={t('Toggle sidebar (Ctrl+B)')}
-            aria-label={sidebarCollapsed ? t('Expand sidebar') : t('Collapse sidebar')}
+            className="sidebar-version"
+            data-testid="check-updates"
+            title={updateTitle}
+            aria-label={t('Check for updates')}
+            onClick={() => {
+              const apiObj = window.antidetect as (typeof window.antidetect & {
+                update?: { check?: () => Promise<void> };
+              }) | undefined;
+              if (!apiObj?.update?.check) {
+                // No shell bridge (a browser-served client): say so rather than appearing
+                // to do nothing.
+                setHasRunUpdateCheck(true);
+                setUpdateFlowActive(false);
+                setKernelUpdateState({
+                  state: 'error',
+                  message: 'Updates are only available in the desktop application.',
+                });
+                return;
+              }
+              setHasRunUpdateCheck(true);
+              setUpdateFlowActive(true);
+              setKernelUpdateState({ state: 'checking' });
+              void apiObj.update.check();
+            }}
+            style={{
+              background: 'none',
+              border: 'none',
+              padding: 0,
+              cursor: 'pointer',
+              textAlign: 'left',
+              width: '100%',
+              font: 'inherit',
+              color: 'inherit',
+            }}
           >
-            <svg
-              width="16"
-              height="16"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              {sidebarCollapsed ? (
-                /* Arrow pointing right to expand */
-                <polyline points="9 18 15 12 9 6" />
-              ) : (
-                /* Arrow pointing left to collapse */
-                <polyline points="15 18 9 12 15 6" />
-              )}
-            </svg>
+            <strong style={{ color: 'var(--text-secondary)', fontWeight: 600 }}>
+              {appVersion ? `${PRODUCT_NAME} v${appVersion}` : PRODUCT_NAME}
+            </strong>
+            <div style={{ marginTop: 2 }}>{updateLabel}</div>
           </button>
         </div>
       </aside>

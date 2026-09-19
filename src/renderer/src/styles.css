@@ -126,7 +126,6 @@
   --control-h: 32px;
   --control-h-sm: 28px;
   --sidebar-w: 240px;
-  --sidebar-w-collapsed: 52px;
   --topbar-h: 48px;
 
   /* Type scale.
@@ -302,14 +301,8 @@ pre {
   min-height: 0;
   padding: var(--space-4) var(--space-2);
   flex-shrink: 0;
-  transition: width 180ms ease;
   position: relative;
   z-index: 20;
-}
-
-.sidebar.collapsed {
-  width: var(--sidebar-w-collapsed);
-  padding: var(--space-4) var(--space-2);
 }
 
 .sidebar-content {
@@ -344,19 +337,6 @@ pre {
   gap: 12px;
   padding: 8px 12px 20px;
   min-height: 48px;
-}
-
-.sidebar.collapsed .brand {
-  padding: 8px 12px 20px;
-  justify-content: flex-start;
-  gap: 0;
-}
-
-.sidebar.collapsed .brand-title,
-.sidebar.collapsed .brand-version,
-.sidebar.collapsed .nav-label,
-.sidebar.collapsed .workspace-switcher-wrapper {
-  display: none;
 }
 
 .brand-icon {
@@ -416,10 +396,6 @@ pre {
   transition: opacity 0.15s ease;
 }
 
-.sidebar.collapsed .nav-group-label {
-  display: none;
-}
-
 .nav-group-items {
   display: flex;
   flex-direction: column;
@@ -463,21 +439,7 @@ pre {
    produced a horizontal scrollbar across the whole nav (the ◀ ▶ strip) and left icons
    unable to centre. Here the row fills the 36px and centres its icon, so nothing overflows
    and the icons sit on one vertical axis. */
-.sidebar.collapsed .nav-item {
-  padding: 10px 0;
-  justify-content: center;
-  position: relative;
-  overflow: hidden;
-}
 
-.sidebar.collapsed .nav-item svg {
-  margin: 0 auto;
-  flex-shrink: 0;
-}
-
-.sidebar.collapsed .nav-item-icon-wrapper {
-  margin: 0 auto;
-}
 /* Inactive item icon color #71717a per spec */
 .nav-item svg {
   color: #71717a;
@@ -489,11 +451,8 @@ pre {
   color: #ffffff;
 }
 
-/* Rail labels use the native `title` attribute (set in App.tsx). A CSS flyout was tried
-   here and removed: an absolutely-positioned `::after` with `white-space: nowrap` and
-   `left: calc(100% + 10px)` sits outside the 52px rail, and `visibility: hidden` still
-   contributes to `scrollWidth` — so every nav row reported horizontal overflow and the
-   sidebar drew a scrollbar strip across the rail. The native tooltip costs no layout. */
+/* Nav labels are plain text. There is no collapsed rail any more — the sidebar is a fixed
+   240px column, so a label is always rendered and no tooltip flyout is needed. */
 
 /* Nav Item Badges & Indicators */
 .nav-item-icon-wrapper {
@@ -520,19 +479,6 @@ pre {
 }
 
 /* Collapsed rail badge overlaid on top-right of icon */
-.sidebar.collapsed .nav-badge {
-  position: absolute;
-  top: -6px;
-  right: -10px;
-  margin-left: 0;
-  padding: 0 4px;
-  min-width: 15px;
-  height: 15px;
-  font-size: 9px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
 
 /* Sync indicator dot */
 .sync-dot {
@@ -547,40 +493,6 @@ pre {
 }
 
 /* Collapse/Expand Toggle Button */
-.sidebar-toggle-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: transparent;
-  border: 1px solid transparent;
-  color: var(--text-secondary);
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-  padding: 6px;
-  transition: all 0.15s ease;
-  width: 100%;
-  margin-top: 8px;
-}
-
-.sidebar-toggle-btn:hover {
-  background: rgba(255, 255, 255, 0.06);
-  color: var(--text);
-  border-color: var(--border);
-}
-
-.sidebar.collapsed .sidebar-toggle-btn {
-  padding: 6px;
-}
-
-.sidebar.collapsed .api-status-pill {
-  padding: 6px 0;
-  justify-content: center;
-}
-
-.sidebar.collapsed .api-status-pill span:not(.status-dot) {
-  display: none;
-}
-
 
 .sidebar-footer {
   padding-top: 10px;
@@ -605,11 +517,6 @@ pre {
   gap: 5px;
 }
 
-.sidebar.collapsed .automation-api-panel {
-  padding: 8px 4px;
-  align-items: center;
-}
-
 .automation-api-header {
   display: flex;
   align-items: center;
@@ -622,10 +529,6 @@ pre {
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--text-muted);
-}
-
-.sidebar.collapsed .automation-api-title {
-  display: none;
 }
 
 .automation-api-status {
@@ -673,10 +576,6 @@ pre {
   padding: 4px 8px;
   border-radius: var(--radius-sm);
   border: 1px solid var(--border);
-}
-
-.sidebar.collapsed .automation-api-address-row {
-  display: none;
 }
 
 .automation-api-address {
@@ -754,10 +653,6 @@ pre {
   gap: 6px;
 }
 
-.sidebar.collapsed .automation-actions-row {
-  flex-direction: column;
-}
-
 .automation-action-btn {
   flex: 1;
   display: flex;
@@ -780,17 +675,6 @@ pre {
   color: var(--text);
 }
 
-.sidebar-footer-controls {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-
-.sidebar.collapsed .sidebar-footer-controls {
-  flex-direction: column;
-}
-
 .sidebar-version {
   font-size: 10.5px;
   color: var(--text-muted);
@@ -811,60 +695,18 @@ pre {
   font-size: 10px;
 }
 
-.sidebar.collapsed .sidebar-footer {
-  padding-top: var(--space-2);
-  gap: var(--space-2);
-}
-
 /* In the collapsed rail the API card cannot show text — there are 36 usable pixels. It
    collapses to its status dot instead of being hidden outright, so the operator still sees
    at a glance whether the service is up. The card's overflow is `visible` by default, which
    is what let it bleed past the rail before. */
-.sidebar.collapsed .automation-api-panel {
-  padding: var(--space-1) 0;
-  align-items: center;
-  gap: var(--space-1);
-  background: transparent;
-  border: none;
-  overflow: hidden;
-}
-
-.sidebar.collapsed .automation-api-header {
-  justify-content: center;
-}
-
-.sidebar.collapsed .automation-api-title,
-.sidebar.collapsed .automation-api-address-row,
-.sidebar.collapsed .automation-actions-row,
-.sidebar.collapsed .theme-switch,
-.sidebar.collapsed .automation-api-status *:not(.status-dot) {
-  display: none;
-}
 
 /* The message rows (bundle result, "backend down", errors) are direct children of the card
    and hold their text in a bare text node, which the `*:not(.status-dot)` rule above cannot
    reach — it only matches elements. In the 36px rail they spilled past the card and were
    clipped mid-word ("…\nulltra ce-mcp"), which is the garbled strip the operator saw. The
    header's own On/Off row is nested a level deeper, so it keeps its dot. */
-.sidebar.collapsed .automation-api-panel > .automation-api-status {
-  display: none;
-}
-
-.sidebar.collapsed .automation-api-status {
-  justify-content: center;
-}
 
 /* Nothing in the rail may overflow or scroll horizontally. */
-.sidebar.collapsed .nav,
-.sidebar.collapsed .nav-group,
-.sidebar.collapsed .nav-group-items,
-.sidebar.collapsed .sidebar-content {
-  overflow-x: hidden;
-}
-
-.sidebar.collapsed .sidebar-version {
-  display: none;
-}
 
 /* PageHeader and Frameless Drag/Window Controls */
 .app-region-drag {

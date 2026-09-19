@@ -20,7 +20,7 @@ const STORAGE_KEY = 'theme';
  *
  * The renderer is also served to a plain browser and is exercised in tests, so storage may
  * be unavailable (private mode, disabled storage, no `window`). A theme preference must
- * never throw at startup; `sidebarLogic.ts` guards the same way.
+ * never throw at startup.
  */
 function storage(): Storage | null {
   try {
