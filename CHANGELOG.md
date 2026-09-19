@@ -8,7 +8,13 @@ This is the failure the operator hit as «МСП не включается»: th
 **Off**, pressing the MCP control answered **Cannot reach the local service**, the profile list
 showed **Failed to fetch**, and the footer named a version that was not the one installed.
 
-Three defects in the shell's backend lifecycle produced it, all now closed.
+Four defects produced it, all now closed.
+
+**There was no longer any control to press.** The commit that removed the sidebar collapse
+deleted `<AutomationPanel />` along with the `{!sidebarCollapsed && ...}` guard around it and
+left the import behind. An unused import typechecks and the bundle builds, so nothing failed
+and no test covered the sidebar: the Automation API block — the MCP badge, the start/stop
+control, the bundle download — had simply been removed from the product.
 
 **The backend was never recorded, so it was never stopped.** `SidecarManager::start` spawned
 the process and dropped it — `self.child` stayed `None` for the whole session. Both stop paths
@@ -31,9 +37,17 @@ being mistaken for health.
 dies for any reason — including a crash or a `taskkill /F` that runs no teardown code at all.
 Teardown still runs first, so the database is flushed on a normal exit.
 
-Verified on Windows: `cargo test` 36 passed, including two new tests — a live foreign listener
-on the port does **not** satisfy readiness, and the backend's own line does. The pre-existing
-tests did not catch the missing child because nothing exercised a successful start.
+The panel is back in the sidebar, and a test now fails if it is ever detached again — proven
+by deleting the mounting line and watching two tests go red. Verified against the running
+install in a real browser: the block reads AUTOMATION API **On** with **MCP: 47 tools**, where
+the operator's window showed Off and "Cannot reach the local service".
+
+Verified on Windows: `cargo test` 37 passed, including three new tests — a live foreign
+listener on the port does **not** satisfy readiness, the backend's own line does, and losing
+the manager kills the recorded backend through the job object. The pre-existing tests did not
+catch the missing child because nothing exercised a successful start. The shell was then run
+end-to-end: started cleanly, force-killed with no teardown, and the backend died with it and
+released the port.
 
 ### Fixed — the taskbar showed the wrong name, and the icon was soft
 
