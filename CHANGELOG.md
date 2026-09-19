@@ -1,5 +1,63 @@
 # Changelog
 
+## [0.6.11] - 2026-09-19
+
+### Fixed — the app could come up as a window with no backend behind it
+
+This is the failure the operator hit as «МСП не включается»: the Automation API card read
+**Off**, pressing the MCP control answered **Cannot reach the local service**, the profile list
+showed **Failed to fetch**, and the footer named a version that was not the one installed.
+
+Three defects in the shell's backend lifecycle produced it, all now closed.
+
+**The backend was never recorded, so it was never stopped.** `SidecarManager::start` spawned
+the process and dropped it — `self.child` stayed `None` for the whole session. Both stop paths
+(`terminate` and `terminate_graceful`) return early when that slot is empty, so on exit the
+backend received neither the shutdown request nor the kill: it survived the shell, kept the API
+port and the `service.lock` behind it. The next launch then read that lock as a live instance
+and refused to start, while a port probe told the shell the port was ready, so the window
+attached itself to the *stale* backend still listening there. Measured on this machine: the
+running 0.6.10 shell was serving a footer reading `v0.6.8`, on a port answering from a process
+that had already exited, with `service.lock` naming a dead pid.
+
+**Readiness accepted any listener as proof.** A bare TCP connect counted as a successful start,
+so an orphaned backend satisfied it before the new child had done anything. Readiness is now the
+backend's own `Local API listening on` line on its own stdout — nothing else — and the child is
+checked for exit first, so a refusal is reported with the reason the backend printed instead of
+being mistaken for health.
+
+**Nothing tied the backend's life to the shell's.** A Windows job object with
+`JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE` now holds the backend, so the OS ends it when the shell
+dies for any reason — including a crash or a `taskkill /F` that runs no teardown code at all.
+Teardown still runs first, so the database is flushed on a normal exit.
+
+Verified on Windows: `cargo test` 36 passed, including two new tests — a live foreign listener
+on the port does **not** satisfy readiness, and the backend's own line does. The pre-existing
+tests did not catch the missing child because nothing exercised a successful start.
+
+### Fixed — the taskbar showed the wrong name, and the icon was soft
+
+**A launched profile now carries its name in the taskbar.** The code intended this already, but
+through a command that does not exist: `Page.setTitle` is not part of the Chrome DevTools
+Protocol, verified against the running kernel's own protocol listing, which returns zero
+title-related commands. It sat inside a swallowed `try`/`catch`, so it had never done anything
+and never said so. The title is now set two ways, chosen by the characters in the name:
+`--window-name` pins it in the kernel for ASCII names, and for a Cyrillic or accented name —
+which the flag silently discards — it is written through `SetWindowTextW` and re-applied, so a
+page that sets `document.title` cannot overwrite it. Measured in a real kernel window: an ASCII
+profile shows `[KZ] kz-01 ASCII`, a Cyrillic one `[ПР] Профиль Русский`, and both survive a page
+that retitles itself twice. The keeper process is released when the profile stops; that cleanup
+call was missing as well.
+
+**The icon is crisp.** The raster master stamped deterministic screen-print grain into every ink
+pixel, and every packaged artefact — the `.ico` included — was downscaled from it. At 16-48 px,
+the sizes Windows draws in the taskbar and Explorer, a grain of up to +30 per channel is most of
+a pixel, so the mark read as dirty and soft. The packaged raster is now ungrained, and the
+`.ico` carries all nine sizes Windows asks for (16, 20, 24, 32, 40, 48, 64, 128, 256) instead of
+six, so the shell never resamples it at draw time. The mark itself is unchanged: same geometry,
+same silhouette, same eye cutouts. The grain survives in the SVG master, where it is a vector
+filter that costs nothing at icon sizes.
+
 ## [0.6.10] - 2026-09-19
 
 ### Added — delete an old data folder once its profiles are in the one in use

@@ -1,15 +1,93 @@
+use parking_lot::Mutex;
 use std::io::{BufRead, BufReader};
-use std::net::TcpStream;
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-#[derive(Debug, Clone)]
-pub enum ReadinessSignal {
-    RealString(String),
-    PortBound,
+/// Kills the backend when the shell dies, however the shell dies.
+///
+/// A Windows job object with `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE` terminates every process in
+/// the job as soon as the last handle to the job closes — which happens when this process exits,
+/// including a crash or a `taskkill /F` that never runs any teardown code.
+///
+/// Without it the backend outlives the shell. It then keeps the API port and the instance lock,
+/// and the next launch is refused by the lock while a port probe reports the port as ready: the
+/// app comes up as a window with no backend behind it, and the footer shows the version of the
+/// stale build it attached to. That is a real failure this code produced, so the guarantee is
+/// enforced by the OS rather than by remembering to run teardown.
+#[cfg(target_os = "windows")]
+struct BackendJob {
+    handle: windows::Win32::Foundation::HANDLE,
+}
+
+// A `HANDLE` is a plain kernel handle value: it owns no thread-affine state, so moving it
+// between threads and sharing it by reference are both sound. It must be `Send + Sync` because
+// the manager holding it is shared through `Arc` as Tauri state.
+#[cfg(target_os = "windows")]
+unsafe impl Send for BackendJob {}
+#[cfg(target_os = "windows")]
+unsafe impl Sync for BackendJob {}
+
+#[cfg(target_os = "windows")]
+impl BackendJob {
+    /// Creates a kill-on-close job and puts `child` in it.
+    ///
+    /// Returns `None` when the job cannot be created or the process cannot be assigned. That is
+    /// deliberately not fatal: teardown still stops the backend, so a job failure degrades the
+    /// crash-safety guarantee but must not stop the app from starting.
+    fn adopt(child: &Child) -> Option<Self> {
+        use std::os::windows::io::AsRawHandle;
+        use windows::Win32::Foundation::{CloseHandle, HANDLE};
+        use windows::Win32::System::JobObjects::{
+            AssignProcessToJobObject, CreateJobObjectW, JobObjectExtendedLimitInformation,
+            SetInformationJobObject, JOBOBJECT_BASIC_LIMIT_INFORMATION,
+            JOBOBJECT_EXTENDED_LIMIT_INFORMATION, JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
+        };
+        use windows::core::PCWSTR;
+
+        unsafe {
+            let job = CreateJobObjectW(None, PCWSTR::null()).ok()?;
+
+            let info = JOBOBJECT_EXTENDED_LIMIT_INFORMATION {
+                BasicLimitInformation: JOBOBJECT_BASIC_LIMIT_INFORMATION {
+                    LimitFlags: JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
+                    ..Default::default()
+                },
+                ..Default::default()
+            };
+            let configured = SetInformationJobObject(
+                job,
+                JobObjectExtendedLimitInformation,
+                &info as *const _ as *const core::ffi::c_void,
+                core::mem::size_of::<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>() as u32,
+            );
+            if configured.is_err() {
+                let _ = CloseHandle(job);
+                return None;
+            }
+
+            let process = HANDLE(child.as_raw_handle() as *mut core::ffi::c_void);
+            if AssignProcessToJobObject(job, process).is_err() {
+                let _ = CloseHandle(job);
+                return None;
+            }
+
+            Some(Self { handle: job })
+        }
+    }
+}
+
+#[cfg(target_os = "windows")]
+impl Drop for BackendJob {
+    fn drop(&mut self) {
+        // Closing the last handle is what triggers the kill, so this is the mechanism itself
+        // rather than tidy bookkeeping.
+        unsafe {
+            let _ = windows::Win32::Foundation::CloseHandle(self.handle);
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -29,7 +107,9 @@ pub struct SidecarConfig {
     /// "unknown" on the operator's machine.
     pub app_version: Option<String>,
     pub readiness_timeout: Duration,
-    pub readiness_signal: ReadinessSignal,
+    /// The line the backend prints once it has BOUND the API port. Readiness is this line and
+    /// nothing else: see the readiness loop in `start` for why a port probe cannot be used.
+    pub readiness_line: String,
 }
 
 impl Default for SidecarConfig {
@@ -44,9 +124,7 @@ impl Default for SidecarConfig {
             env: vec![],
             app_version: None,
             readiness_timeout: Duration::from_secs(15),
-            readiness_signal: ReadinessSignal::RealString(
-                "[antidetect] Local API listening on".to_string(),
-            ),
+            readiness_line: "[antidetect] Local API listening on".to_string(),
         }
     }
 }
@@ -79,6 +157,10 @@ pub fn default_settings_dir() -> PathBuf {
 pub struct SidecarManager {
     child: Arc<Mutex<Option<Child>>>,
     terminated: Arc<AtomicBool>,
+    /// Kept alive for as long as the child runs. Dropping it is what kills the backend, so it
+    /// must be cleared only when the child is already gone.
+    #[cfg(target_os = "windows")]
+    job: Mutex<Option<BackendJob>>,
 }
 
 impl SidecarManager {
@@ -86,6 +168,8 @@ impl SidecarManager {
         Self {
             child: Arc::new(Mutex::new(None)),
             terminated: Arc::new(AtomicBool::new(false)),
+            #[cfg(target_os = "windows")]
+            job: Mutex::new(None),
         }
     }
 
@@ -208,25 +292,38 @@ impl SidecarManager {
         let stdout = child.stdout.take().ok_or("Failed to capture child stdout")?;
         let stderr = child.stderr.take().ok_or("Failed to capture child stderr")?;
 
+        // Take the crash-safety guarantee before anything can go wrong: from here on the OS
+        // ends the backend whenever this process does, even without a teardown.
+        #[cfg(target_os = "windows")]
+        {
+            *self.job.lock() = BackendJob::adopt(&child);
+        }
+
+        // Record the child, or nothing can ever stop it.
+        //
+        // This was missing: the process was spawned and immediately dropped on the floor, so
+        // `self.child` stayed `None` for the whole session. Both stop paths (`terminate` and
+        // `terminate_graceful`) take an early `return` when the slot is empty, so the backend
+        // was never asked to shut down and never killed — it outlived every shell exit and kept
+        // the API port and the `service.lock`, which is what turned the next launch into a
+        // window attached to a stale backend. The job object above is the guarantee; this is
+        // what lets the polite path (flush the database, then exit) run at all.
+        *self.child.lock() = Some(child);
+
         let ready_flag = Arc::new(AtomicBool::new(false));
         let error_log = Arc::new(Mutex::new(Vec::<String>::new()));
 
         let ready_clone = Arc::clone(&ready_flag);
         let err_clone = Arc::clone(&error_log);
 
-        let signal_pattern = match &config.readiness_signal {
-            ReadinessSignal::RealString(s) => Some(s.clone()),
-            ReadinessSignal::PortBound => None,
-        };
+        let signal_pattern = config.readiness_line.clone();
 
         let stdout_thread = std::thread::spawn(move || {
             let reader = BufReader::new(stdout);
             for line in reader.lines().flatten() {
                 println!("[sidecar:out] {}", line);
-                if let Some(ref pattern) = signal_pattern {
-                    if line.contains(pattern) {
-                        ready_clone.store(true, Ordering::SeqCst);
-                    }
+                if line.contains(&signal_pattern) {
+                    ready_clone.store(true, Ordering::SeqCst);
                 }
             }
         });
@@ -235,7 +332,7 @@ impl SidecarManager {
             let reader = BufReader::new(stderr);
             for line in reader.lines().flatten() {
                 eprintln!("[sidecar:err] {}", line);
-                let mut log = err_clone.lock().unwrap();
+                let mut log = err_clone.lock();
                 if log.len() < 50 {
                     log.push(line);
                 }
@@ -248,36 +345,51 @@ impl SidecarManager {
         let timeout = config.readiness_timeout;
         let mut is_ready = false;
 
+        // Readiness is the backend's own line on its own stdout, and nothing else.
+        //
+        // A port probe used to count as readiness as well, and that is what produced a window
+        // with no backend behind it. A probe only asks whether SOMETHING accepts a connection
+        // on the port; when an earlier backend had been orphaned and still held it, the probe
+        // answered yes before our child had done anything. The shell then reported a successful
+        // start, navigated the webview at that port, and served whatever older build was
+        // listening there — the footer showed that build's version, and every request died with
+        // "Failed to fetch" as soon as the orphan exited. Meanwhile this child was failing on
+        // the instance lock, and its exit was never observed because the loop had already
+        // stopped.
+        //
+        // The child is checked for exit FIRST, so a failure is reported with the reason the
+        // backend printed rather than being mistaken for readiness.
         while start_time.elapsed() < timeout {
+            let exit_status = {
+                let mut lock = self.child.lock();
+                if let Some(c) = lock.as_mut() {
+                    match c.try_wait() {
+                        Ok(Some(status)) => Some(status),
+                        Ok(None) => None,
+                        Err(e) => {
+                            eprintln!("[sidecar] Failed to poll child process: {e}");
+                            None
+                        }
+                    }
+                } else {
+                    // The child was taken away from under us (a concurrent terminate).
+                    let logs = error_log.lock().join("\n");
+                    return Err(format!("Backend process is no longer running. Logs:\n{logs}"));
+                }
+            };
+
+            if let Some(status) = exit_status {
+                let _ = stdout_thread.join();
+                let _ = stderr_thread.join();
+                let logs = error_log.lock().join("\n");
+                return Err(format!(
+                    "Backend process exited with {status} before it became ready. Logs:\n{logs}"
+                ));
+            }
+
             if ready_flag.load(Ordering::SeqCst) {
                 is_ready = true;
                 break;
-            }
-
-            if check_port(config.port) {
-                is_ready = true;
-                break;
-            }
-
-            {
-                let mut lock = self.child.lock().unwrap();
-                if let Some(ref mut c) = *lock {
-                    match c.try_wait() {
-                        Ok(Some(status)) => {
-                            let _ = stdout_thread.join();
-                            let _ = stderr_thread.join();
-                            let logs = error_log.lock().unwrap().join("\n");
-                            let pid = c.id();
-                            return Err(format!(
-                                "Backend process (PID {pid}) exited prematurely with {status}. Logs:\n{logs}"
-                            ));
-                        }
-                        Ok(None) => {}
-                        Err(e) => {
-                            eprintln!("[sidecar] Failed to poll child process: {e}");
-                        }
-                    }
-                }
             }
 
             std::thread::sleep(Duration::from_millis(100));
@@ -285,7 +397,7 @@ impl SidecarManager {
 
         if !is_ready {
             self.terminate();
-            let logs = error_log.lock().unwrap().join("\n");
+            let logs = error_log.lock().join("\n");
             return Err(format!(
                 "Backend process failed to signal readiness within {:?}. Captured errors:\n{}",
                 timeout, logs
@@ -300,7 +412,7 @@ impl SidecarManager {
             return;
         }
 
-        let mut lock = self.child.lock().unwrap();
+        let mut lock = self.child.lock();
         if let Some(mut child) = lock.take() {
             let pid = child.id();
 
@@ -321,7 +433,7 @@ impl SidecarManager {
             return;
         }
         let pid_opt = {
-            let lock = self.child.lock().unwrap();
+            let lock = self.child.lock();
             lock.as_ref().map(|c| c.id())
         };
 
@@ -357,8 +469,8 @@ impl SidecarManager {
 
         while wait_start.elapsed() < timeout {
             {
-                let mut lock = self.child.lock().unwrap();
-                if let Some(ref mut child) = *lock {
+                let mut lock = self.child.lock();
+                if let Some(child) = lock.as_mut() {
                     match child.try_wait() {
                         Ok(Some(_status)) => {
                             exited = true;
@@ -378,7 +490,7 @@ impl SidecarManager {
         // Step 3: If child hasn't exited, fallback to kill process tree (taskkill /T /F)
         if !exited {
             eprintln!("[sidecar] Backend did not exit after graceful shutdown request within 5s, killing PID {pid}");
-            let mut lock = self.child.lock().unwrap();
+            let mut lock = self.child.lock();
             if let Some(mut child) = lock.take() {
                 #[cfg(target_os = "windows")]
                 {
@@ -390,17 +502,10 @@ impl SidecarManager {
                 let _ = child.wait();
             }
         } else {
-            let mut lock = self.child.lock().unwrap();
+            let mut lock = self.child.lock();
             let _ = lock.take();
         }
     }
-}
-fn check_port(port: u16) -> bool {
-    TcpStream::connect_timeout(
-        &std::net::SocketAddr::from(([127, 0, 0, 1], port)),
-        Duration::from_millis(50),
-    )
-    .is_ok()
 }
 
 /// Returns the build mode environment variables to supply to the sidecar process.
@@ -427,19 +532,14 @@ mod tests {
     fn test_sidecar_config_default() {
         let config = SidecarConfig::default();
         assert_eq!(config.port, 50325);
-        match config.readiness_signal {
-            ReadinessSignal::RealString(ref s) => {
-                assert_eq!(s, "[antidetect] Local API listening on");
-            }
-            _ => panic!("Expected RealString readiness signal"),
-        }
+        assert_eq!(config.readiness_line, "[antidetect] Local API listening on");
     }
 
     #[test]
     fn test_sidecar_manager_new() {
         let manager = SidecarManager::new();
         assert!(!manager.terminated.load(Ordering::SeqCst));
-        assert!(manager.child.lock().unwrap().is_none());
+        assert!(manager.child.lock().is_none());
     }
 
     #[test]
@@ -466,6 +566,113 @@ mod tests {
                 ("ANTIDETECT_PACKAGED", "1"),
                 ("NODE_ENV", "production"),
             ]);
+        }
+    }
+
+    /// A listener that is NOT our child must never satisfy the readiness wait.
+    ///
+    /// This is the defect that shipped: an orphaned backend held the port, a bare connection
+    /// probe reported readiness, and the shell attached its window to that stale build while its
+    /// own child was dying on the instance lock. The port here is genuinely held by a listener
+    /// this test owns, and the child is genuinely alive and printing nothing — the exact state
+    /// the old probe misread as a healthy start.
+    #[test]
+    fn a_foreign_listener_does_not_satisfy_readiness() {
+        use std::net::TcpListener;
+
+        let listener = TcpListener::bind(("127.0.0.1", 0)).expect("bind a probe port");
+        let port = listener.local_addr().unwrap().port();
+
+        // A live process that stays up and prints nothing. `node -e` is used because the
+        // sidecar is spawned as node + a script path; anything quiet would do.
+        let manager = SidecarManager::new();
+        let result = manager.start(SidecarConfig {
+            port,
+            script_path: Some(PathBuf::from("-e")),
+            args: vec!["setTimeout(() => {}, 5000)".to_string()],
+            readiness_timeout: Duration::from_millis(700),
+            ..Default::default()
+        });
+
+        assert!(
+            result.is_err(),
+            "a foreign listener on port {port} was accepted as our own backend becoming ready"
+        );
+        drop(listener);
+    }
+
+    /// The positive path: the child's own line is what makes it ready.
+    #[test]
+    fn the_childs_own_line_satisfies_readiness() {
+        let manager = SidecarManager::new();
+        let result = manager.start(SidecarConfig {
+            // A port nothing is listening on, so the line is the only thing that can succeed.
+            port: 1,
+            script_path: Some(PathBuf::from("-e")),
+            args: vec![r#"console.log("[antidetect] Local API listening on http://127.0.0.1:1"); setTimeout(() => {}, 3000)"#.to_string()],
+            readiness_timeout: Duration::from_secs(10),
+            ..Default::default()
+        });
+
+        assert!(
+            result.is_ok(),
+            "the backend's own readiness line was not honoured: {result:?}"
+        );
+        manager.terminate();
+    }
+
+    /// Losing the shell must take the backend with it, and the backend must be RECORDED so the
+    /// polite stop path works at all.
+    ///
+    /// Both halves are asserted here, because they are the two defects that produced the
+    /// operator's window-with-no-backend:
+    ///
+    /// 1. `self.child` holds the spawned process. It used to be dropped on the floor, which made
+    ///    `terminate` and `terminate_graceful` return immediately and leave the backend running.
+    /// 2. Closing the manager closes the job handle, and the OS then kills the process in the
+    ///    job. That is the guarantee for a crash or a `taskkill /F`, where no teardown runs.
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn the_backend_is_recorded_and_dies_with_the_shell() {
+        let manager = SidecarManager::new();
+        let result = manager.start(SidecarConfig {
+            port: 1,
+            script_path: Some(PathBuf::from("-e")),
+            // Long-lived and quiet: nothing here should end it except the job closing.
+            args: vec![r#"console.log("[antidetect] Local API listening on http://127.0.0.1:1"); setTimeout(() => {}, 60000)"#.to_string()],
+            readiness_timeout: Duration::from_secs(10),
+            ..Default::default()
+        });
+        assert!(result.is_ok(), "the backend did not become ready: {result:?}");
+
+        // 1. It is recorded. Take the handle out so the exit can be observed after the job goes.
+        let mut child = manager
+            .child
+            .lock()
+            .take()
+            .expect("the spawned backend was not recorded in the manager");
+        assert!(
+            child.try_wait().expect("poll the backend").is_none(),
+            "the backend exited before the job was closed"
+        );
+
+        // 2. Closing the shell's hold on the job kills it.
+        drop(manager);
+
+        let deadline = Instant::now() + Duration::from_secs(10);
+        loop {
+            if let Some(status) = child.try_wait().expect("poll the backend") {
+                // Only that it ENDED is asserted. The exit code a job-object kill reports is the
+                // OS's business, not this contract's, and pinning it would be asserting the
+                // implementation rather than the guarantee.
+                println!("backend terminated by the job, status: {status}");
+                return;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "the backend outlived the job handle: the orphan defect is back"
+            );
+            std::thread::sleep(Duration::from_millis(100));
         }
     }
 }

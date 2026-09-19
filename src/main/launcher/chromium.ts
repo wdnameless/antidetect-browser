@@ -34,6 +34,7 @@ import {
 } from '../proxy/udpRelay';
 import { TransportDropMonitor } from '../proxy/transportDropMonitor';
 import { appendProfileArgs, formatBadgeTitlePrefix } from '../profiles/profileManager';
+import { planWindowTitle, startWindowTitleKeeper } from './windowTitle';
 import {
   verifyStealthExtensionDirectory,
   getEphemeralStealthKeyPair,
@@ -55,6 +56,7 @@ interface RunningProfile {
   cleanupTransport?: () => void;
   cleanupDropMonitor?: () => void;
   cleanupRelay?: () => void;
+  cleanupWindowTitle?: () => void;
   relayState?: UdpRelayState;
 }
 
@@ -150,6 +152,13 @@ function cleanup(rec: RunningProfile): void {
   if (rec.cleanupRelay) {
     try {
       rec.cleanupRelay();
+    } catch {
+      // ignore
+    }
+  }
+  if (rec.cleanupWindowTitle) {
+    try {
+      rec.cleanupWindowTitle();
     } catch {
       // ignore
     }
@@ -306,11 +315,17 @@ export async function buildChromiumArgs(
   }
 
 
+  // The taskbar title, before the per-profile extras so an operator-supplied
+  // `--window-name` still wins (Chromium's last-wins rule).
+  const titlePlan = planWindowTitle(cfg.profileName, formatBadgeTitlePrefix(cfg.color, cfg.profileName));
+  if (titlePlan.flagValue) {
+    args.push(`--window-name=${titlePlan.flagValue}`);
+  }
+
   // Per-profile extra switches go LAST so Chromium's last-wins rule lets the
   // user override launcher defaults (parity program: extra-launch-args).
   return appendProfileArgs(args, cfg.launch_args);
 }
-
 /**
  * Writes the `enable_do_not_track` preference into the profile's `Default/Preferences`.
  *
@@ -463,6 +478,13 @@ export async function startProfile(cfg: LaunchConfig): Promise<StartResult> {
   }
   const args = await buildChromiumArgs(cfg, proxyServer, transportFlags);
 
+  /**
+   * Which title mechanism this launch uses. Computed once here, before the spawn, so the
+   * argument builder and the keeper cannot both act: with `--window-name` set the kernel
+   * re-asserts its own value and reverts a WinAPI write.
+   */
+  const titlePlan = planWindowTitle(cfg.profileName, formatBadgeTitlePrefix(cfg.color, cfg.profileName));
+
   // Do Not Track is a PREFERENCE, not a switch — see `applyDoNotTrackPref`. Written here,
   // immediately before the spawn, because `buildChromiumArgs` is a pure argument builder
   // (tests call it directly) and must not touch the filesystem.
@@ -549,30 +571,6 @@ export async function startProfile(cfg: LaunchConfig): Promise<StartResult> {
       }
     }
 
-    // Profile window badge (parity program): prepend the color badge to the
-    // window title via CDP Page.setTitle on every open page. Best-effort.
-    if (cfg.color) {
-      try {
-        const bBrowser = await puppeteer.connect({ browserWSEndpoint: wsPuppeteer, defaultViewport: null });
-        const prefix = formatBadgeTitlePrefix(cfg.color, cfg.profileName);
-        const bPages = await bBrowser.pages();
-        for (const bp of bPages) {
-          // puppeteer-core Page lacks setTitle: use the CDP session directly.
-          const session = await bp.createCDPSession();
-          // 'Page.setTitle' is outside the typed Commands union — raw send.
-          const title = `${prefix}${await bp.title()}`;
-          await (session.send as (m: string, p?: Record<string, unknown>) => Promise<void>)(
-            'Page.setTitle',
-            { title }
-          ).catch(() => undefined);
-          await session.detach().catch(() => undefined);
-        }
-        bBrowser.disconnect();
-      } catch {
-        // badge prefix is cosmetic; launch continues without it
-      }
-    }
-
     // Start URLs (v0.2.6): open on start (first in current tab, rest in new tabs).
     if (cfg.startUrls && cfg.startUrls.length) {
       try {
@@ -616,6 +614,23 @@ export async function startProfile(cfg: LaunchConfig): Promise<StartResult> {
       }
     });
     rec.cleanupTransport = unregisterTransport;
+
+    /**
+     * The taskbar title: what the operator sees when hovering the button.
+     *
+     * This replaces a `Page.setTitle` call over CDP on every open page. That command is not in
+     * the DevTools Protocol — the shipped kernel reports zero title-related commands — and the
+     * call sat inside a `try`/`catch` that swallowed everything, so it had never done anything
+     * and never said so. The badge prefix it computed was lost with it.
+     *
+     * `--window-name` (appended in `buildChromiumArgs`) carries an ASCII title and survives
+     * pages that rewrite theirs. A name with any non-ASCII character is dropped by that flag
+     * entirely — so those are kept through the WinAPI instead. Exactly one of the two runs:
+     * with the flag set the kernel re-asserts its own value and reverts a WinAPI write.
+     */
+    if (!cfg.headless && titlePlan.keeperTitle) {
+      rec.cleanupWindowTitle = startWindowTitleKeeper(child.pid, titlePlan.keeperTitle);
+    }
 
     if (proxyTargetHost && proxyTargetPort) {
       const dropMonitor = new TransportDropMonitor({
@@ -662,6 +677,20 @@ export async function startProfile(cfg: LaunchConfig): Promise<StartResult> {
       if (rec.cleanupStealth) {
         try {
           rec.cleanupStealth();
+        } catch {
+          // ignore
+        }
+      }
+      /**
+       * The title keeper is a separate process, so the browser exiting does not end it.
+       * Without this the keeper stays resident after the profile closes, holding a poll
+       * loop against a dead PID. It would exit on its own once the PID is gone — but only
+       * after the OS reuses or reports it, which is not a guarantee to rely on for a
+       * process this code started.
+       */
+      if (rec.cleanupWindowTitle) {
+        try {
+          rec.cleanupWindowTitle();
         } catch {
           // ignore
         }

@@ -125,8 +125,19 @@ def generate_svg_master() -> str:
 
 def render_master_image() -> Image.Image:
     """
-    Renders the 1024x1024 master image at 2x super-sampling (2048x2048),
-    applies deterministic grain to the black ink mass, and returns a 1024x1024 RGBA image.
+    Renders the 1024x1024 master image at 2x super-sampling (2048x2048) and returns a clean
+    1024x1024 RGBA image.
+
+    Deliberately ungrained. An earlier revision stamped deterministic screen-print noise into
+    every ink pixel of this master, and every packaged raster (the .ico included) was then
+    downscaled from it. At 1024 the texture is subtle; at 16-48 px — the sizes Windows actually
+    draws in the taskbar and Explorer — a grain of up to +30 per channel is most of a pixel, so
+    the mark read as dirty and soft. The operator's report was exactly that: «сделать её более
+    качественной, четкой».
+
+    The grain survives in the SVG master, where it is a vector filter: it costs nothing at icon
+    sizes because nothing rasterises the SVG for them, and it is the texture the web UI renders
+    at display sizes.
     """
     scale = 2
     ss_size = CANVAS_SIZE * scale
@@ -155,29 +166,9 @@ def render_master_image() -> Image.Image:
     dr = WHITE_DOT_RADIUS * scale
     draw.ellipse([(dcx - dr, dcy - dr), (dcx + dr, dcy + dr)], fill=WHITE)
 
-    # Downscale from super-sampled buffer to 1024x1024 for crisp anti-aliasing
-    master_1024 = img.resize((CANVAS_SIZE, CANVAS_SIZE), Image.Resampling.LANCZOS)
-
-    # 4. Apply deterministic fine stamped screen-printed noise to black ink
-    pixels = master_1024.load()
-    w, h = master_1024.size
-    for y in range(h):
-        for x in range(w):
-            r, g, b, a = pixels[x, y]
-            # Only modulate black silhouette pixels (not white ground or anti-aliased edge)
-            if a > 220 and r < 30 and g < 30 and b < 30:
-                # Deterministic coordinate integer hash (fixed seed 42)
-                hval = (x * 374761393 + y * 668265263 + 42) & 0xFFFFFFFF
-                hval = ((hval ^ (hval >> 13)) * 1274126177) & 0xFFFFFFFF
-                mod = hval % 100
-                if mod < 14:
-                    delta = 10 + (mod * 2)
-                    pixels[x, y] = (r + delta, g + delta, b + delta, a)
-                elif mod < 28:
-                    delta = 4 + (mod % 8)
-                    pixels[x, y] = (r + delta, g + delta, b + delta, a)
-
-    return master_1024
+    # Downscale from the super-sampled buffer: the only source of edge softness from here on is
+    # the anti-aliasing a small size needs, which is what makes the mark crisp rather than noisy.
+    return img.resize((CANVAS_SIZE, CANVAS_SIZE), Image.Resampling.LANCZOS)
 
 
 # ==============================================================================
@@ -225,8 +216,13 @@ def main():
     resources_dir = os.path.join(repo_root, 'resources')
     build_dir = os.path.join(repo_root, 'build')
     release_ico_dir = os.path.join(repo_root, 'release', '.icon-ico')
+    # The Tauri shell's own icon set. This script never wrote here before, so the files the
+    # installer and the .exe actually carry were a manual copy of `assets/brand/*` — and they
+    # drifted: the packaged .ico was grained while `resources/icon.png` was not. Generating
+    # them from the same master removes the copy step that allowed that.
+    tauri_icons_dir = os.path.join(repo_root, 'src-tauri', 'icons')
 
-    for d in [assets_brand, resources_dir, build_dir, release_ico_dir]:
+    for d in [assets_brand, resources_dir, build_dir, release_ico_dir, tauri_icons_dir]:
         os.makedirs(d, exist_ok=True)
 
     print("Generating NullTrace SVG master...")
@@ -276,14 +272,12 @@ def main():
         f.write(png_bytes_by_size[32])
     print(f"  -> {fav_png_path} (32x32)")
 
-    # Multi-size Windows .ico containing 16, 32, 48, 64, 128, 256
-    ico_sizes = [16, 32, 48, 64, 128, 256]
-    ico_imgs = []
-    for s in ico_sizes:
-        if s in rendered_pngs:
-            ico_imgs.append(rendered_pngs[s])
-        else:
-            ico_imgs.append(master_1024.resize((s, s), Image.Resampling.LANCZOS))
+    # Multi-size Windows .ico. The sizes are every one Windows asks a taskbar/Explorer icon
+    # for: 16 (small taskbar, list views), 20 and 24 (medium icons), 32 (default taskbar),
+    # 40 and 48 (large, and 125-150% DPI), 64, 128 and 256 (Alt-Tab, jumbo views). Sizes that
+    # are absent are downscaled by the shell at the moment it draws them, which is what makes
+    # an icon look soft; supplying them removes that step.
+    ico_sizes = [16, 20, 24, 32, 40, 48, 64, 128, 256]
 
     brand_ico_path = os.path.join(assets_brand, 'nulltrace-icon.ico')
     fav_ico_path = os.path.join(assets_brand, 'favicon.ico')
@@ -316,10 +310,26 @@ def main():
     brand_icns_path = os.path.join(assets_brand, 'nulltrace-icon.icns')
     build_icns_path = os.path.join(build_dir, 'icon.icns')
 
-    for p in [brand_icns_path, build_icns_path]:
+    for p in [brand_icns_path, build_icns_path, os.path.join(tauri_icons_dir, 'icon.icns')]:
         with open(p, 'wb') as f:
             f.write(icns_data)
         print(f"  -> {p} ({len(icns_data)} bytes)")
+
+    # The Tauri shell's icon set, from the same master. These are the files the installer, the
+    # portable launcher and the .exe resources actually carry, so they must be regenerated
+    # rather than copied by hand.
+    print("Writing the Tauri shell icon set...")
+    shell_icons = {
+        os.path.join(tauri_icons_dir, 'icon.ico'): ico_data,
+        # Tauri's `bundle.icon` names these two explicitly; 128x128@2x is the 256 px asset.
+        os.path.join(tauri_icons_dir, '32x32.png'): png_bytes_by_size[32],
+        os.path.join(tauri_icons_dir, '128x128.png'): png_bytes_by_size[128],
+        os.path.join(tauri_icons_dir, '128x128@2x.png'): png_bytes_by_size[256],
+    }
+    for dest, data in shell_icons.items():
+        with open(dest, 'wb') as f:
+            f.write(data)
+        print(f"  -> {dest} ({len(data)} bytes)")
 
     print("\nAll NullTrace icon artefacts successfully generated from single geometry.")
 

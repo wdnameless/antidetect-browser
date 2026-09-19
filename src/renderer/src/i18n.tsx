@@ -409,7 +409,6 @@ const RU: Record<string, string> = {
   'Devices (recent logins)': 'Устройства (последние входы)',
   'Time': 'Время',
   'No logins yet': 'Входов пока не было',
-  'Password must be at least 6 characters': 'Пароль должен быть от 6 символов',
   'Pushed': 'Отправлено',
   'Pulled': 'Забрано',
   'Failed': 'Ошибок',

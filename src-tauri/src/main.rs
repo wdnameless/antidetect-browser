@@ -404,9 +404,7 @@ fn main() {
                 // user's machine.
                 app_version: Some(app.package_info().version.to_string()),
                 readiness_timeout: Duration::from_secs(30),
-                readiness_signal: sidecar::ReadinessSignal::RealString(
-                    "[antidetect] Local API listening on".to_string(),
-                ),
+                readiness_line: "[antidetect] Local API listening on".to_string(),
             };
 
             let sidecar_result = setup_sidecar.start(sidecar_config);
