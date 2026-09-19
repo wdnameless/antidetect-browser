@@ -73,6 +73,55 @@ for (const [label, p] of [
   }
 }
 
+// --- Compile the shell -------------------------------------------------------
+// The launcher packages `target/release/nulltrace-tauri-shell.exe`, so that binary must be the
+// one this version describes. Nothing else built it: `npm run build` compiles TypeScript only,
+// and this script previously went straight from reading `tauri.conf.json` to packing whatever
+// executable happened to be lying in `target/release`. Bumping the version therefore shipped a
+// launcher named 0.6.12 that carried the 0.6.11 shell — the artefact's name and the version the
+// app reported disagreed, and every Rust change was silently left out of the portable build.
+//
+// `cargo build --release` is the whole requirement: the bundler's own installers are not wanted
+// here (this launcher exists precisely because Tauri emits only installers), but the compile is.
+// Cargo is incremental, so an unchanged tree costs a freshness check rather than a rebuild.
+const cargo = spawnSync('cargo', ['build', '--release'], {
+  cwd: path.join(ROOT, 'src-tauri'),
+  stdio: 'inherit',
+  timeout: 30 * 60 * 1000,
+});
+if (cargo.error) {
+  throw new Error(
+    `cargo build --release failed to run: ${cargo.error.message}. ` +
+      'The portable launcher must not package a stale shell executable.',
+  );
+}
+if (cargo.status !== 0) {
+  throw new Error(`cargo build --release exited with status ${cargo.status}`);
+}
+if (!fs.existsSync(shellExe)) {
+  throw new Error(`cargo reported success but ${shellExe} does not exist`);
+}
+
+// The packed binary must claim the version this launcher is named after. Reading it back is the
+// only check that catches the failure above rather than trusting that the compile just happened.
+const shellVersion = spawnSync(
+  'powershell',
+  [
+    '-NoProfile',
+    '-Command',
+    `(Get-Item '${shellExe}').VersionInfo.ProductVersion`,
+  ],
+  { encoding: 'utf8' },
+);
+const reportedVersion = (shellVersion.stdout || '').trim();
+if (reportedVersion && !reportedVersion.startsWith(version)) {
+  throw new Error(
+    `the shell executable reports version ${reportedVersion} but this launcher is ${version}. ` +
+      'Refusing to package a launcher whose name disagrees with the binary inside it.',
+  );
+}
+console.log(`[build-portable] shell executable reports version ${reportedVersion || '(none)'}`);
+
 const bundleDir = path.join(ROOT, 'src-tauri', 'target', 'release', 'bundle', 'nsis');
 fs.mkdirSync(bundleDir, { recursive: true });
 const outFile = path.join(bundleDir, `NullTrace-${version}-portable-win-x64.exe`);
