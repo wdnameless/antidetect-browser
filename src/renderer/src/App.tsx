@@ -445,6 +445,17 @@ export function App() {
 
         <div className="sidebar-footer">
           {/*
+            * The Automation API block: the address the API is reachable at, the MCP badge and
+            * control, and the bundle download. It belongs in the footer and is NOT optional.
+            *
+            * It was dropped here by the commit that removed the sidebar collapse, which removed
+            * the whole element along with the `{!sidebarCollapsed && ...}` guard it was wrapped
+            * in. The import stayed, so nothing failed to build and nothing warned: the app
+            * simply lost the only control that starts the MCP server. On the operator's machine
+            * that read as «МСП не включается» — there was no longer any button to press.
+            */}
+          <AutomationPanel />
+          {/*
            * The version line is the update control.
            *
            * It used to be a passive label reading "Not checked", then a check-only button:
