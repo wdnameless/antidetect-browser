@@ -167,6 +167,55 @@ describe('Tauri bridge shape and renderer contract (tasks.md §6.4)', () => {
     await sandbox.window.antidetect?.openExternal('https://example.com');
     expect(mockInvoke).toHaveBeenCalledWith('open_path', { path: 'https://example.com' });
   });
+
+  // The data namespace promises a flat {ok, dir} result while the backend answers the
+  // standard {code, msg, data} envelope. Getting that translation wrong is invisible in
+  // review and silent at runtime: reading `.dir` off the envelope made Settings show an
+  // empty "Current folder" forever, and forcing `ok: true` over the response made a
+  // refused migration report success. These pin the translation in both directions.
+  describe('data namespace unwraps the response envelope', () => {
+    const envelope = (body: unknown) => vi.fn().mockResolvedValue({ ok: true, json: async () => body, status: 200, statusText: 'OK' });
+
+    it('getDir returns data.dir, not the envelope', async () => {
+      const sandbox = runBridgeInSandbox({ fetch: envelope({ code: 0, msg: 'success', data: { dir: 'D:\\NULLTRACE' } }) });
+      await expect(sandbox.window.antidetect?.data?.getDir()).resolves.toBe('D:\\NULLTRACE');
+    });
+
+    it('getDir answers empty string when the folder is unknown, never the envelope', async () => {
+      const sandbox = runBridgeInSandbox({ fetch: envelope({ code: 0, msg: 'success', data: {} }) });
+      await expect(sandbox.window.antidetect?.data?.getDir()).resolves.toBe('');
+    });
+
+    it('setDirPath reports the directory the backend resolved, not the one it was handed', async () => {
+      // The backend answers with its own resolved path; a trailing separator or a different
+      // case must not be echoed back as if it were authoritative.
+      const sandbox = runBridgeInSandbox({ fetch: envelope({ code: 0, msg: 'success', data: { ok: true, dir: 'E:\\DATA' } }) });
+      await expect(sandbox.window.antidetect?.data?.setDirPath('E:\\DATA\\')).resolves.toMatchObject({ ok: true, dir: 'E:\\DATA' });
+    });
+
+    it('setDirPath reports failure instead of forcing ok:true over the response', async () => {
+      const sandbox = runBridgeInSandbox({ fetch: envelope({ code: -1, msg: 'dir is required', data: { ok: false, dir: 'D:\\OLD' } }) });
+      const res = (await sandbox.window.antidetect?.data?.setDirPath('')) as { ok: boolean; error?: string } | undefined;
+      expect(res?.ok).toBe(false);
+      expect(res?.error).toBeTruthy();
+    });
+
+    it('migrateDir carries the migrated flag and the resolved destination', async () => {
+      const sandbox = runBridgeInSandbox({ fetch: envelope({ code: 0, msg: 'success', data: { ok: true, dir: 'F:\\VAULT', migrated: true } }) });
+      await expect(sandbox.window.antidetect?.data?.migrateDir('F:\\VAULT', true)).resolves.toMatchObject({
+        ok: true,
+        dir: 'F:\\VAULT',
+        migrated: true,
+      });
+    });
+
+    it('migrateDir reports a refusal as a failure, not a silent success', async () => {
+      const sandbox = runBridgeInSandbox({ fetch: envelope({ code: -1, msg: 'same or invalid folder', data: { ok: false, dir: 'D:\\CURRENT' } }) });
+      const res = (await sandbox.window.antidetect?.data?.migrateDir('D:\\CURRENT', true)) as { ok: boolean; dir: string; error?: string } | undefined;
+      expect(res?.ok).toBe(false);
+      expect(res?.error).toContain('same or invalid folder');
+    });
+  });
 });
 
 describe('Tauri sidecar and capabilities assertions (tasks.md §6.2, §6.3)', () => {

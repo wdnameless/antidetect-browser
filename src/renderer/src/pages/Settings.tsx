@@ -320,6 +320,34 @@ export function Settings() {
     void window.antidetect?.data.openDir();
   };
 
+  /**
+   * Transfer profiles out of a folder the operator picks, into the folder in use, without
+   * switching directories. The scan section below does the same thing per discovered row;
+   * this is the direct path when the folder is already known.
+   */
+  const onTransferFromFolder = (): void => {
+    void window.antidetect?.data.prepareDir?.().then(async (picked) => {
+      if (!picked.ok || !picked.dir) return;
+      setTransferringDir(picked.dir);
+      setDataDirMsg('');
+      try {
+        const res = await api.dataTransfer(picked.dir);
+        if (res.code === 0 && res.data) {
+          const { created, skipped } = res.data;
+          const transferredPart = `${t('Transferred')} ${created} ${created === 1 ? 'profile' : 'profiles'}`;
+          const skippedPart = skipped > 0 ? `, ${skipped} ${t('already present')}` : '';
+          setDataDirMsg(`${transferredPart}${skippedPart} (${t('open Profiles to see them')})`);
+        } else {
+          setDataDirMsg(res.msg || res.data?.error || t('Transfer failed'));
+        }
+      } catch (err) {
+        setDataDirMsg(err instanceof Error ? err.message : t('Transfer failed'));
+      } finally {
+        setTransferringDir(null);
+      }
+    });
+  };
+
   const onOpenLogsDir = (): void => {
     if (window.antidetect?.logs?.openDir) {
       void window.antidetect.logs.openDir();
@@ -549,9 +577,18 @@ export function Settings() {
               </div>
               <div className="setting-row">
                 <span className="setting-label">{t('Actions')}</span>
-                <div style={{ display: 'flex', gap: 8 }}>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                   <button className="btn" onClick={onChangeDataDir} disabled={migrating}>
                     {migrating ? t('Migrating data…') : t('Change Folder…')}
+                  </button>
+                  {/* Transfer sits with Change Folder because both act on the folder in use:
+                      one moves the whole installation, the other brings profiles into it. */}
+                  <button
+                    className="btn"
+                    onClick={onTransferFromFolder}
+                    disabled={migrating || transferringDir !== null}
+                  >
+                    {transferringDir ? t('Transferring…') : t('Transfer profiles…')}
                   </button>
                   <button className="btn" onClick={onOpenDataDir} disabled={migrating}>
                     {t('Open in Explorer')}

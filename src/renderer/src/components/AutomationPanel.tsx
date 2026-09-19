@@ -245,7 +245,12 @@ export function AutomationPanel() {
       </div>
 
       {bundleResult && (
-        <div className="automation-api-status" role="status" style={{ color: 'var(--text-secondary)' }}>
+        <div
+          className="automation-api-status"
+          role="status"
+          style={{ color: 'var(--text-secondary)' }}
+          title={`${t('MCP server written to')} ${bundleResult.dir}${bundleResult.toolCount ? ` — ${bundleResult.toolCount} ${t('tools')}` : ''}. ${t('Config copied. Point your agent at it.')}`}
+        >
           {t('MCP server written to')} {bundleResult.dir}
           {bundleResult.toolCount ? ` — ${bundleResult.toolCount} ${t('tools')}` : ''}
           {'. '}
@@ -260,7 +265,7 @@ export function AutomationPanel() {
       )}
 
       {error && (
-        <div className="automation-api-status" style={{ color: 'var(--danger)' }} role="alert">
+        <div className="automation-api-status" style={{ color: 'var(--danger)' }} role="alert" title={error}>
           {error}
         </div>
       )}

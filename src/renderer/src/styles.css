@@ -379,12 +379,15 @@ pre {
   margin-left: auto;
 }
 
+/* One scroller per sidebar. This list used to be a second scroll container nested inside
+   `.sidebar-content`, so a tall footer squeezed it into an inner scroll region and the
+   last group (Settings) came to rest below its fold — the nav looked cut off and uneven.
+   It now flows at its natural height and `.sidebar-content` alone scrolls. */
 .sidebar nav {
   display: flex;
   flex-direction: column;
   gap: 16px;
-  flex: 1;
-  overflow-y: auto;
+  flex: 0 0 auto;
 }
 
 .nav-group {
@@ -624,6 +627,17 @@ pre {
   color: var(--text-secondary);
 }
 
+/* Message rows (bundle result, backend down, errors) are one line that clips with an
+   ellipsis; the full text stays available as a tooltip. A long folder path used to wrap
+   onto four lines and add ~50px to the footer, which is what pushed the SYSTEM nav group
+   under it on short windows. The header's own status row keeps its dot layout. */
+.automation-api-panel > .automation-api-status {
+  display: block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .status-dot {
   width: 7px;
   height: 7px;
@@ -815,6 +829,15 @@ pre {
 .sidebar.collapsed .automation-actions-row,
 .sidebar.collapsed .theme-switch,
 .sidebar.collapsed .automation-api-status *:not(.status-dot) {
+  display: none;
+}
+
+/* The message rows (bundle result, "backend down", errors) are direct children of the card
+   and hold their text in a bare text node, which the `*:not(.status-dot)` rule above cannot
+   reach — it only matches elements. In the 36px rail they spilled past the card and were
+   clipped mid-word ("…\nulltra ce-mcp"), which is the garbled strip the operator saw. The
+   header's own On/Off row is nested a level deeper, so it keeps its dot. */
+.sidebar.collapsed .automation-api-panel > .automation-api-status {
   display: none;
 }
 

@@ -1,5 +1,55 @@
 # Changelog
 
+## [0.6.6] - 2026-09-19
+
+### Fixed — Settings showed no data folder, and folder changes could lie about failing
+
+Three defects were reported together: an empty "Current folder", a transfer control that was
+nowhere near the folder it acts on, and a left nav that looked uneven and cut off.
+
+**The folder was never missing — the panel simply could not read the answer.** Every backend
+route replies with the standard `{code, msg, data}` envelope, and `bridge.js` read `.dir` off
+the envelope itself instead of `data.dir`. That is `undefined`, the helper fell back to `''`,
+and Settings rendered its placeholder forever while the app served profiles out of
+`D:\NULLTRACE` without complaint.
+
+**The same misreading turned failures into successes.** `migrateDir` and `setDirPath` built
+their result as `Object.assign({ ok: true, dir: target }, data)` — the literal `ok: true` is
+applied *first* and the spread never overwrites it, so a refused migration reported success.
+Neither read the envelope either, so the backend's own resolved `dir` and the `migrated` flag
+were discarded. Both now translate through a single `unwrapResult()` helper beside `apiFetch`,
+so the three callers cannot drift apart again. Refusals are now honest:
+
+    setDirPath('')                -> { ok: false, error: "dir is required" }
+    migrateDir(same folder)       -> { ok: false, error: "same or invalid folder" }
+
+**Transfer moved next to Change Folder.** They act on the same thing — one moves the whole
+installation, the other brings profiles into it — so *Transfer profiles…* now sits in the
+Actions row beside *Change Folder…*, with the existing per-row transfer in the scan results
+left untouched.
+
+### Fixed — the left nav was cut off because it scrolled inside a scroller
+
+`.sidebar-content` sets `overflow-y: auto` and `.sidebar nav` set its own `overflow-y: auto`
+with `flex: 1`: two nested scroll containers. A tall footer squeezed the inner one, and the
+last group came to rest below the inner fold. Measured at 1280×800 with a bundle-result
+message present, the nav folded at 436px while **Settings sat at 455px** — present in the DOM,
+unreachable in practice, and the source of the "uneven" look.
+
+The footer had grown because a status message wrapped a long folder path onto four lines. Both
+sides are fixed: the nav flows at its natural height (`.sidebar-content` is the only scroller),
+and message rows are one line clipped with an ellipsis, with the full text kept in `title`.
+
+**The collapsed rail had a third, separate cause.** The rule
+`.sidebar.collapsed .automation-api-status *:not(.status-dot)` hides **elements**, but those
+message rows carry their text in a bare text node, which no selector can match. They spilled
+past the 36px rail — measured 294px against a rail edge at 52 — and were clipped mid-word,
+which is the garbled strip that was visible in the rail. Those rows now hide outright; the
+header's On/Off dot is nested a level deeper and still shows.
+
+Five regression tests pin the envelope translation in both directions — all five fail on the
+previous bridge and pass on this one.
+
 ## [0.6.5] - 2026-09-18
 
 ### Fixed — the update pill said "Update available" and then did nothing

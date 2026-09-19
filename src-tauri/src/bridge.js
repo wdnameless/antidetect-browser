@@ -87,6 +87,27 @@
     return await resp.json();
   }
 
+  /**
+   * Every backend route answers the standard `{code, msg, data}` envelope. The data
+   * namespace promises a flat `{ok, dir, ...}` result, so the envelope has to come off
+   * here. Doing it by hand is how this went wrong before: `getDir` read `.dir` off the
+   * envelope (always '') and the two POST helpers forced `ok: true` on top of the
+   * response, so a refused migration reported success.
+   */
+  function unwrapResult(res, fallbackDir) {
+    var payload = (res && res.data && typeof res.data === 'object') ? res.data : {};
+    var ok = !!(res && res.code === 0 && payload.ok !== false);
+    var dir = (typeof payload.dir === 'string' && payload.dir) ? payload.dir : fallbackDir;
+    var out = { ok: ok, dir: dir };
+    if (payload.migrated !== undefined) {
+      out.migrated = payload.migrated;
+    }
+    if (!ok) {
+      out.error = (res && res.msg) || payload.error || 'request failed';
+    }
+    return out;
+  }
+
   function getTauriWindow() {
     try {
       if (window.__TAURI__ && window.__TAURI__.window && typeof window.__TAURI__.window.getCurrentWindow === 'function') {
@@ -146,8 +167,12 @@
     data: {
       getDir: async function() {
         try {
-          var data = await apiFetch('/api/v1/data/dir', { method: 'GET' });
-          return (data && data.dir) ? data.dir : '';
+          var res = await apiFetch('/api/v1/data/dir', { method: 'GET' });
+          // The backend answers the standard {code,msg,data} envelope, and the folder lives in
+          // `data.dir`. Reading `.dir` off the envelope itself returned '' on every call, which
+          // is why Settings kept showing an empty "Current folder" while the app was serving
+          // profiles out of D:\NULLTRACE.
+          return (res && res.data && typeof res.data.dir === 'string') ? res.data.dir : '';
         } catch (_) {
           return '';
         }
@@ -219,22 +244,22 @@
       },
       migrateDir: async function(target, migrateData) {
         try {
-          var data = await apiFetch('/api/v1/data/migrate', {
+          var res = await apiFetch('/api/v1/data/migrate', {
             method: 'POST',
             body: JSON.stringify({ target: target, migrateData: !!migrateData })
           });
-          return Object.assign({ ok: true, dir: target }, data);
+          return unwrapResult(res, target);
         } catch (e) {
           return { ok: false, dir: target, error: e && e.message ? e.message : String(e) };
         }
       },
       setDirPath: async function(dir) {
         try {
-          var data = await apiFetch('/api/v1/data/dir', {
+          var res = await apiFetch('/api/v1/data/dir', {
             method: 'POST',
             body: JSON.stringify({ dir: dir })
           });
-          return Object.assign({ ok: true, dir: dir }, data);
+          return unwrapResult(res, dir);
         } catch (e) {
           return { ok: false, dir: dir, error: e && e.message ? e.message : String(e) };
         }
