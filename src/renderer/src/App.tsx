@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { initApiKey, api, setApiKey } from './api';
-import { LoginScreen } from './LoginScreen';
 import { FirstRunDataDir } from './FirstRunDataDir';
 import { useI18n } from './i18n';
 import { PRODUCT_NAME, TAGLINE_PRIMARY } from './brand';
@@ -178,7 +177,6 @@ export function App() {
   // has no bridge, so we detect it once rather than rendering dead buttons.
   const hasNativeWindow = typeof window !== 'undefined' && Boolean(window.antidetect?.window);
   const [ready, setReady] = useState(false);
-  const [authenticated, setAuthenticated] = useState<boolean>(false);
   const [firstRunDir, setFirstRunDir] = useState<string | null>(null);
   const [page, setPage] = useState<Page>('profiles');
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
@@ -272,7 +270,6 @@ export function App() {
 
   const initSession = useCallback((token: string) => {
     setApiKey(token);
-    setAuthenticated(true);
     api.teamsList()
       .then((res) => {
         if (res.code === 0 && res.data.active_workspace) setWorkspace(res.data.active_workspace);
@@ -282,33 +279,22 @@ export function App() {
   }, []);
 
   useEffect(() => {
-    // ISSUE 1: Local use is unauthenticated by design.
-    // The credential gate exists for cloud sync / remote panel access.
-    // Query the panel auth-state: if no password is configured (hasPassword === false),
-    // do not gate behind LoginScreen. If hasPassword === true, credentials are required.
+    // There is no panel password. Startup is: resolve the key, then either ask where data
+    // should live (first run) or open the app. Nothing here can block behind a credential
+    // prompt — the old gate keyed off a `/ui/auth-state` probe that no longer exists.
     let mounted = true;
     async function startupAuth() {
-      let hasPassword = false;
-      try {
-        const authRes = await api.authState();
-        if (authRes?.code === 0 && authRes.data) {
-          hasPassword = Boolean(authRes.data.hasPassword);
-        }
-      } catch {
-        // If the backend or endpoint is unreachable, fall back to checking if token exists
-      }
-
       const token = await initApiKey();
       if (!mounted) return;
 
       /**
        * Ask whether the data location has ever been chosen, before anything else runs.
        *
-       * This sits ahead of the credential gate on purpose: the folder decides where the
-       * profiles, kernel and even the login database live, so asking it after the operator
-       * has signed in (or created a password) would be asking about data that already exists.
-       * A failed check must NOT block startup — an unreachable endpoint is not a reason to
-       * hide the app; the operator can still set the folder later in Settings.
+       * This sits ahead of the rest of startup on purpose: the folder decides where the
+       * profiles, kernel and database live, so asking it after the app has opened would be
+       * asking about data that already exists. A failed check must NOT block startup — an
+       * unreachable endpoint is not a reason to hide the app; the operator can still set the
+       * folder later in Settings.
        */
       try {
         const fr = await api.firstRunData();
@@ -322,17 +308,7 @@ export function App() {
         // Endpoint unavailable or key not yet accepted: fall through to normal startup.
       }
 
-      if (token) {
-        initSession(token);
-      } else if (!hasPassword) {
-        // Local instance with no configured credentials:
-        // Allow entry directly without blocking on login screen.
-        initSession('');
-      } else {
-        // Credentials configured: strictly enforce LoginScreen gate
-        setAuthenticated(false);
-        setReady(true);
-      }
+      initSession(token);
     }
     void startupAuth();
     return () => {
@@ -420,10 +396,6 @@ export function App() {
         }}
       />
     );
-  }
-
-  if (!authenticated) {
-    return <LoginScreen onSuccess={initSession} />;
   }
 
   const activeNav = NAV_DESTINATIONS.find((n) => n.key === page);

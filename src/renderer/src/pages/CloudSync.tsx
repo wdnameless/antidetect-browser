@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { api, CloudStateData, CloudSessionItem, ProfileListItem, SyncResultRow } from '../api';
+import { api, CloudStateData, ProfileListItem, SyncResultRow } from '../api';
 import { useI18n } from '../i18n';
 
 // Self-hosted deployment: the bootstrap script and its guides live in the repository
@@ -48,12 +48,9 @@ export const CloudSync: React.FC = () => {
   // Self-hosted sync server state
   const [state, setState] = useState<CloudStateData | null>(null);
   const [url, setUrl] = useState('');
-  const [user, setUser] = useState('');
-  const [pass, setPass] = useState('');
-  const [pass2, setPass2] = useState('');
+  const [remoteKey, setRemoteKey] = useState('');
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState('');
-  const [sessions, setSessions] = useState<CloudSessionItem[]>([]);
   const [localList, setLocalList] = useState<ProfileListItem[]>([]);
   const [remoteList, setRemoteList] = useState<ProfileListItem[]>([]);
   const [selLocal, setSelLocal] = useState<Set<string>>(new Set());
@@ -96,12 +93,6 @@ export const CloudSync: React.FC = () => {
     refreshGDriveStatus();
   }, []);
 
-  const loadSessions = (): void => {
-    api.cloudSessions().then((r) => {
-      if (r.code === 0) setSessions(r.data.list ?? []);
-    }).catch(() => undefined);
-  };
-
   const loadLocalProfiles = (): void => {
     api.list({ pageSize: 500 }).then((r) => {
       if (r.code === 0) setLocalList(r.data.list ?? []);
@@ -110,7 +101,6 @@ export const CloudSync: React.FC = () => {
 
   useEffect(() => {
     if (state?.connected && state?.authorized) {
-      loadSessions();
       loadLocalProfiles();
     }
   }, [state?.connected, state?.authorized]);
@@ -258,28 +248,10 @@ export const CloudSync: React.FC = () => {
   const handleConnect = (): void => {
     if (!url.trim()) return;
     setBusy(true); setNotice('');
-    api.cloudConnect(url.trim()).then((r) => {
+    api.cloudConnect(url.trim(), remoteKey.trim() || undefined).then((r) => {
       setState(r.data);
       if (r.code !== 0) setNotice(r.msg);
-      setBusy(false);
-    }).catch((e: Error) => { setNotice(e.message); setBusy(false); });
-  };
-
-  const handleAuth = (): void => {
-    if (!user.trim() || !pass) return;
-    if (!state?.hasPassword && pass !== pass2) {
-      setNotice(t('Passwords do not match'));
-      return;
-    }
-    setBusy(true); setNotice('');
-    const call = state?.hasPassword ? api.cloudLogin(user.trim(), pass) : api.cloudSetup(user.trim(), pass);
-    call.then((r) => {
-      if (r.code === 0) {
-        setPass(''); setPass2('');
-        refreshState();
-      } else {
-        setNotice(r.msg);
-      }
+      else setRemoteKey('');
       setBusy(false);
     }).catch((e: Error) => { setNotice(e.message); setBusy(false); });
   };
@@ -287,7 +259,7 @@ export const CloudSync: React.FC = () => {
   const handleDisconnect = (): void => {
     setBusy(true);
     api.cloudDisconnect().then(() => {
-      setSessions([]); setRemoteList([]); setSyncLog([]);
+      setRemoteList([]); setSyncLog([]);
       setBusy(false);
       refreshState();
     }).catch(() => setBusy(false));
@@ -539,7 +511,7 @@ export const CloudSync: React.FC = () => {
             type="text"
             value={url}
             onChange={(e) => setUrl(e.target.value)}
-            placeholder="http://localhost:3000"
+            placeholder="http://10.8.0.1"
             disabled={state?.connected || busy}
             style={{ flex: 1 }}
           />
@@ -547,42 +519,35 @@ export const CloudSync: React.FC = () => {
             <button className="btn" onClick={handleDisconnect} disabled={busy}>
               {t('Disconnect')}
             </button>
-          ) : (
+          ) : null}
+        </div>
+
+        {/* The remote machine has no panel password either, so there is nothing to log in
+            with. Its API key is the credential — taken from that machine's own panel (the
+            Automation API card shows it, and `GET /ui/key` on it returns it same-origin) or
+            from its startup log line "[antidetect] ready. API key: ...". */}
+        <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
+          <input
+            type="password"
+            value={remoteKey}
+            onChange={(e) => setRemoteKey(e.target.value)}
+            placeholder={t('Server API key')}
+            disabled={state?.connected || busy}
+            style={{ flex: 1 }}
+          />
+          {!state?.connected ? (
             <button className="btn btn-primary" onClick={handleConnect} disabled={busy || !url.trim()}>
               {t('Connect')}
             </button>
-          )}
+          ) : null}
         </div>
+        <span style={{ fontSize: '12px', color: 'var(--text-muted)', display: 'block', marginBottom: '12px' }}>
+          {t('On the server, open its panel: the Automation API card shows the key to paste here.')}
+        </span>
 
-        {state?.connected && !state.authorized && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxWidth: '360px' }}>
-            <h4>{state.hasPassword ? t('Login') : t('First-time Setup')}</h4>
-            <input
-              type="text"
-              value={user}
-              onChange={(e) => setUser(e.target.value)}
-              placeholder={t('Username')}
-              disabled={busy}
-            />
-            <input
-              type="password"
-              value={pass}
-              onChange={(e) => setPass(e.target.value)}
-              placeholder={t('Password')}
-              disabled={busy}
-            />
-            {!state.hasPassword && (
-              <input
-                type="password"
-                value={pass2}
-                onChange={(e) => setPass2(e.target.value)}
-                placeholder={t('Confirm Password')}
-                disabled={busy}
-              />
-            )}
-            <button className="btn btn-primary" onClick={handleAuth} disabled={busy}>
-              {state.hasPassword ? t('Login') : t('Setup & Login')}
-            </button>
+        {state?.connected && state.authorized === false && (
+          <div className="notice-banner" style={{ marginBottom: '12px' }}>
+            {t('The server rejected that API key. Paste the key from that machine and connect again.')}
           </div>
         )}
 

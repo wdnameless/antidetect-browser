@@ -31,7 +31,6 @@ const CONNECT_TIMEOUT_MS = 8000;
 
 interface CloudState {
   url: string;
-  user: string;
   token: string;
 }
 
@@ -42,7 +41,6 @@ function str(v: unknown): string {
 function getCloud(): CloudState {
   return {
     url: str(getSetting('cloudUrl')).replace(/\/+$/, ''),
-    user: str(getSetting('cloudUser')),
     token: revealSecret(str(getSetting('cloudToken'))) ?? '',
   };
 }
@@ -89,22 +87,18 @@ async function probeRemote(url: string, token?: string): Promise<Record<string, 
   if (status.status !== 200) {
     return { connected: false, url, error: status.error ?? `HTTP ${status.status}` };
   }
-  const authState = await fetchJson(`${url}/ui/auth-state`);
   const version =
     status.json && typeof status.json.data === 'object' && status.json.data !== null
       ? ((status.json.data as Record<string, unknown>).version as string | undefined)
       : undefined;
-  const hasPassword =
-    authState.json && typeof authState.json.data === 'object' && authState.json.data !== null
-      ? Boolean((authState.json.data as Record<string, unknown>).hasPassword)
-      : undefined;
-  // Verify token when we have one.
+  // Verify the token when we have one. This is the same check that gates push/pull, so a
+  // remote that answers here will also accept the sync calls.
   let authorized: boolean | undefined;
   if (token) {
     const check = await fetchJson(`${url}/api/v1/browser/list?page=1&page_size=1`, {}, token);
     authorized = check.status === 200;
   }
-  return { connected: true, url, version, hasPassword, authorized };
+  return { connected: true, url, version, authorized };
 }
 
 router.get('/api/v1/cloud/state', async (_req, res) => {
@@ -113,7 +107,7 @@ router.get('/api/v1/cloud/state', async (_req, res) => {
   res.json({
     code: 0,
     msg: 'success',
-    data: { configured: Boolean(cloud.url), url: cloud.url, user: cloud.user, hasToken: Boolean(cloud.token), ...remote },
+    data: { configured: Boolean(cloud.url), url: cloud.url, hasToken: Boolean(cloud.token), ...remote },
   });
 });
 
@@ -123,74 +117,34 @@ router.post('/api/v1/cloud/connect', async (req: Request, res: Response) => {
     res.json({ code: -1, msg: 'url is required', data: {} });
     return;
   }
-  const probe = await probeRemote(url);
+  // The remote key is supplied by the operator. The local instance used to obtain one by
+  // calling the remote's username/password login; that endpoint is gone with the panel
+  // password, and a cross-origin key fetch is refused by design. So the operator pastes the
+  // key — it is in the remote's own panel (`GET /ui/key` on that machine, same-origin) or in
+  // its startup log line `[antidetect] ready. API key: ...`.
+  const providedKey = str(req.body?.key).trim();
+  const probe = await probeRemote(url, providedKey || undefined);
   if (!probe.connected) {
     res.json({ code: -1, msg: `server unreachable (${probe.error ?? 'unknown'})`, data: probe });
     return;
   }
   setSetting('cloudUrl', url);
-  res.json({ code: 0, msg: 'success', data: { configured: true, url, user: getCloud().user, hasToken: Boolean(getCloud().token), ...probe } });
-});
-
-router.post('/api/v1/cloud/setup', async (req: Request, res: Response) => {
-  const cloud = getCloud();
-  if (!cloud.url) {
-    res.json({ code: -1, msg: 'connect to a server first', data: {} });
+  if (providedKey) saveToken(providedKey);
+  if (providedKey && probe.authorized === false) {
+    res.json({ code: -1, msg: 'the server rejected that API key', data: { ...probe, url } });
     return;
   }
-  const r = await fetchJson(
-    `${cloud.url}/ui/setup`,
-    { method: 'POST', body: JSON.stringify({ username: req.body?.username, password: req.body?.password }) }
-  );
-  const data = r.json?.data as Record<string, unknown> | undefined;
-  if (r.status === 200 && data && typeof data.token === 'string') {
-    setSetting('cloudUser', String(data.username ?? req.body?.username ?? ''));
-    saveToken(data.token);
-    res.json({ code: 0, msg: 'success', data: { username: data.username } });
-    return;
-  }
-  res.json({ code: -1, msg: (r.json && (r.json.msg as string)) || `HTTP ${r.status}`, data: {} });
-});
-
-router.post('/api/v1/cloud/login', async (req: Request, res: Response) => {
-  const cloud = getCloud();
-  if (!cloud.url) {
-    res.json({ code: -1, msg: 'connect to a server first', data: {} });
-    return;
-  }
-  const r = await fetchJson(
-    `${cloud.url}/ui/login`,
-    { method: 'POST', body: JSON.stringify({ username: req.body?.username, password: req.body?.password }) }
-  );
-  const data = r.json?.data as Record<string, unknown> | undefined;
-  if (r.status === 200 && data && typeof data.token === 'string') {
-    setSetting('cloudUser', String(data.username ?? req.body?.username ?? ''));
-    saveToken(data.token);
-    res.json({ code: 0, msg: 'success', data: { username: data.username } });
-    return;
-  }
-  res.json({ code: -1, msg: (r.json && (r.json.msg as string)) || `HTTP ${r.status}`, data: {} });
+  res.json({
+    code: 0,
+    msg: 'success',
+    data: { configured: true, url, hasToken: Boolean(getCloud().token), ...probe },
+  });
 });
 
 router.post('/api/v1/cloud/disconnect', (_req, res) => {
   setSetting('cloudUrl', '');
-  setSetting('cloudUser', '');
   setSetting('cloudToken', '');
   res.json({ code: 0, msg: 'success', data: {} });
-});
-
-router.get('/api/v1/cloud/sessions', async (_req, res) => {
-  const cloud = getCloud();
-  if (!cloud.url || !cloud.token) {
-    res.json({ code: -1, msg: 'not connected', data: {} });
-    return;
-  }
-  const r = await fetchJson(`${cloud.url}/ui/sessions`, {}, cloud.token);
-  if (r.status === 200 && r.json?.code === 0) {
-    res.json(r.json);
-    return;
-  }
-  res.json({ code: -1, msg: (r.json && (r.json.msg as string)) || `HTTP ${r.status}`, data: {} });
 });
 
 /** List profiles that exist on the remote server. */

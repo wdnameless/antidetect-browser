@@ -47,7 +47,6 @@ export const PANEL_HTML = `<!doctype html>
 <header>
     <h2 style="margin-top:0">NullTrace Web Panel</h2>
   <span id="conn" class="badge closed">offline</span>
-  <button class="gray" onclick="logout()">Sign out</button>
 </header>
 
 <main id="app" style="display:none">
@@ -64,41 +63,7 @@ export const PANEL_HTML = `<!doctype html>
 <div id="login" style="display:none">
   <div class="card">
       <div class="brand">NullTrace</div>
-
-    <!-- first run: create credentials -->
-    <div id="f_setup" style="display:none">
-      <p>Первый запуск: создайте логин и пароль панели.</p>
-      <label>Логин</label>
-      <input id="su_user" value="admin">
-      <label>Пароль (6+ символов)</label>
-      <input id="su_pass" type="password">
-      <label>Повторите пароль</label>
-      <input id="su_pass2" type="password">
-      <div style="margin-top:14px;text-align:right"><button onclick="doSetup()">Создать и войти</button></div>
-    </div>
-
-    <!-- regular login -->
-    <div id="f_login" style="display:none">
-      <p>Войдите, чтобы управлять профилями на сервере.</p>
-      <label>Логин</label>
-      <input id="li_user">
-      <label>Пароль</label>
-      <input id="li_pass" type="password">
-      <div style="margin-top:14px;display:flex;justify-content:flex-end;gap:8px">
-        <button class="gray" onclick="showKeyLogin()">API-ключом</button>
-        <button onclick="doLogin()">Войти</button>
-      </div>
-    </div>
-
-    <!-- fallback: paste API key directly -->
-    <div id="f_key" style="display:none">
-      <p>Вставьте API-ключ (для автоматизаций или восстановления доступа).</p>
-      <input id="key" type="password" placeholder="xxxxxxxx-xxxx-xxxx">
-      <div style="margin-top:14px;text-align:right"><button onclick="login()">Войти</button></div>
-    </div>
-
-    <p id="li_err" style="color:#e57373;font-size:13px;margin:10px 0 0"></p>
-    <p id="back_link" style="display:none;margin:8px 0 0"><a href="#" onclick="showLoginBack();return false" style="color:#7fb0ff;font-size:13px">← назад ко входу</a></p>
+    <p id="boot_err" style="color:#e57373;font-size:13px;margin:10px 0 0"></p>
   </div>
 </div>
 
@@ -125,7 +90,9 @@ export const PANEL_HTML = `<!doctype html>
 
 <div id="toast"></div>
 <script>
-// KEEP (INTERNAL): localStorage key antidetect_key preserves existing browser login session.
+// The panel has no password. The key is fetched from the backend that served this page
+// (GET /ui/key, same-origin only) — a plain browser has no Tauri bridge to inject it.
+// A previously stored key is reused first so an operator who pasted one keeps it.
 var KEY = localStorage.getItem('antidetect_key') || '';
 var profiles = [];
 var ws = null, vctx = null, vmeta = null, vprofileId = null;
@@ -151,51 +118,19 @@ function enterApp(){
   refresh();
 }
 
-function showOnly(id){
-  ['f_setup','f_login','f_key'].forEach(function(f){ document.getElementById(f).style.display = (f===id)?'':'none'; });
-  document.getElementById('li_err').textContent='';
-  document.getElementById('back_link').style.display = (id==='f_key') ? '' : 'none';
-}
-function liErr(m){ document.getElementById('li_err').textContent=m; }
-
-function authPost(path, body, cb){
-  fetch(path, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)})
-    .then(function(r){ return r.json().then(function(j){ return {status:r.status, j:j}; }); })
-    .then(function(x){
-      if(x.status===200 && x.j.code===0 && x.j.data.token){ KEY=x.j.data.token; enterApp(); }
-      else cb((x.j&&x.j.msg)||('HTTP '+x.status));
-    })
-    .catch(function(e){ cb(e.message); });
-}
-
-function doSetup(){
-  var u=document.getElementById('su_user').value.trim();
-  var p=document.getElementById('su_pass').value;
-  if(!u){ liErr('Введите логин'); return; }
-  if(p.length<6){ liErr('Пароль от 6 символов'); return; }
-  if(p!==document.getElementById('su_pass2').value){ liErr('Пароли не совпадают'); return; }
-  authPost('/ui/setup', {username:u, password:p}, liErr);
-}
-
-function doLogin(){
-  var u=document.getElementById('li_user').value.trim();
-  var p=document.getElementById('li_pass').value;
-  if(!u||!p){ liErr('Заполните логин и пароль'); return; }
-  authPost('/ui/login', {username:u, password:p}, liErr);
-}
-function showKeyLogin(){ showOnly('f_key'); }
-function showLoginBack(){
-  fetch('/ui/auth-state').then(function(r){return r.json();}).then(function(j){
-    showOnly(j.data.hasPassword ? 'f_login' : 'f_setup');
+/** Ask the backend for the key, then verify it by listing profiles. */
+function boot(){
+  fetch('/ui/key').then(function(r){ return r.json(); }).then(function(j){
+    if(!j || j.code !== 0 || !j.data || !j.data.key){
+      throw new Error((j && j.msg) || 'this page is not served by its backend');
+    }
+    KEY = j.data.key;
+    return api('/api/v1/browser/list?page=1&page_size=200');
+  }).then(function(){ enterApp(); }).catch(function(e){
+    document.getElementById('boot_err').textContent = String(e.message || e);
+    document.getElementById('login').style.display='flex';
   });
 }
-
-function login(){
-  KEY = document.getElementById('key').value.trim();
-  if(!KEY) return;
-  api('/status').then(enterApp).catch(function(e){ toast('Auth failed: '+e.message); });
-}
-function logout(){ localStorage.removeItem('antidetect_key'); location.reload(); }
 
 function refresh(){
   api('/api/v1/browser/list?page=1&page_size=200').then(function(d){
@@ -343,19 +278,12 @@ window.addEventListener('keyup', function(ev){
   }));
 }, true);
 
+// A stored key is tried first (an older build may have left one); anything else boots
+// straight from /ui/key. There is no password prompt to fall back to.
 if(KEY){
-  api('/status').then(enterApp).catch(function(){
-    // stored key rejected — show the proper login flow
-    fetch('/ui/auth-state').then(function(r){return r.json();}).then(function(j){
-      showOnly(j.data.hasPassword ? 'f_login' : 'f_setup');
-      document.getElementById('login').style.display='flex';
-    }).catch(function(){ document.getElementById('login').style.display='flex'; });
-  });
+  api('/api/v1/browser/list?page=1&page_size=200').then(enterApp).catch(boot);
 } else {
-  fetch('/ui/auth-state').then(function(r){return r.json();}).then(function(j){
-    showOnly(j.data.hasPassword ? 'f_login' : 'f_setup');
-    document.getElementById('login').style.display='flex';
-  }).catch(function(){ document.getElementById('login').style.display='flex'; });
+  boot();
 }
 </script>
 </body>

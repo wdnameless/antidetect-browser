@@ -1,5 +1,45 @@
 # Changelog
 
+## [0.6.7] - 2026-09-19
+
+### Changed — the panel has no password any more
+
+The web panel no longer asks for credentials. Opening it takes you straight to the app, in the
+desktop shell and in a plain browser alike.
+
+**What was removed.** The whole `panelAuth` router (`/ui/setup`, `/ui/login`, `/ui/sessions`,
+`/ui/auth-state`), the SPA login screen and the `authenticated` gate that could block startup,
+the legacy `/ui` panel's "create the panel login and password" form with its login and
+sign-out controls, and the scrypt credential store (`panel_auth.json`) plus the device log
+(`panel_sessions.json`). Nothing writes or reads those files now.
+
+**The part that was not obvious.** `/ui/login` was also how a *browser* client got hold of the
+API key — the response's `token` field literally was the API key. The desktop shell injects
+that key over the Tauri bridge, so the gate never appeared there; in a plain browser there is
+no bridge, the key resolved to an empty string, and every request 401'd. Removing the password
+without replacing that path would have left the install-free web panel permanently
+`unauthorized` — the opposite of the goal.
+
+So `GET /ui/key` now serves the key to the page the backend itself served. **Same-origin is
+the entire security argument, and it is enforced:** a hostile page can fetch
+`http://127.0.0.1:50325` directly (its Host *is* loopback) and read the body, so the request's
+`Origin` must equal its `Host`. Unknown origins fail closed. A reverse-proxied entry point
+(Traefik over VPN) keeps working, because there the page's origin and the Host agree.
+Verified: a foreign `Origin` is refused with `403` and no key in the body.
+
+**Cloud sync to a remote instance** used the same login endpoints to obtain that server's key.
+Connecting now asks for the remote API key directly — take it from that machine's panel, where
+the Automation API card shows it.
+
+### Verified
+
+- A real browser with no bridge opens the panel with **zero password inputs** and reaches the
+  app fully authenticated (sidebar, all destinations, "AUTOMATION API On").
+- The page's key equals the one `/ui/key` returns; the legacy `/ui` panel connects the same way.
+- The four removed endpoints answer `401` (they fall through to auth middleware) — never `200`,
+  so no credential can be minted for an instance that has none.
+- `npm test` 131 files / 1088 passed; both typechecks clean.
+
 ## [0.6.6] - 2026-09-19
 
 ### Fixed — Settings showed no data folder, and folder changes could lie about failing

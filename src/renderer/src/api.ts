@@ -188,6 +188,29 @@ export async function initApiKey(): Promise<string> {
     apiKey = stored;
     return stored;
   }
+  /**
+   * No desktop bridge and no stored key: this is the install-free web panel, which the
+   * backend itself served. Ask it for the key (`GET /ui/key`, same-origin only). There is
+   * deliberately no password prompt any more — a browser client has no other way to
+   * authenticate, and without this fallback every request would 401 forever.
+   */
+  try {
+    const res = await fetch(`${getApiBase()}/ui/key`);
+    const body = (await res.json()) as { code: number; data?: { key?: string } };
+    const key = body?.code === 0 ? body.data?.key : undefined;
+    if (key) {
+      apiKey = key;
+      try {
+        localStorage.setItem('apiKey', key);
+      } catch {
+        // private mode: the key still works for this page's lifetime
+      }
+      return key;
+    }
+  } catch {
+    // Backend unreachable or the page is not same-origin: fall through to an empty key so
+    // requests fail with the backend's own 401 rather than a crash here.
+  }
   return '';
 }
 
@@ -255,20 +278,11 @@ async function request<T>(path: string, options: RequestInit = {}, retries = 3):
 export interface CloudStateData {
   configured: boolean;
   url?: string;
-  user?: string;
   hasToken?: boolean;
   connected?: boolean;
   version?: string;
-  hasPassword?: boolean;
   authorized?: boolean;
   error?: string;
-}
-
-export interface CloudSessionItem {
-  at: number;
-  ip: string;
-  ua: string;
-  username: string;
 }
 
 export interface SyncResultRow {
@@ -759,20 +773,12 @@ export const api = {
     }),
   // ---- Cloud Sync (bridge endpoints on the LOCAL service) ----
   cloudState: () => request<CloudStateData>('/api/v1/cloud/state'),
-  cloudConnect: (url: string) =>
-    request<CloudStateData>('/api/v1/cloud/connect', { method: 'POST', body: JSON.stringify({ url }) }),
-  cloudSetup: (username: string, password: string) =>
-    request<{ username: string }>('/api/v1/cloud/setup', {
+  cloudConnect: (url: string, key?: string) =>
+    request<CloudStateData>('/api/v1/cloud/connect', {
       method: 'POST',
-      body: JSON.stringify({ username, password }),
-    }),
-  cloudLogin: (username: string, password: string) =>
-    request<{ username: string }>('/api/v1/cloud/login', {
-      method: 'POST',
-      body: JSON.stringify({ username, password }),
+      body: JSON.stringify(key ? { url, key } : { url }),
     }),
   cloudDisconnect: () => request<Record<string, never>>('/api/v1/cloud/disconnect', { method: 'POST' }),
-  cloudSessions: () => request<{ list: CloudSessionItem[] }>('/api/v1/cloud/sessions'),
   cloudRemoteList: () => request<{ list: ProfileListItem[]; total: number }>('/api/v1/cloud/remote-list'),
   cloudPush: (user_ids?: string[]) =>
     request<{ pushed: number; failed: number; results: SyncResultRow[] }>('/api/v1/cloud/push', {
@@ -1176,5 +1182,4 @@ export const api = {
     request<{ ok: boolean; message?: string; status?: McpStatus }>('/api/v1/mcp/start', { method: 'POST' }),
   mcpStop: () =>
     request<{ ok: boolean; message?: string; status?: McpStatus }>('/api/v1/mcp/stop', { method: 'POST' }),
-  authState: () => request<{ hasPassword: boolean }>('/ui/auth-state'),
 };

@@ -11,7 +11,6 @@ import { createViewerUpgradeHandler } from './viewer';
 import { createMotionUpgradeHandler } from './motionBridge';
 import { createRecorderUpgradeHandler } from '../recorder/bridge';
 import { PANEL_HTML } from './uiPanel';
-import { panelAuthRouter } from './panelAuth';
 import { getCdpEndpoint } from '../launcher/chromium';
 import { getApiKey } from '../config';
 import browserRoutes from './routes/browser';
@@ -55,6 +54,22 @@ function hostAllowed(host: string): boolean {
   if (!SERVER_MODE) return false;
   const bare = host.split(':')[0].replace(/^\[|\]$/g, '').toLowerCase();
   return TRUSTED_HOSTS.includes(bare);
+}
+
+/**
+ * Does an Origin header name the same authority this request was addressed to?
+ *
+ * Compared against the request's own Host rather than a fixed allowlist, so a reverse-proxied
+ * entry point (Traefik on a VPN) works with no extra configuration while a page served from
+ * anywhere else is refused. An unparseable origin (`null`, from a file:// page) fails closed:
+ * we cannot tell where it came from, so the key is not handed over.
+ */
+function isSameOrigin(origin: string, host: string): boolean {
+  try {
+    return new URL(origin).host.toLowerCase() === String(host).toLowerCase();
+  } catch {
+    return false;
+  }
 }
 
 /** Minimal append-only request log for server mode (DATA_DIR/server.log). */
@@ -127,6 +142,30 @@ export function createApp(): Express {
     res.type('html').send(PANEL_HTML);
   });
 
+  /**
+   * The API key, for a page this backend served.
+   *
+   * The panel has no password by design. A browser client has no Tauri bridge to inject the
+   * key the way the desktop shell does, so without this it could never authenticate and the
+   * install-free web panel would be unusable — previously that is exactly what the
+   * username/password login existed to paper over.
+   *
+   * Same-origin is what makes serving it safe, and it is checked, not assumed:
+   * `hostAllowed()` above already rejects DNS-rebinding Host headers, but a hostile page can
+   * still fetch `http://127.0.0.1:50325` directly — its Host *is* loopback — and read the
+   * body, because CORS is permissive outside server mode. Requiring the Origin to equal the
+   * Host closes that path and still works behind Traefik/VPN, where the page's origin and the
+   * Host it talks to agree.
+   */
+  app.get('/ui/key', (req: Request, res: Response) => {
+    const origin = String(req.headers.origin || '');
+    if (origin && !isSameOrigin(origin, String(req.headers.host || ''))) {
+      res.status(403).json({ code: -1, msg: 'cross-origin key request refused', data: {} });
+      return;
+    }
+    res.json({ code: 0, msg: 'success', data: { key: getApiKey() } });
+  });
+
   // Static assets from built renderer (unauthenticated)
   if (fs.existsSync(rendererDir)) {
     app.use(express.static(rendererDir, { index: false }));
@@ -181,10 +220,6 @@ export function createApp(): Express {
     }
     next();
   });
-  // Panel login (username/password -> session token). Public routes with
-  // their own brute-force protection.
-  app.use(panelAuthRouter);
-
   // Everything below requires Bearer auth
   app.use(authMiddleware);
   // CDP tunnel before rate limiting — automation traffic streams through it

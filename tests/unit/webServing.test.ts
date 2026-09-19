@@ -63,13 +63,41 @@ describe('Web Serving & SPA Fallback (Task 4.1, 4.2)', () => {
       expect(data.code).toBe(0);
     });
 
-    it('serves unauthenticated /ui/auth-state panel auth state', async () => {
-      const res = await fetch(`${baseUrl}/ui/auth-state`);
-      expect(res.status).toBe(200);
-      const data = await res.json();
-      // The server's own contract: hasPassword tells the client whether to show
-      // one-time setup or the login form.
-      expect(data).toHaveProperty('data.hasPassword');
+    it('serves the panel key to a same-origin page and refuses a cross-origin one', async () => {
+      // The panel has no password, so this is how a browser client obtains the API key.
+      // Same-origin is the whole security argument: a page served by anything else must
+      // not be able to read it, or any site could drive the local API.
+      const sameOrigin = await fetch(`${baseUrl}/ui/key`, { headers: { Origin: baseUrl } });
+      expect(sameOrigin.status).toBe(200);
+      const body = await sameOrigin.json();
+      expect(body.code).toBe(0);
+      expect(typeof body.data.key).toBe('string');
+      expect(body.data.key.length).toBeGreaterThan(0);
+
+      // A request with no Origin (curl, an MCP client) is not a browser page and is allowed;
+      // it still has to be same-origin to reach this host at all.
+      const noOrigin = await fetch(`${baseUrl}/ui/key`);
+      expect(noOrigin.status).toBe(200);
+
+      const crossOrigin = await fetch(`${baseUrl}/ui/key`, {
+        headers: { Origin: 'http://evil.example' },
+      });
+      expect(crossOrigin.status).toBe(403);
+      const refused = await crossOrigin.json();
+      expect(refused.code).toBe(-1);
+      expect(refused.data?.key).toBeUndefined();
+    });
+
+    it('has no password endpoints left to call', async () => {
+      // Removing the gate must remove the endpoints, not merely hide the UI: a live
+      // /ui/setup would let anyone mint a credential for an instance that has none.
+      // Either refusal is correct — 404 if nothing matches, 401 if the request fell through
+      // to the auth middleware. What must never appear is a 200.
+      for (const path of ['/ui/setup', '/ui/login', '/ui/auth-state', '/ui/sessions']) {
+        const method = path.includes('setup') || path.includes('login') ? 'POST' : 'GET';
+        const res = await fetch(`${baseUrl}${path}`, { method });
+        expect([401, 404], `${path} must not answer`).toContain(res.status);
+      }
     });
 
     it('serves unauthenticated index.html for a client-only SPA route', async () => {
