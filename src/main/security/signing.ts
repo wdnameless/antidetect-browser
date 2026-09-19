@@ -85,6 +85,17 @@ export function computeFileMd5(filePath: string): string {
 }
 
 /**
+ * The key id derived from a public key: the first 16 hex characters of its SHA-256.
+ *
+ * It lives beside the other signing primitives rather than in `extensionVerifier`, because both
+ * that module and `stealthKey` need it — keeping it in either one made them import each other
+ * and formed a cycle (`archmap` reported it as a new one).
+ */
+export function computeKeyIdFromPublicPem(pem: string): string {
+  return createHash('sha256').update(pem).digest('hex').slice(0, 16);
+}
+
+/**
  * Compute file manifest (relative path -> md5) for a directory.
  *
  * `exclude` names files that must not appear in the manifest. A signature must never cover

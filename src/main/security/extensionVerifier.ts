@@ -5,6 +5,7 @@ import {
   generateEd25519KeyPair,
   buildDirectoryMd5Manifest,
   createSignedManifest,
+  computeKeyIdFromPublicPem,
   KeyRingStore,
   KeyPairPem,
   SignedManifestEnvelope,
@@ -42,9 +43,9 @@ export class StealthExtensionVerificationError extends Error {
   }
 }
 
-export function computeKeyIdFromPublicPem(pem: string): string {
-  return crypto.createHash('sha256').update(pem).digest('hex').slice(0, 16);
-}
+// Re-exported so existing importers keep their import path; the implementation lives in
+// `signing` to avoid a cycle between this module and `stealthKey`.
+export { computeKeyIdFromPublicPem } from './signing';
 
 let ephemeralStealthKeyPair: KeyPairPem | null = null;
 let ephemeralStealthKeyRing: KeyRingStore | null = null;

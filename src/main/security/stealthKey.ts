@@ -1,7 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { KeyPairPem, KeyRingStore, generateEd25519KeyPair } from './signing';
-import { computeKeyIdFromPublicPem } from './extensionVerifier';
+import { KeyPairPem, KeyRingStore, generateEd25519KeyPair, computeKeyIdFromPublicPem } from './signing';
 import { protectSecret, revealSecret } from '../util/secretStore';
 
 export interface PersistedStealthKeyRecord {
