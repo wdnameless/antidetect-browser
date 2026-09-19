@@ -42,7 +42,8 @@ every later one failed with `digest-mismatch`. Confirmed on the operator's own a
 envelope listed `stealth-manifest.sig.json`, and that entry was the only mismatch while
 `manifest.json` and `stealth.js` matched. The signing key was also regenerated per process while
 the signed artifact persisted on disk, so a restart could never verify what the last run wrote.
-The key is now durable (DPAPI-protected, under the data folder), the envelope excludes itself,
+The key is now durable (written under the data folder, its private half protected by the existing
+`secretStore` — AES-256-GCM under a machine-local key file in this build), the envelope excludes itself,
 and a signature naming a key this installation no longer holds is regenerated instead of refused.
 
 **A transfer no longer rewrites a profile's live state.** The source folder is a snapshot of

@@ -33,7 +33,12 @@ export function hasPersistedStealthKey(dataDir: string): boolean {
 /**
  * Obtain the installation's stealth signing key.
  * Created once, then persisted and reused across restarts.
- * Private key is protected via secretStore (DPAPI on Windows / AES fallback).
+ *
+ * The private half is protected through `secretStore`, which selects the strongest cipher it has
+ * been given: DPAPI (`enc:`) when the shell has injected its Rust cipher, otherwise AES-256-GCM
+ * under a machine-local key file (`aes:`). This build takes the AES path — nothing calls
+ * `setSecretCipher` yet — so the protection is a local key file rather than an OS-bound key.
+ * Either way the private key is never written in plaintext.
  */
 export function getStealthSigningKey(dataDir: string): KeyPairPem {
   const resolvedDir = path.resolve(dataDir);
