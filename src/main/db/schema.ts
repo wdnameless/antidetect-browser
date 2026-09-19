@@ -16,7 +16,8 @@ export function migrate(db: Database): void {
     CREATE TABLE IF NOT EXISTS groups (
       id          TEXT PRIMARY KEY,
       name        TEXT NOT NULL,
-      created_at  INTEGER NOT NULL
+      created_at  INTEGER NOT NULL,
+      bookmarks   TEXT
     );
 
     CREATE TABLE IF NOT EXISTS proxies (
@@ -212,6 +213,17 @@ export function migrate(db: Database): void {
   ensureColumn(db, 'profiles', 'deleted_at', 'INTEGER');
   // Movable data root: absolute workspace path rewritten on relocation.
   ensureColumn(db, 'profiles', 'path', 'TEXT');
+  // Per-group managed bookmarks, stored as a JSON array.
+  //
+  // This migration was added with the bookmarks feature and then silently REPLACED thirteen
+  // minutes later by the `launch_args` line below, which overwrote it instead of following it.
+  // `groups` had no entry for the column afterwards, and `CREATE TABLE IF NOT EXISTS` does not
+  // touch a table that already exists, so every database in use kept a `groups` table without
+  // `bookmarks` — while `listGroups` selects it and `updateGroup` writes it. The read failed
+  // with `no such column: g.bookmarks`, and because the group list is what the Profile Groups
+  // modal renders, creating a group appeared to do nothing: the row was written, then the
+  // refresh that would have shown it failed.
+  ensureColumn(db, 'groups', 'bookmarks', 'TEXT');
   // Extra per-profile Chromium launch args (parity program: extra-launch-args).
   ensureColumn(db, 'profiles', 'launch_args', 'TEXT');
   // Profile window badge color (parity program: profile-window-badge).

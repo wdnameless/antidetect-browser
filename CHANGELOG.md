@@ -1,5 +1,36 @@
 # Changelog
 
+## [0.6.13] - 2026-09-19
+
+### Fixed — groups could be created but never shown, so they looked impossible to create
+
+Operator report: «группы не создаются» with the Profile Groups modal reading *No custom groups
+created yet*.
+
+The groups were being created. The operator's database held `openframe`, `asd` and `asd` from
+earlier attempts, and creating another returned `{"code":0,"data":{"group_id":"g_…"}}`. What
+failed was the **list**: `listGroups` selects `g.bookmarks`, and the `groups` table has no such
+column — so the refresh that would have displayed the new group answered
+`no such column: g.bookmarks`, and the modal fell back to its empty state. Write succeeds, read
+fails, and the feature looks dead.
+
+The column is referenced in three places (`listGroups`, `updateGroup`, the `GroupItem` type) and
+the migration that adds it was written — then silently deleted. Commit `362d33d` added
+`ensureColumn(db, 'groups', 'bookmarks', 'TEXT')`; thirteen minutes later `5f874f8` replaced that
+exact line with its own `launch_args` migration instead of adding a line after it. `CREATE TABLE
+IF NOT EXISTS` does not alter an existing table, so every database already in use kept a `groups`
+table without the column while the code went on selecting it.
+
+Restored the migration, added the column to the `CREATE TABLE` so new databases have it from the
+start, and verified on the operator's own data: `groups columns: id, name, created_at, bookmarks`,
+the list answers with all five groups, and the live modal renders them where it used to say the
+list was empty.
+
+The test added here checks the general rule rather than the one column — every column the core
+queries name must exist after migration — because a test naming `bookmarks` alone would have the
+same blind spot as the code that broke. All three cases fail on the shipped behaviour and pass
+after the fix.
+
 ## [0.6.12] - 2026-09-19
 
 ### Fixed — five defects from one report: table clipping, lost profile names and sessions, a launch that always refused, and profiles left open on quit
