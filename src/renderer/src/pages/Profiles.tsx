@@ -14,6 +14,7 @@ import {
   type SyncSessionInfo,
 } from '../api';
 import { useI18n } from '../i18n';
+import { computeRunningCount } from '../sidebarLogic';
 import { SyncPanel } from '../components/SyncPanel';
 import { PreflightModal, PreflightBadge } from '../components/PreflightModal';
 import type { PreflightVerdict, PreflightStatus } from '../preflight';
@@ -45,6 +46,16 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
   const [groups, setGroups] = useState<GroupItem[]>([]);
   const [proxies, setProxies] = useState<ProxyItem[]>([]);
   const [devices, setDevices] = useState<DeviceItem[]>([]);
+  /**
+   * Which datasets have actually answered. The metric cards must distinguish "the backend
+   * says zero" from "we have not heard back yet" — rendering an unloaded value as `0` is a
+   * claim the UI cannot support.
+   */
+  const [loaded, setLoaded] = useState<{ profiles: boolean; proxies: boolean; devices: boolean }>({
+    profiles: false,
+    proxies: false,
+    devices: false,
+  });
   const [extensions, setExtensions] = useState<ExtensionItem[]>([]);
   const [mobilePresets, setMobilePresets] = useState<Array<{ id: string; name: string; model: string; androidVersion: string; gpu: string }>>([]);
   const [selectedGroupFilter, setSelectedGroupFilter] = useState<string>(initialGroupId || '');
@@ -156,7 +167,10 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
   const loadProxies = useCallback(async () => {
     try {
       const res = await api.proxyList();
-      if (res.code === 0) setProxies(res.data.list);
+      if (res.code === 0) {
+        setProxies(res.data.list);
+        setLoaded((l) => ({ ...l, proxies: true }));
+      }
     } catch { /* ignore */ }
   }, []);
 
@@ -169,7 +183,10 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
   const loadDevices = useCallback(async () => {
     try {
       const res = await api.deviceList();
-      if (res.code === 0) setDevices(res.data.list);
+      if (res.code === 0) {
+        setDevices(res.data.list);
+        setLoaded((l) => ({ ...l, devices: true }));
+      }
     } catch { /* ignore */ }
   }, []);
 
@@ -375,6 +392,7 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
       if (res.code === 0) {
         setProfiles(res.data.list);
         setTotal(res.data.total);
+        setLoaded((l) => ({ ...l, profiles: true }));
         // Tag chips for the visible rows (per-profile fetch, parallelized).
         const ids = res.data.list.map((p) => p.user_id);
         const maps = await Promise.all(
@@ -1272,8 +1290,35 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
     }
   };
 
+  const runningNow = computeRunningCount(profiles);
+
   return (
     <div>
+      {/* Metric summary, in the reference's order and shape: a row of equal cards above the
+          tabs, each a label plus a large tabular figure. Every number is a real backend
+          value — `total`/`profiles` from the profile list, `proxies` and `devices` from
+          their own lists (both already loaded by the effects above). A value that has not
+          arrived renders as an em dash rather than 0, because "0" is a claim and a missing
+          number is not the same claim. */}
+      <div className="metrics-row">
+        <div className={`metric-card${total > 0 ? ' accent' : ''}`}>
+          <div className="metric-label">{t('Profiles')}</div>
+          <div className="metric-value">{loaded.profiles ? total : '—'}</div>
+        </div>
+        <div className="metric-card">
+          <div className="metric-label">{t('Running')}</div>
+          <div className={`metric-value${runningNow > 0 ? ' ok' : ''}`}>{loaded.profiles ? runningNow : '—'}</div>
+        </div>
+        <div className="metric-card">
+          <div className="metric-label">{t('Proxies')}</div>
+          <div className="metric-value">{loaded.proxies ? proxies.length : '—'}</div>
+        </div>
+        <div className="metric-card">
+          <div className="metric-label">{t('Devices')}</div>
+          <div className="metric-value">{loaded.devices ? devices.length : '—'}</div>
+        </div>
+      </div>
+
       {/* Top Action Header */}
       <div
         className="page-header-actions"

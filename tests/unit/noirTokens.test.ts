@@ -127,35 +127,80 @@ function isNonColourValue(value: string): boolean {
   return false;
 }
 
-/** Every coloured literal in a source, with its line number. */
-function hueLiterals(source: string): string[] {
+/** Status tokens that explicitly carry hue for semantic states (R06) */
+const STATUS_HUE_TOKENS: Record<string, true> = {
+  '--ok': true,
+  '--ok-bg': true,
+  '--warn': true,
+  '--warn-bg': true,
+  '--danger': true,
+  '--danger-bg': true,
+};
+
+/** Every coloured literal in a source, with its line number, optionally skipping allowlisted tokens. */
+function hueLiterals(source: string, allowTokens: boolean = false): string[] {
   const out: string[] = [];
-  for (const m of source.matchAll(/#[0-9a-fA-F]{6}\b|#[0-9a-fA-F]{3}\b|rgba?\([^)]*\)/g)) {
-    if (isGreyscale(m[0])) continue;
-    out.push(`line ${source.slice(0, m.index).split('\n').length}: ${m[0]}`);
-  }
+  const lines = source.split('\n');
+  lines.forEach((line, idx) => {
+    if (allowTokens) {
+      // If the line defines one of the allowlisted status tokens, ignore hue on this line
+      const isAllowedToken = Object.keys(STATUS_HUE_TOKENS).some((tok) => line.includes(tok));
+      if (isAllowedToken) return;
+    }
+    for (const m of line.matchAll(/#[0-9a-fA-F]{6}\b|#[0-9a-fA-F]{3}\b|rgba?\([^)]*\)/g)) {
+      if (isGreyscale(m[0])) continue;
+      out.push(`line ${idx + 1}: ${m[0]}`);
+    }
+  });
   return out;
 }
 
-describe('token layer: nothing carries a hue', () => {
-  it('every colour token is greyscale', () => {
+describe('token layer: nothing carries a hue except status tokens', () => {
+  it('every non-status colour token is greyscale, and identity tokens are explicitly checked by name', () => {
     const offenders: string[] = [];
+    const tokenValues = new Map<string, string>();
     for (const m of rootBlock().matchAll(/(--[\w-]+)\s*:\s*([^;]+);/g)) {
       const [, name, value] = m;
-      // Judge the VALUE, never the name. A name allowlist is how a real colour slips
-      // through: `--text-muted` and `--text-2xs` are indistinguishable by name, but one
-      // is a colour and the other a size. Anything that parses as a measurement or a
-      // keyword is skipped automatically; everything else must prove it has no chroma.
+      tokenValues.set(name, value.trim());
+      if (STATUS_HUE_TOKENS[name]) continue;
       if (isNonColourValue(value)) continue;
       if (/^var\(/.test(value.trim())) continue;
       if (/gradient\(/.test(value)) continue;
       if (!isGreyscale(value)) offenders.push(`${name}: ${value.trim()}`);
     }
-    expect(offenders, 'tokens must be greyscale — the palette is monochrome').toEqual([]);
+    expect(offenders, 'non-status tokens must be greyscale — the palette is monochrome').toEqual([]);
+    // Assert BY NAME that identity and structure tokens carry no perceptible chroma
+    const identityTokensToCheck = [
+      '--accent',
+      '--accent-hover',
+      '--accent-foreground',
+      '--surface-1',
+      '--surface-2',
+      '--surface-3',
+      '--bg-app',
+      '--bg-sidebar',
+      '--bg-header',
+      '--panel',
+      '--panel-hover',
+      '--panel-2',
+      '--border',
+      '--divider',
+      '--text',
+      '--text-secondary',
+      '--text-muted',
+    ];
+
+    for (const token of identityTokensToCheck) {
+      const val = tokenValues.get(token);
+      expect(val, `Identity token ${token} must be defined in :root`).toBeDefined();
+      if (val && !/^var\(/.test(val) && !/gradient\(/.test(val) && !isNonColourValue(val)) {
+        expect(isGreyscale(val), `Identity token ${token} (${val}) must carry no chroma`).toBe(true);
+      }
+    }
   });
 
-  it('the stylesheet contains no hue-bearing literal', () => {
-    expect(hueLiterals(css), 'chrome must contain no hue').toEqual([]);
+  it('the stylesheet contains no hue-bearing literal outside the status tokens', () => {
+    expect(hueLiterals(css, true), 'chrome must contain no hue outside status tokens').toEqual([]);
   });
 
   it('no renderer source contains a hue-bearing literal', () => {
@@ -164,7 +209,7 @@ describe('token layer: nothing carries a hue', () => {
     const offenders: string[] = [];
     for (const file of chromeSources()) {
       const rel = path.relative(RENDERER, file);
-      for (const hit of hueLiterals(fs.readFileSync(file, 'utf8'))) {
+      for (const hit of hueLiterals(fs.readFileSync(file, 'utf8'), false)) {
         offenders.push(`${rel} ${hit}`);
       }
     }

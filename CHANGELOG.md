@@ -1,5 +1,64 @@
 # Changelog
 
+## [0.6.8] - 2026-09-19
+
+### Changed — the interface now follows the reference product's layout
+
+The shell and the Profiles page were rebuilt to match the layout of the reference the operator
+pointed at, **in this product's own colours and fonts** — the reference's blue accent was
+deliberately not imported.
+
+- The sidebar is 240px with a grouped navigation, and the radius scale became 8/14/20 so
+  content reads as raised cards rather than hairline rectangles.
+- **The page name moved out of the window titlebar** into the content area as
+  `Workspace / <Page>`, which is where the reference puts it and where the eye already is.
+  The titlebar now carries only the drag region and the window controls.
+- The Profiles page gained the reference's order: four metric cards, then the tabs, then the
+  toolbar, then the table. Each card reads a real endpoint — profiles, running, proxies,
+  devices — and a value that has not loaded renders as `—` rather than `0`, because "zero" is
+  a claim the interface cannot make before the backend answers.
+
+### Changed — statuses carry colour, the identity does not
+
+Success, warning and error are now distinguishable by hue, which is what makes "running" and
+"failed" legible at a glance. The accent, buttons, active navigation and every surface stay
+monochrome: that is this product's identity, not the reference's.
+
+Two guards enforce that split, and both were narrowed to the six status tokens **by name** so
+the exception cannot widen by accident. Injecting a blue `--accent` still fails three tests —
+verified, not assumed.
+
+Measuring the result caught a real defect the eye would have missed: the light theme's first
+green measured **3.16:1** on the app background, below WCAG AA for text. It is now
+`#15803d` at **4.81:1**, with warning 4.81:1 and error 6.20:1; the dark theme runs 5.29–9.26:1.
+A regression test measures all six against their own background and fails on the old values.
+
+### Fixed — the version was never visible
+
+The footer showed a bare product name because it read the version from `/status`, which answers
+`unknown` whenever the shell does not re-export `ANTIDETECT_APP_VERSION`. The interface now
+carries its own build version and shows a real number unconditionally, upgrading it when the
+backend answers something better.
+
+### Fixed — the sidebar collapse was undiscoverable
+
+Collapsing already worked (`Ctrl/Cmd+B`, a 52px rail, remembered across restarts) but nothing
+said so. Its control is now reachable in **both** states, so an operator who collapsed it can
+see how to undo that. Verified: state stored, and after a full reload the sidebar is still
+52px with the toggle visible.
+
+### Added — one control moves every profile into the folder in use
+
+After scanning for existing data folders, **Transfer all to current folder** walks every
+discovered folder and moves its profiles into the folder currently in use. It runs
+sequentially on purpose — concurrent writers to one SQLite file corrupt it — continues past a
+folder that fails, and reports one line: how many were created, how many were already present,
+across how many folders. The per-folder controls remain for moving a single one.
+
+Verified against a live backend: on an empty destination it reported
+`Transferred 3 profiles, 0 already present (1 folders)` and the profile list went 0 → 3; a
+second run reported `0 profiles, 3 already present`.
+
 ## [0.6.7] - 2026-09-19
 
 ### Changed — the panel has no password any more

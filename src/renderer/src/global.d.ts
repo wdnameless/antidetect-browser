@@ -38,6 +38,7 @@ export interface UpdateInfo {
 }
 
 declare global {
+  const __APP_VERSION__: string;
   interface Window {
     antidetect?: {
       getApiKey: () => Promise<string>;

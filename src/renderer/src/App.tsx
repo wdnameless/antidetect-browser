@@ -192,9 +192,9 @@ export function App() {
    * check, so a background check can never start a download behind the operator's back.
    */
   const [updateFlowActive, setUpdateFlowActive] = useState<boolean>(false);
-  // Reported by the backend, not hardcoded: the footer used to claim "v0.6.0" while the
-  // service answered "0.0.1" to /status, so neither number could be trusted after a bump.
-  const [appVersion, setAppVersion] = useState<string>('');
+  // Seeded from package.json via __APP_VERSION__ so a real number always renders even if
+  // the backend answers "unknown". Upgraded when /status answers a real value.
+  const [appVersion, setAppVersion] = useState<string>(() => (typeof __APP_VERSION__ === 'string' && __APP_VERSION__ !== 'unknown' ? __APP_VERSION__ : ''));
   const [hasRunUpdateCheck, setHasRunUpdateCheck] = useState<boolean>(false);
 
   useEffect(() => {
@@ -565,8 +565,12 @@ export function App() {
       </aside>
 
       <div className="main">
+        {/* The page name is NOT here. It lives in the content area as a breadcrumb
+            (`Workspace / <Page>`), which is where the reference product puts it and where
+            the operator's eye already is. This bar carries only the drag region and the
+            window controls, which is all a frameless titlebar should own. */}
         <header className="topbar" data-tauri-drag-region="">
-          <h2 className="page-title">{activeNav ? t(activeNav.label) : 'Dashboard'}</h2>
+          <div className="topbar-drag-region" data-tauri-drag-region="" />
           {hasNativeWindow ? (
             <div className="window-controls">
               <button
@@ -607,6 +611,16 @@ export function App() {
         </header>
 
         <main className="content">
+          {/* Breadcrumb: the reference names the page here, beside that page's own search,
+              rather than in the window chrome. `Workspace` is the shell's top-level scope,
+              matching the navigation's first group. */}
+          <div className="page-breadcrumb-row">
+            <nav className="breadcrumb" aria-label={t('Breadcrumb')}>
+              <span className="breadcrumb-item">{t('Workspace')}</span>
+              <span className="breadcrumb-sep" aria-hidden="true">/</span>
+              <span className="breadcrumb-current">{activeNav ? t(activeNav.label) : 'Dashboard'}</span>
+            </nav>
+          </div>
           {activeDest.subTabs && activeDest.subTabs.length > 0 ? (
             <nav
               className="subtabs"

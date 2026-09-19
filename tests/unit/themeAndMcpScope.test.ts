@@ -86,17 +86,53 @@ describe('light theme', () => {
     expect(lum(darkText)).toBeGreaterThan(200);
   });
 
-  it('stays monochrome — no token carries a hue in either theme', () => {
+  it('stays monochrome — no token carries a hue in either theme, except status tokens', () => {
     // The project's palette is monochrome; a blue-tinted light theme would not be this product,
     // and `noirTokens.test.ts` would reject it too.
+    //
+    // Status tokens are the deliberate exception (operator decision, R06): a running profile
+    // and a failure must be distinguishable by hue, not only by brightness. The exception is
+    // named rather than pattern-matched, so it cannot widen by accident, and every other
+    // token — accent, surfaces, text, borders — is still required to be greyscale here AND in
+    // `noirTokens.test.ts`, which checks the dark theme by name.
+    const statusHueTokens = new Set(['--ok', '--ok-bg', '--warn', '--warn-bg', '--danger', '--danger-bg']);
     const offenders: string[] = [];
     for (const block of [dark, light]) {
       for (const m of block.matchAll(/(--[\w-]+)\s*:\s*(#[0-9a-fA-F]{3,6})/g)) {
+        if (statusHueTokens.has(m[1])) continue;
         const spread = chromaSpread(m[2]);
         if (spread !== null && spread > 12) offenders.push(`${m[1]}: ${m[2]}`);
       }
     }
     expect(offenders, 'tokens must be greyscale').toEqual([]);
+  });
+
+  it('gives status colours enough contrast on their own background', () => {
+    // The status tokens are the only tokens allowed hue, and the light theme initially got
+    // values that looked right but measured 3.05:1 on `--bg-app` — below WCAG AA for text.
+    // The dark green that reads well on near-black is not the green that reads on near-white,
+    // so the pair has to be measured, not eyeballed. 4.5:1 is the AA threshold for body text.
+    const relLum = (hex: string): number => {
+      const h = hex.replace('#', '');
+      const [r, g, b] = [0, 2, 4].map((i) => parseInt(h.slice(i, i + 2), 16) / 255);
+      const f = (c: number): number => (c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4);
+      return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b);
+    };
+    const contrast = (a: string, b: string): number => {
+      const [hi, lo] = [relLum(a), relLum(b)].sort((x, y) => y - x);
+      return (hi + 0.05) / (lo + 0.05);
+    };
+
+    for (const [label, block] of [['dark', dark], ['light', light]] as const) {
+      const bg = tokenValue(block, '--bg-app');
+      expect(bg, `${label} must define --bg-app`).toBeTruthy();
+      for (const token of ['--ok', '--warn', '--danger']) {
+        const value = tokenValue(block, token);
+        expect(value, `${label} must define ${token}`).toBeTruthy();
+        const ratio = contrast(value as string, bg as string);
+        expect(ratio, `${label} ${token} (${value}) on ${bg} has ${ratio.toFixed(2)}:1, needs 4.5:1`).toBeGreaterThanOrEqual(4.5);
+      }
+    }
   });
 
   it('gives the accent a foreground that inverts with it', () => {

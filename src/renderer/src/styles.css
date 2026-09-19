@@ -74,24 +74,27 @@
      fill and its label merge in one of the two themes. */
   --accent-foreground: #09090b;
 
-  /* Semantic states (monochrome values) */
-  --danger: #f4f4f5;
-  --danger-bg: rgba(255, 255, 255, 0.08);
-  --ok: #e4e4e7;
-  --ok-bg: rgba(255, 255, 255, 0.08);
-  --warn: #d4d4d8;
-  --warn-bg: rgba(255, 255, 255, 0.06);
+  /* Semantic states (status tokens carry hue; accent and identity stay monochrome) */
+  --danger: #ef4444;
+  --danger-bg: rgba(239, 68, 68, 0.14);
+  --ok: #22c55e;
+  --ok-bg: rgba(34, 197, 94, 0.14);
+  --warn: #f59e0b;
+  --warn-bg: rgba(245, 158, 11, 0.14);
 
   /* Elevation / shadows */
   --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.4);
   --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.5);
   --shadow-lg: 0 16px 40px rgba(0, 0, 0, 0.6);
 
-  /* Rationalised radius scale: none(0), sm(4px), md(6px), lg(10px), full(9999px) */
+  /* Rationalised radius scale: none(0), sm(8px), md(14px), lg(20px), full(9999px).
+     The values come from the reference product, whose own scale is 8 / 14 / 20 — adopted
+     because its surfaces read as distinctly raised cards, where our previous 4 / 6 / 10
+     made every block a hairline rectangle. */
   --radius-none: 0px;
-  --radius-sm: 4px;
-  --radius-md: 6px;
-  --radius-lg: 10px;
+  --radius-sm: 8px;
+  --radius-md: 14px;
+  --radius-lg: 20px;
   --radius-full: 9999px;
 
   /* Typography */
@@ -116,11 +119,13 @@
   --space-6: 32px;
   --space-7: 48px;
 
-  /* Density + shell metrics */
+  /* Density + shell metrics. The expanded width follows the reference's 240px, which is
+     what its navigation's 18px icons and 10px gaps were measured against; the collapsed
+     rail is ours (the reference has no collapse) and stays at 52px. */
   --row-h: 52px;
   --control-h: 32px;
   --control-h-sm: 28px;
-  --sidebar-w: 232px;
+  --sidebar-w: 240px;
   --sidebar-w-collapsed: 52px;
   --topbar-h: 48px;
 
@@ -227,13 +232,17 @@
   --accent-hover: #27272a;
   --accent-foreground: #fafafa;
 
-  /* Semantic states (monochrome values, inverted) */
-  --danger: #27272a;
-  --danger-bg: rgba(0, 0, 0, 0.06);
-  --ok: #3f3f46;
-  --ok-bg: rgba(0, 0, 0, 0.06);
-  --warn: #52525b;
-  --warn-bg: rgba(0, 0, 0, 0.05);
+  /* Semantic states. These carry hue (the one deliberate exception to the monochrome
+     palette), and they are DARKER here than in the dark theme on purpose: a green that
+     reads well on near-black has only ~3.1:1 on a near-white ground, which fails WCAG AA
+     for text. Measured on --bg-app #fafafa: ok 4.81:1, warn 4.81:1, danger 6.20:1 — all at
+     or above 4.5:1. The dark-theme values are the bright variants (5.29:1 to 9.26:1). */
+  --danger: #b91c1c;
+  --danger-bg: rgba(185, 28, 28, 0.12);
+  --ok: #15803d;
+  --ok-bg: rgba(21, 128, 61, 0.12);
+  --warn: #b45309;
+  --warn-bg: rgba(180, 83, 9, 0.12);
 
   /* Elevation: shadows are much subtler on a light surface, or they look like smudges. */
   --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.06);
@@ -930,6 +939,100 @@ pre {
   flex: 1;
   overflow-y: auto;
   padding: 24px 28px 40px;
+}
+
+/* Metric summary row. The reference lays four equal cards above the tabs; each is a raised
+   surface, a small uppercase label, and a large tabular figure. Tabular numerals matter: a
+   column of proportional digits is what makes a row of figures look ragged. */
+.metrics-row {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: var(--space-4);
+}
+
+@media (max-width: 900px) {
+  .metrics-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.metric-card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 14px 16px;
+  min-width: 0;
+}
+
+/* The first card is the page's subject, so it carries the accent ring — the reference does
+   the same, and it is what makes the row read as ordered rather than as a list. */
+.metric-card.accent {
+  border-color: var(--border-focus);
+}
+
+.metric-label {
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-semibold);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.metric-value {
+  margin-top: 4px;
+  font-size: 20px;
+  line-height: 28px;
+  font-weight: var(--weight-semibold);
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
+
+/* A running count is a live state, so it takes the semantic success hue — the only place a
+   metric is coloured, and the reason status tokens gained hue at all. */
+.metric-value.ok {
+  color: var(--ok);
+}
+
+/* Breadcrumb row. The page name lives here rather than in the window titlebar, following
+   the reference: 12px/16px medium, muted parent and full-contrast current page, with the
+   separator at low emphasis so it reads as structure rather than content. */
+.page-breadcrumb-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  margin-bottom: var(--space-4);
+}
+
+.breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+  line-height: 16px;
+  font-weight: var(--weight-medium);
+  min-width: 0;
+}
+
+.breadcrumb-item {
+  color: var(--text-secondary);
+}
+
+.breadcrumb-sep {
+  color: var(--text-muted);
+}
+
+.breadcrumb-current {
+  color: var(--text);
+  font-weight: var(--weight-semibold);
+}
+
+/* The titlebar no longer holds the page name, so the space it used is a drag surface.
+   It must stay draggable while the controls remain clickable. */
+.topbar-drag-region {
+  flex: 1;
+  align-self: stretch;
 }
 
 /* Main column + topbar. Without these the shell has no flex column and the header

@@ -193,6 +193,7 @@ export function Settings() {
   const [scanResults, setScanResults] = useState<Array<{ dir: string; profiles: number; modified: number; dbSize: number }>>([]);
   const [migrating, setMigrating] = useState(false);
   const [transferringDir, setTransferringDir] = useState<string | null>(null);
+  const [transferAllBusy, setTransferAllBusy] = useState(false);
 
   const checkKernel = (): void => {
     setKernelChecking(true);
@@ -346,6 +347,54 @@ export function Settings() {
         setTransferringDir(null);
       }
     });
+  };
+
+  /**
+   * Walk every discovered folder and transfer its profiles into the folder in use.
+   * Sequential, not parallel: /data/transfer opens the source with sql.js and writes the
+   * destination, and several concurrent writers to one SQLite file is how a database gets
+   * corrupted. One folder's failure is recorded and the rest continue.
+   */
+  const onTransferAll = async (): Promise<void> => {
+    if (transferAllBusy || transferringDir !== null) return;
+    setTransferAllBusy(true);
+    setDataDirMsg('');
+    const aggregate = {
+      folders: 0,
+      created: 0,
+      skipped: 0,
+      failures: [] as Array<{ dir: string; error: string }>
+    };
+
+    try {
+      // Sequential walk: concurrent writers to one SQLite file corrupt it.
+      for (const f of scanResults) {
+        if (f.profiles <= 0) continue;
+        aggregate.folders++;
+        try {
+          const res = await api.dataTransfer(f.dir);
+          if (res.code === 0 && res.data) {
+            aggregate.created += res.data.created;
+            aggregate.skipped += res.data.skipped;
+          } else {
+            const errMsg = res.msg || res.data?.error || t('Transfer failed');
+            aggregate.failures.push({ dir: f.dir, error: errMsg });
+          }
+        } catch (err) {
+          const errMsg = err instanceof Error ? err.message : t('Transfer failed');
+          aggregate.failures.push({ dir: f.dir, error: errMsg });
+        }
+      }
+
+      let msg = `${t('Transferred')} ${aggregate.created} profiles, ${aggregate.skipped} ${t('already present')} (${aggregate.folders} ${t('folders')})`;
+      if (aggregate.failures.length > 0) {
+        const failSuffix = aggregate.failures.map((fail) => ` — ${t('failed')}: ${fail.dir}`).join('');
+        msg += failSuffix;
+      }
+      setDataDirMsg(msg);
+    } finally {
+      setTransferAllBusy(false);
+    }
   };
 
   const onOpenLogsDir = (): void => {
@@ -625,6 +674,18 @@ export function Settings() {
                 </button>
                 {scanResults.length > 0 ? (
                   <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    {scanResults.some((f) => f.profiles > 0) ? (
+                      <div style={{ marginBottom: 4 }}>
+                        <button
+                          type="button"
+                          className="btn btn-sm primary"
+                          disabled={transferringDir !== null || transferAllBusy}
+                          onClick={() => void onTransferAll()}
+                        >
+                          {transferAllBusy ? t('Transferring all…') : t('Transfer all to current folder')}
+                        </button>
+                      </div>
+                    ) : null}
                     {scanResults.map((f) => (
                       <div key={f.dir} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, fontSize: 12.5 }}>
                         <span style={{ color: 'var(--text-secondary)', wordBreak: 'break-all' }}>
@@ -639,7 +700,7 @@ export function Settings() {
                           <button
                             type="button"
                             className="btn btn-sm"
-                            disabled={f.profiles <= 0 || transferringDir !== null}
+                            disabled={f.profiles <= 0 || transferringDir !== null || transferAllBusy}
                             onClick={() => {
                               setTransferringDir(f.dir);
                               setDataDirMsg('');
