@@ -525,13 +525,25 @@ router.post('/api/v1/data/transfer', async (req, res) => {
               : undefined;
 
           if (existingRow) {
-            // Source-wins upsert for profiles: update differing non-key columns from the source row
+            // Source-wins upsert for profiles: update differing non-key columns from the source row.
+            //
+            // Some columns describe the RUNNING installation rather than the profile, and the
+            // source folder is a snapshot of a different machine at a different time. Copying
+            // them would report this installation's state from someone else's row: `status`
+            // would mark a profile that is open right here as `closed`, `updated_at` would
+            // claim it was last touched then, and `created_at` would rewrite its history. The
+            // repository already treats a running profile as untouchable for maintenance
+            // (`rotateFingerprints` skips it with error 'running'); a transfer is not an
+            // exception to that, so the live columns are left exactly as the destination holds
+            // them and everything the operator actually moves — name, proxy, fingerprint,
+            // device, launch args, colour — comes from the source.
+            const LIVE_COLUMNS = new Set(['status', 'created_at', 'updated_at']);
             const differingCols: string[] = [];
             const updateParams: unknown[] = [];
 
             for (let i = 0; i < commonCols.length; i++) {
               const colName = commonCols[i];
-              if (colName === 'id') continue;
+              if (colName === 'id' || (table === 'profiles' && LIVE_COLUMNS.has(colName))) continue;
               const srcVal = rowValues[i];
               const dstVal = existingRow[colName];
               const valuesDiffer =

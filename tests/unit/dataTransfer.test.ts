@@ -258,6 +258,41 @@ describe('POST /api/v1/data/transfer', () => {
     const updated = getDb().prepare("SELECT name FROM profiles WHERE id = 'p-same'").get() as { name: string };
     expect(updated.name).toBe('Overwritten Source Name');
   });
+
+  it('a transfer does not rewrite the live state of a profile that is running here', async () => {
+    // The source folder is a snapshot of another machine, so its `status` describes THAT machine.
+    // Copying it would mark a profile that is open right here as closed — the same rule the
+    // repository already applies to maintenance, where a running profile is skipped untouched.
+    const dstDb = getDb();
+    dstDb
+      .prepare(
+        "INSERT INTO profiles (id, name, status, created_at, updated_at) VALUES ('p-live','Old Name','running',111,222)",
+      )
+      .run();
+
+    const from = saveSource((db) => {
+      db.exec(`
+        CREATE TABLE profiles (id TEXT PRIMARY KEY, name TEXT, status TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
+        INSERT INTO profiles VALUES ('p-live','Source Name','closed',1,1);
+      `);
+    });
+
+    const body = await post(from);
+    expect(body.code).toBe(0);
+    expect(body.data.updated).toBe(1);
+
+    const row = getDb()
+      .prepare("SELECT name, status, created_at, updated_at FROM profiles WHERE id = 'p-live'")
+      .get() as { name: string; status: string; created_at: number; updated_at: number };
+
+    // The operator's data comes from the source...
+    expect(row.name).toBe('Source Name');
+    // ...but the live state stays this installation's.
+    expect(row.status).toBe('running');
+    expect(row.created_at).toBe(111);
+    expect(row.updated_at).toBe(222);
+  });
+
   it('carries profile-keyed dependent rows and reports dependents > 0', async () => {
     const from = saveSource((db) => {
       db.exec(`

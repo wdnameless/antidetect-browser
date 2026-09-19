@@ -45,6 +45,13 @@ the signed artifact persisted on disk, so a restart could never verify what the 
 The key is now durable (DPAPI-protected, under the data folder), the envelope excludes itself,
 and a signature naming a key this installation no longer holds is regenerated instead of refused.
 
+**A transfer no longer rewrites a profile's live state.** The source folder is a snapshot of
+another machine, so its `status` describes THAT machine: copying it marked a profile that is open
+right here as `closed`, and rewrote `created_at`. `status`, `created_at` and `updated_at` now stay
+as the destination holds them, matching the rule the repository already applies to maintenance,
+where a running profile is skipped untouched. Everything the operator moves — name, proxy,
+fingerprint, device, launch args, colour — still comes from the source.
+
 **`digest-mismatch` still aborts the launch.** That reason is the tamper signal, not a stale key:
 regenerating there would discard the evidence and run our code in place of bytes someone altered.
 Only `key-not-found` rebuilds. Verified: an artifact whose `stealth.js` gained 29 bytes after
