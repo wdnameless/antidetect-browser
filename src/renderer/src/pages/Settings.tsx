@@ -194,6 +194,7 @@ export function Settings() {
   const [migrating, setMigrating] = useState(false);
   const [transferringDir, setTransferringDir] = useState<string | null>(null);
   const [transferAllBusy, setTransferAllBusy] = useState(false);
+  const [deletingDir, setDeletingDir] = useState<string | null>(null);
 
   const checkKernel = (): void => {
     setKernelChecking(true);
@@ -334,10 +335,11 @@ export function Settings() {
       try {
         const res = await api.dataTransfer(picked.dir);
         if (res.code === 0 && res.data) {
-          const { created, skipped } = res.data;
+          const { created, skipped, workspaces } = res.data;
           const transferredPart = `${t('Transferred')} ${created} ${created === 1 ? 'profile' : 'profiles'}`;
           const skippedPart = skipped > 0 ? `, ${skipped} ${t('already present')}` : '';
-          setDataDirMsg(`${transferredPart}${skippedPart} (${t('open Profiles to see them')})`);
+          const sessionsPart = `, ${workspaces ?? 0} ${t('browser workspaces copied')}`;
+          setDataDirMsg(`${transferredPart}${skippedPart}${sessionsPart} (${t('open Profiles to see them')})`);
         } else {
           setDataDirMsg(res.msg || res.data?.error || t('Transfer failed'));
         }
@@ -363,6 +365,7 @@ export function Settings() {
       folders: 0,
       created: 0,
       skipped: 0,
+      workspaces: 0,
       failures: [] as Array<{ dir: string; error: string }>
     };
 
@@ -376,6 +379,7 @@ export function Settings() {
           if (res.code === 0 && res.data) {
             aggregate.created += res.data.created;
             aggregate.skipped += res.data.skipped;
+            aggregate.workspaces += res.data.workspaces ?? 0;
           } else {
             const errMsg = res.msg || res.data?.error || t('Transfer failed');
             aggregate.failures.push({ dir: f.dir, error: errMsg });
@@ -386,7 +390,10 @@ export function Settings() {
         }
       }
 
-      let msg = `${t('Transferred')} ${aggregate.created} profiles, ${aggregate.skipped} ${t('already present')} (${aggregate.folders} ${t('folders')})`;
+      // The workspace count is part of the report, not decoration: it is the number of
+      // profiles whose logins and cookies came across. Reporting only the row count is how a
+      // transfer that moved metadata and no sessions read as a success.
+      let msg = `${t('Transferred')} ${aggregate.created} profiles, ${aggregate.skipped} ${t('already present')} (${aggregate.folders} ${t('folders')}), ${aggregate.workspaces} ${t('browser workspaces copied')}`;
       if (aggregate.failures.length > 0) {
         const failSuffix = aggregate.failures.map((fail) => ` — ${t('failed')}: ${fail.dir}`).join('');
         msg += failSuffix;
@@ -395,6 +402,66 @@ export function Settings() {
     } finally {
       setTransferAllBusy(false);
     }
+  };
+
+  /**
+   * Scan for data folders, on demand and after a deletion.
+   *
+   * Extracted from the button so the delete control can re-run it: the operator asked for a
+   * working re-scan after removal, and a deleted row that stays on screen until a manual
+   * refresh looks like the deletion failed.
+   */
+  const runScan = (): void => {
+    setScanBusy(true);
+    setScanResults([]);
+    void import('../api').then(({ api }) =>
+      api.dataScan()
+        .then((r) => {
+          setScanBusy(false);
+          if (r.code === 0) setScanResults(r.data.found.filter((f) => !f.isCurrent));
+        })
+        .catch(() => setScanBusy(false))
+    );
+  };
+
+  /**
+   * Move an old data folder to the Recycle Bin, then re-scan.
+   *
+   * The confirmation names the folder and says it goes to the Recycle Bin, because the two
+   * facts the operator needs before agreeing are *which* folder and whether it is recoverable.
+   * The server refuses when the folder still holds profiles that are not in the one in use;
+   * that refusal arrives as a message and is shown unchanged rather than paraphrased.
+   */
+  const onDeleteFolder = (dir: string, profiles: number): void => {
+    const ok = window.confirm(
+      `${t('Move this folder to the Recycle Bin?')}\n\n${dir}\n\n` +
+        `${profiles} ${profiles === 1 ? 'profile' : 'profiles'} — ${t('it can be restored from the Recycle Bin.')}`
+    );
+    if (!ok) return;
+    setDeletingDir(dir);
+    setDataDirMsg('');
+    void import('../api').then(({ api }) => {
+      api
+        .dataDelete(dir)
+        .then((res) => {
+          if (res.code === 0 && res.data?.ok) {
+            setDataDirMsg(`${t('Folder moved to the Recycle Bin')}: ${dir}`);
+            // Re-scan so the removed folder disappears; that is the visible proof it worked.
+            runScan();
+          } else {
+            const reason = res.data?.reason;
+            if (reason === 'not-transferred') {
+              setDataDirMsg(
+                `${t('This folder still holds profiles that are not in the folder in use')}: ${res.data?.missing ?? 0}. ${t('Transfer it first.')}`
+              );
+            } else {
+              setDataDirMsg(res.msg || t('Could not delete the folder'));
+            }
+          }
+        })
+        .catch((err: unknown) => setDataDirMsg(err instanceof Error ? err.message : t('Could not delete the folder')))
+        .finally(() => setDeletingDir(null));
+    });
   };
 
   const onOpenLogsDir = (): void => {
@@ -658,16 +725,7 @@ export function Settings() {
                   type="button"
                   className="btn"
                   disabled={scanBusy}
-                  onClick={() => {
-                    setScanBusy(true);
-                    setScanResults([]);
-                    void import('../api').then(({ api }) =>
-                      api.dataScan().then((r) => {
-                        setScanBusy(false);
-                        if (r.code === 0) setScanResults(r.data.found.filter((f) => !f.isCurrent));
-                      }).catch(() => setScanBusy(false))
-                    );
-                  }}
+                  onClick={runScan}
                 >
                   <RefreshIcon size={14} />
                   <span>{scanBusy ? t('Scanning…') : t('Scan for existing data folders')}</span>
@@ -744,6 +802,17 @@ export function Settings() {
                             }}
                           >
                             {t('Use this folder')}
+                          </button>
+                          {/* Delete the leftover folder once its profiles are here. The server
+                              refuses while any profile in it is missing from the folder in use,
+                              so the guard cannot be bypassed from this button. */}
+                          <button
+                            type="button"
+                            className="btn btn-sm"
+                            disabled={deletingDir !== null || transferringDir !== null || transferAllBusy}
+                            onClick={() => onDeleteFolder(f.dir, f.profiles)}
+                          >
+                            {deletingDir === f.dir ? t('Deleting…') : t('Delete folder')}
                           </button>
                         </div>
                       </div>

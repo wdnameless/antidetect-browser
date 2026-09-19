@@ -670,9 +670,21 @@ export const api = {
       '/api/v1/data/scan'
     ),
   dataTransfer: (from: string) =>
-    request<{ ok: boolean; from: string; created: number; skipped: number; dependencies: number; error?: string }>(
+    request<{ ok: boolean; from: string; created: number; skipped: number; dependencies: number; workspaces: number; workspace_failures: Array<{ id: string; error: string }>; error?: string }>(
       '/api/v1/data/transfer',
       { method: 'POST', body: JSON.stringify({ from }) }
+    ),
+  /**
+   * Remove an old data folder after its profiles are in the folder in use.
+   *
+   * The server refuses unless every profile in that folder already exists here, so the
+   * `reason` it answers with is what the message should say — the UI does not need to
+   * re-derive the rule, only to report it.
+   */
+  dataDelete: (dir: string) =>
+    request<{ ok: boolean; dir: string; reason: string; recycled?: boolean; missing?: number }>(
+      '/api/v1/data/delete',
+      { method: 'POST', body: JSON.stringify({ dir }) }
     ),
   // First-run data location. The backend owns both the "is a choice due?" rule and the
   // writability check, so the UI never has to second-guess where data will land.

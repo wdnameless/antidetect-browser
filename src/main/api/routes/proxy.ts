@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import * as fs from 'fs';
 import * as path from 'path';
+import * as childProcess from 'child_process';
 import * as xm from '../../proxy/proxyManager';
 import * as pm from '../../profiles/profileManager';
 import { listBackups, restoreBackup } from '../../util/backupManager';
@@ -495,6 +496,45 @@ router.post('/api/v1/data/transfer', async (req, res) => {
 
     flushDb();
 
+    /**
+     * Bring the profiles' browser state across, not just their rows.
+     *
+     * The rows above are metadata; the sessions are on disk. A profile's logins and cookies
+     * live in `profiles/<id>/Default/{Cookies,Login Data,Local Storage}`, and `cookies_json`
+     * is typically NULL — measured on this machine, three source profiles carried none, while
+     * one workspace held 8.5 MB of real browser state. Copying rows alone produces a profile
+     * that still lists and still launches, but as a brand-new browser with every login gone,
+     * which is silent data loss rather than a transfer.
+     *
+     * Merge, never overwrite: `force: false, errorOnExist: false` fills in what the
+     * destination lacks and leaves whatever it already holds. The folder in use is the
+     * authoritative copy for a profile it already has.
+     *
+     * A workspace that cannot be copied is reported, not fatal: the rows are already
+     * committed, and refusing the whole transfer would leave the operator with neither a
+     * clear result nor a usable one. The count is what tells them whether to look.
+     */
+    let workspaces = 0;
+    const workspaceFailures: Array<{ id: string; error: string }> = [];
+    const srcProfilesDir = path.join(resolvedFrom, 'profiles');
+    const dstProfilesDir = path.join(currentDataDir, 'profiles');
+    if (fs.existsSync(srcProfilesDir)) {
+      for (const entry of fs.readdirSync(srcProfilesDir)) {
+        const src = path.join(srcProfilesDir, entry);
+        try {
+          if (!fs.statSync(src).isDirectory()) continue;
+          fs.cpSync(src, path.join(dstProfilesDir, entry), {
+            recursive: true,
+            force: false,
+            errorOnExist: false,
+          });
+          workspaces += 1;
+        } catch (err) {
+          workspaceFailures.push({ id: entry, error: (err as Error).message });
+        }
+      }
+    }
+
     res.json({
       code: 0,
       msg: 'success',
@@ -504,6 +544,8 @@ router.post('/api/v1/data/transfer', async (req, res) => {
         created,
         skipped,
         dependencies,
+        workspaces,
+        workspace_failures: workspaceFailures,
       },
     });
   } catch (err) {
@@ -517,6 +559,8 @@ router.post('/api/v1/data/transfer', async (req, res) => {
         created: 0,
         skipped: 0,
         dependencies: 0,
+        workspaces: 0,
+        workspace_failures: [],
         error: (err as Error).message,
       },
     });
@@ -525,6 +569,156 @@ router.post('/api/v1/data/transfer', async (req, res) => {
       sourceDb.close();
     } catch {}
   }
+});
+
+const deleteDataFolderSchema = z.object({ dir: z.string().min(1) });
+
+/**
+ * POST /api/v1/data/delete
+ *
+ * Removes an old data folder the operator has already transferred out of — the second half of
+ * "transfer, then get rid of the leftovers". The guards live here rather than in the button
+ * that calls it: a UI check is a convenience, this one is the rule.
+ *
+ *   1. Never the folder in use.
+ *   2. Must exist and look like a data folder (has `antidetect.db` or `profiles/`), so a typo
+ *      cannot target an unrelated directory.
+ *   3. Every profile id in that folder's database must already exist in the current one. This
+ *      is the operator's own condition — "после того как перенёс в основную" — and the only
+ *      safe form of it: comparing counts would pass two folders that hold different profiles.
+ *
+ * Deletion goes to the Recycle Bin on Windows. Permanent, unrecoverable removal of someone's
+ * browser profile data should not be one click away; the Recycle Bin keeps the mistake
+ * reversible, which is what makes the control safe to put in a row.
+ */
+router.post('/api/v1/data/delete', async (req, res) => {
+  const parsed = deleteDataFolderSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.json({ code: -1, msg: 'invalid body: dir is required', data: { ok: false, dir: '', reason: 'invalid' } });
+    return;
+  }
+
+  const target = path.resolve(parsed.data.dir);
+  const currentDataDir = path.resolve(getDataDir() || DATA_DIR);
+
+  if (target.toLowerCase() === currentDataDir.toLowerCase()) {
+    res.json({
+      code: -1,
+      msg: 'refusing to delete the data folder in use',
+      data: { ok: false, dir: parsed.data.dir, reason: 'current' },
+    });
+    return;
+  }
+
+  if (!fs.existsSync(target)) {
+    res.json({
+      code: -1,
+      msg: 'folder does not exist',
+      data: { ok: false, dir: parsed.data.dir, reason: 'missing' },
+    });
+    return;
+  }
+
+  // A data folder, not merely a path that happens to exist. `profiles/` alone counts because a
+  // folder whose database was already moved away still holds workspaces worth recovering.
+  const dbPath = path.join(target, 'antidetect.db');
+  const hasDb = fs.existsSync(dbPath);
+  const hasProfilesDir = fs.existsSync(path.join(target, 'profiles'));
+  if (!hasDb && !hasProfilesDir) {
+    res.json({
+      code: -1,
+      msg: 'not a data folder: no antidetect.db and no profiles directory',
+      data: { ok: false, dir: parsed.data.dir, reason: 'not-a-data-folder' },
+    });
+    return;
+  }
+
+  /**
+   * Guard 3: everything in there must already be here. Read with sql.js, matching the transfer
+   * route, so a database the destination can read is a database this can read.
+   */
+  if (hasDb) {
+    try {
+      const SQL = await initSqlJs();
+      const srcDb = new SQL.Database(fs.readFileSync(dbPath));
+      let sourceIds: string[] = [];
+      try {
+        const q = srcDb.exec('SELECT id FROM profiles');
+        sourceIds = q.length ? q[0].values.map((v) => String(v[0])) : [];
+      } finally {
+        srcDb.close();
+      }
+
+      const dstDb = getDb();
+      const missing: string[] = [];
+      for (const id of sourceIds) {
+        const present = dstDb.prepare('SELECT 1 AS present FROM profiles WHERE id = ?').get(id) as
+          | { present?: number }
+          | undefined;
+        if (present?.present !== 1) missing.push(id);
+      }
+
+      if (missing.length > 0) {
+        res.json({
+          code: -1,
+          msg: `${missing.length} profile(s) in this folder are not in the folder in use`,
+          data: { ok: false, dir: parsed.data.dir, reason: 'not-transferred', missing: missing.length },
+        });
+        return;
+      }
+    } catch (err) {
+      res.json({
+        code: -1,
+        msg: `could not read the folder's database: ${(err as Error).message}`,
+        data: { ok: false, dir: parsed.data.dir, reason: 'unreadable' },
+      });
+      return;
+    }
+  }
+
+  if (process.platform !== 'win32') {
+    res.json({
+      code: -1,
+      msg: 'deleting a data folder is only supported on Windows, where it can go to the Recycle Bin',
+      data: { ok: false, dir: parsed.data.dir, reason: 'unsupported-platform' },
+    });
+    return;
+  }
+
+  try {
+    // A path embedded in a PowerShell single-quoted string needs its own quotes doubled.
+    const psPath = target.replace(/'/g, "''");
+    childProcess.execFileSync(
+      'powershell',
+      [
+        '-NoProfile',
+        '-NonInteractive',
+        '-Command',
+        `Add-Type -AssemblyName Microsoft.VisualBasic; [Microsoft.VisualBasic.FileIO.FileSystem]::DeleteDirectory('${psPath}','OnlyErrorDialogs','SendToRecycleBin')`,
+      ],
+      { timeout: 120_000, windowsHide: true },
+    );
+  } catch (err) {
+    res.json({
+      code: -1,
+      msg: `could not move the folder to the Recycle Bin: ${(err as Error).message}`,
+      data: { ok: false, dir: parsed.data.dir, reason: 'recycle-failed' },
+    });
+    return;
+  }
+
+  // Say what actually happened rather than assuming the call did what it was asked. A silent
+  // no-op here would leave the row on screen with nothing explaining why it stayed.
+  if (fs.existsSync(target)) {
+    res.json({
+      code: -1,
+      msg: 'the folder is still on disk after the Recycle Bin operation',
+      data: { ok: false, dir: parsed.data.dir, reason: 'still-present' },
+    });
+    return;
+  }
+
+  res.json({ code: 0, msg: 'success', data: { ok: true, dir: parsed.data.dir, reason: 'deleted', recycled: true } });
 });
 
 const restoreSchema = z.object({ name: z.string().regex(/^antidetect-\d{4}-\d{2}-\d{2}-\d{2}-\d{2}\.db$|^antidetect-[\w.-]+\.db$/) });

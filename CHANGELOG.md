@@ -1,5 +1,45 @@
 # Changelog
 
+## [0.6.10] - 2026-09-19
+
+### Added — delete an old data folder once its profiles are in the one in use
+
+A **Delete folder** control sits beside each scanned folder, next to the transfer button. It
+moves the folder to the **Recycle Bin** rather than deleting it permanently, and the
+confirmation says so — the mistake stays reversible, which is what makes the control safe to
+put one click away from live browser data.
+
+The rule the operator asked for — "after I have moved them into the main one" — is enforced on
+the server, not by the button: every profile id in that folder must already exist in the
+folder in use, or the request is refused with the count of what is still missing. Two more
+guards sit beside it: the folder in use can never be the target, and a path that is not a data
+folder (no `antidetect.db`, no `profiles/`) is refused before anything is touched.
+
+**The scan runs again by itself after a deletion.** A removed row that lingered until a manual
+refresh looked like a failed delete; the list now re-scans and the row disappears, which is
+the visible proof it worked.
+
+### Fixed — a transfer copied profiles without their sessions
+
+`POST /api/v1/data/transfer` imported database rows and nothing else. A profile's logins and
+cookies are not in those rows — they live in `profiles/<id>/Default/{Cookies,Login Data,Local
+Storage}` — and `cookies_json` is empty for a typical profile. Measured on this machine: a
+9.0 MB source folder was 8.5 MB of one profile workspace holding a `Login Data` file, while all
+three of its profile rows carried no cookies at all.
+
+So a transfer produced profiles that listed and launched as brand-new browsers with every
+login gone, and said "Transferred 3 profiles". Deletion is what would have made that
+irreversible, which is why both are in this release: the transfer now merges the workspace
+with it (`force: false`, so the folder in use is never overwritten by a stale copy) and reports
+how many came across — `Transferred 1 profiles, 3 already present (1 folders), 1 browser
+workspaces copied`. A workspace that cannot be copied is reported rather than failing the run.
+
+Verified against a live backend on Windows: deleting before the transfer was refused with
+`1 profile(s) in this folder are not in the folder in use`; the folder in use and a non-data
+directory were both refused with nothing touched; after the transfer the delete succeeded, the
+source was gone, and the session files were present under the folder in use. `npm test` 132
+files / 1089 passed.
+
 ## [0.6.9] - 2026-09-19
 
 ### Removed — the sidebar can no longer be collapsed

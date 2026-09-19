@@ -22,6 +22,8 @@ interface TransferEnvelope {
     created: number;
     skipped: number;
     dependencies: number;
+    workspaces: number;
+    workspace_failures: Array<{ id: string; error: string }>;
     error?: string;
   };
 }
@@ -115,6 +117,49 @@ describe('POST /api/v1/data/transfer', () => {
       INSERT INTO profiles VALUES ('p2','Profile 2','g1','px1','fp1','d1','chromium',NULL,NULL,'closed', 1700000000000, 1700000000000);
     `);
   };
+
+  /**
+   * The rows are metadata; the sessions are on disk. A profile's logins and cookies live in
+   * `profiles/<id>/Default/{Cookies,Login Data,Local Storage}`, and `cookies_json` is
+   * typically NULL. Copying rows alone produces a profile that lists and launches as a
+   * brand-new browser with every login gone — which is why deletion is only safe once the
+   * workspace comes across too.
+   */
+  it('copies the profile workspaces, not just the rows', async () => {
+    const from = saveSource(fullSchemaSource);
+    fs.mkdirSync(path.join(from, 'profiles', 'p1', 'Default'), { recursive: true });
+    fs.writeFileSync(path.join(from, 'profiles', 'p1', 'Default', 'Login Data'), 'session-bytes');
+    fs.mkdirSync(path.join(from, 'profiles', 'p2', 'Default'), { recursive: true });
+    fs.writeFileSync(path.join(from, 'profiles', 'p2', 'Default', 'Cookies'), 'cookie-bytes');
+
+    const body = await post(from);
+
+    expect(body.code).toBe(0);
+    expect(body.data.workspaces).toBe(2);
+    expect(body.data.workspace_failures).toEqual([]);
+    expect(fs.readFileSync(path.join(getDataDir(), 'profiles', 'p1', 'Default', 'Login Data'), 'utf8')).toBe(
+      'session-bytes'
+    );
+    expect(fs.readFileSync(path.join(getDataDir(), 'profiles', 'p2', 'Default', 'Cookies'), 'utf8')).toBe('cookie-bytes');
+  });
+
+  /**
+   * A second transfer must not overwrite the folder in use: for a profile the destination
+   * already has, its own workspace is the authoritative one and the source is the stale copy.
+   */
+  it('does not overwrite an existing destination workspace', async () => {
+    const from = saveSource(fullSchemaSource);
+    fs.mkdirSync(path.join(from, 'profiles', 'p1', 'Default'), { recursive: true });
+    fs.writeFileSync(path.join(from, 'profiles', 'p1', 'Default', 'Cookies'), 'source-older');
+
+    const destCookie = path.join(getDataDir(), 'profiles', 'p1', 'Default', 'Cookies');
+    fs.mkdirSync(path.dirname(destCookie), { recursive: true });
+    fs.writeFileSync(destCookie, 'destination-newer');
+
+    await post(from);
+
+    expect(fs.readFileSync(destCookie, 'utf8')).toBe('destination-newer');
+  });
 
   it('transfers into an empty destination: creates every profile AND its dependencies', async () => {
     const from = saveSource(fullSchemaSource);
