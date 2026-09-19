@@ -136,6 +136,7 @@ describe('POST /api/v1/data/transfer', () => {
 
     expect(body.code).toBe(0);
     expect(body.data.workspaces).toBe(2);
+    expect(body.data.workspaces_verified).toBe(2);
     expect(body.data.workspace_failures).toEqual([]);
     expect(fs.readFileSync(path.join(getDataDir(), 'profiles', 'p1', 'Default', 'Login Data'), 'utf8')).toBe(
       'session-bytes'
@@ -211,14 +212,32 @@ describe('POST /api/v1/data/transfer', () => {
     const first = await post(from);
     expect(first.data.created).toBe(2);
     expect(first.data.skipped).toBe(0);
-
     const second = await post(from);
     expect(second.data.created).toBe(0);
+    expect(second.data.updated).toBe(0);
     expect(second.data.skipped).toBe(2);
     expect(second.data.dependencies).toBe(0);
   });
 
-  it('destination profile whose id also exists in the source keeps its own values and is counted as skipped', async () => {
+  it('an already-identical row reports skipped and does not appear in updated', async () => {
+    const dstDb = getDb();
+    dstDb.prepare("INSERT INTO profiles (id, name, created_at, updated_at) VALUES ('p-ident','Same Name',100,100)").run();
+
+    const from = saveSource((db) => {
+      db.exec(`
+        CREATE TABLE profiles (id TEXT PRIMARY KEY, name TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
+        INSERT INTO profiles VALUES ('p-ident','Same Name',100,100);
+      `);
+    });
+
+    const body = await post(from);
+    expect(body.code).toBe(0);
+    expect(body.data.created).toBe(0);
+    expect(body.data.updated).toBe(0);
+    expect(body.data.skipped).toBe(1);
+  });
+
+  it('destination profile whose id also exists in the source replaces stale name with source name and is counted as updated', async () => {
     const dstDb = getDb();
     dstDb.prepare("INSERT INTO profiles (id, name, created_at, updated_at) VALUES ('p-same','Original Dest Name',1,1)").run();
 
@@ -233,10 +252,75 @@ describe('POST /api/v1/data/transfer', () => {
     const body = await post(from);
     expect(body.code).toBe(0);
     expect(body.data.created).toBe(1);
-    expect(body.data.skipped).toBe(1);
+    expect(body.data.updated).toBe(1);
+    expect(body.data.skipped).toBe(0);
 
-    const preserved = getDb().prepare("SELECT name FROM profiles WHERE id = 'p-same'").get() as { name: string };
-    expect(preserved.name).toBe('Original Dest Name');
+    const updated = getDb().prepare("SELECT name FROM profiles WHERE id = 'p-same'").get() as { name: string };
+    expect(updated.name).toBe('Overwritten Source Name');
+  });
+  it('carries profile-keyed dependent rows and reports dependents > 0', async () => {
+    const from = saveSource((db) => {
+      db.exec(`
+        CREATE TABLE profiles (id TEXT PRIMARY KEY, name TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
+        CREATE TABLE extensions (id TEXT PRIMARY KEY, name TEXT NOT NULL, version TEXT, enabled INTEGER);
+        CREATE TABLE profile_extensions (profile_id TEXT NOT NULL, extension_id TEXT NOT NULL, launch_args TEXT, PRIMARY KEY(profile_id, extension_id));
+        CREATE TABLE tags (id TEXT PRIMARY KEY, name TEXT NOT NULL);
+        CREATE TABLE profile_tags (profile_id TEXT NOT NULL, tag_id TEXT NOT NULL, PRIMARY KEY(profile_id, tag_id));
+
+        INSERT INTO extensions VALUES ('ext-1', 'UBlock', '1.0', 1);
+        INSERT INTO tags VALUES ('tag-1', 'Crypto');
+        INSERT INTO profiles VALUES ('p-dep', 'Dep Profile', 1, 1);
+        INSERT INTO profile_extensions VALUES ('p-dep', 'ext-1', '--arg');
+        INSERT INTO profile_tags VALUES ('p-dep', 'tag-1');
+      `);
+    });
+
+    const body = await post(from);
+    expect(body.code).toBe(0);
+    expect(body.data.created).toBe(1);
+    expect(body.data.dependencies).toBe(1); // ext-1
+    expect(body.data.dependents).toBe(2); // profile_extensions + profile_tags
+
+    const extRow = getDb().prepare("SELECT * FROM profile_extensions WHERE profile_id = 'p-dep'").get() as {
+      extension_id: string;
+      launch_args: string;
+    };
+    expect(extRow).toBeDefined();
+    expect(extRow.extension_id).toBe('ext-1');
+    expect(extRow.launch_args).toBe('--arg');
+
+    const tagRow = getDb().prepare("SELECT * FROM profile_tags WHERE profile_id = 'p-dep'").get() as {
+      tag_id: string;
+    };
+    expect(tagRow).toBeDefined();
+    expect(tagRow.tag_id).toBe('tag-1');
+  });
+
+  it('a source row that the destination must refuse errors instead of reporting success', async () => {
+    // Destination profiles table has:
+    // CREATE TABLE profiles (id TEXT PRIMARY KEY, ...);
+    // Destination also has foreign keys or constraints. But in proxy.ts, if an insert fails and the row
+    // does NOT exist in destination, it throws:
+    // `${table} row ${String(rowId)} could not be imported and is not already present — the insert was refused by the destination schema`
+    // For instance, a destination table with a UNIQUE constraint or NOT NULL column without a default where filler cannot satisfy,
+    // OR a dependent table row referencing a non-existent foreign key when foreign_keys = ON:
+    const dstDb = getDb();
+    dstDb.exec('CREATE TABLE strict_table (id TEXT PRIMARY KEY, value TEXT NOT NULL CHECK(length(value) > 5))');
+    // Or in profiles table itself, insert a row that violates destination CHECK or NOT NULL constraint or trigger:
+    dstDb.exec('CREATE TRIGGER fail_on_bad_profile BEFORE INSERT ON profiles WHEN NEW.name = "REFUSED_NAME" BEGIN SELECT RAISE(ABORT, "refused by schema trigger"); END;');
+
+    const from = saveSource((db) => {
+      db.exec(`
+        CREATE TABLE profiles (id TEXT PRIMARY KEY, name TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
+        INSERT INTO profiles VALUES ('p-refused', 'REFUSED_NAME', 1, 1);
+      `);
+    });
+
+    const body = await post(from);
+    expect(body.code).toBe(-1);
+    expect(body.data.ok).toBe(false);
+    expect(body.data.created).toBe(0);
+    expect(body.data.error).toMatch(/refused/i);
   });
 
   it('source profile with a dangling FK is still created', async () => {

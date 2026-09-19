@@ -86,8 +86,19 @@ export function computeFileMd5(filePath: string): string {
 
 /**
  * Compute file manifest (relative path -> md5) for a directory.
+ *
+ * `exclude` names files that must not appear in the manifest. A signature must never cover
+ * itself: the envelope is written *after* this manifest is built, so including the envelope's
+ * own file records the PREVIOUS envelope's digest, and the write that follows invalidates it.
+ * The first signature therefore verifies and every re-signature fails with `digest-mismatch` —
+ * an artifact that can be signed once and never again. Stealth extensions are re-signed on
+ * regeneration, which is how this surfaced.
  */
-export function buildDirectoryMd5Manifest(dirPath: string): Record<string, string> {
+export function buildDirectoryMd5Manifest(
+  dirPath: string,
+  exclude: readonly string[] = [],
+): Record<string, string> {
+  const excluded = new Set(exclude.map((e) => e.replace(/\\/g, '/')));
   const result: Record<string, string> = {};
   function walk(current: string, rel: string) {
     const entries = fs.readdirSync(current, { withFileTypes: true });
@@ -99,6 +110,7 @@ export function buildDirectoryMd5Manifest(dirPath: string): Record<string, strin
       if (entry.isDirectory()) {
         walk(fullPath, normalizedRel);
       } else if (entry.isFile()) {
+        if (excluded.has(normalizedRel)) continue;
         result[normalizedRel] = computeFileMd5(fullPath);
       }
     }

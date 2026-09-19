@@ -308,7 +308,19 @@ router.post('/api/v1/data/transfer', async (req, res) => {
     res.json({
       code: -1,
       msg: 'invalid body: from is required',
-      data: { ok: false, from: '', created: 0, skipped: 0, dependencies: 0, error: 'invalid body: from is required' },
+      data: {
+        ok: false,
+        from: '',
+        created: 0,
+        updated: 0,
+        skipped: 0,
+        dependencies: 0,
+        dependents: 0,
+        workspaces: 0,
+        workspaces_verified: 0,
+        workspace_failures: [],
+        error: 'invalid body: from is required',
+      },
     });
     return;
   }
@@ -321,7 +333,19 @@ router.post('/api/v1/data/transfer', async (req, res) => {
     res.json({
       code: -1,
       msg: 'source is the data folder in use',
-      data: { ok: false, from: fromDir, created: 0, skipped: 0, dependencies: 0, error: 'source is the data folder in use' },
+      data: {
+        ok: false,
+        from: fromDir,
+        created: 0,
+        updated: 0,
+        skipped: 0,
+        dependencies: 0,
+        dependents: 0,
+        workspaces: 0,
+        workspaces_verified: 0,
+        workspace_failures: [],
+        error: 'source is the data folder in use',
+      },
     });
     return;
   }
@@ -331,7 +355,19 @@ router.post('/api/v1/data/transfer', async (req, res) => {
     res.json({
       code: -1,
       msg: 'source database missing',
-      data: { ok: false, from: fromDir, created: 0, skipped: 0, dependencies: 0, error: 'source database missing' },
+      data: {
+        ok: false,
+        from: fromDir,
+        created: 0,
+        updated: 0,
+        skipped: 0,
+        dependencies: 0,
+        dependents: 0,
+        workspaces: 0,
+        workspaces_verified: 0,
+        workspace_failures: [],
+        error: 'source database missing',
+      },
     });
     return;
   }
@@ -351,8 +387,13 @@ router.post('/api/v1/data/transfer', async (req, res) => {
         ok: false,
         from: fromDir,
         created: 0,
+        updated: 0,
         skipped: 0,
         dependencies: 0,
+        dependents: 0,
+        workspaces: 0,
+        workspaces_verified: 0,
+        workspace_failures: [],
         error: `source database unreadable or corrupt: ${(err as Error).message}`,
       },
     });
@@ -417,11 +458,14 @@ router.post('/api/v1/data/transfer', async (req, res) => {
       return '';
     };
 
-    const tablesInFkOrder = ['groups', 'proxies', 'fingerprints', 'devices', 'profiles'];
+    const dependencyTables = ['groups', 'proxies', 'fingerprints', 'devices', 'extensions'];
+    const profileKeyedTables = ['profile_extensions', 'profile_tags'];
+    const tablesInFkOrder = [...dependencyTables, 'profiles', ...profileKeyedTables];
     let created = 0;
+    let updated = 0;
     let skipped = 0;
     let dependencies = 0;
-
+    let dependents = 0;
     dstDb.exec('BEGIN TRANSACTION');
     try {
       for (const table of tablesInFkOrder) {
@@ -454,7 +498,13 @@ router.post('/api/v1/data/transfer', async (req, res) => {
           const inserted = resRun.changes > 0;
 
           if (table !== 'profiles') {
-            if (inserted) dependencies += 1;
+            if (inserted) {
+              if (profileKeyedTables.includes(table)) {
+                dependents += 1;
+              } else {
+                dependencies += 1;
+              }
+            }
             continue;
           }
 
@@ -469,13 +519,41 @@ router.post('/api/v1/data/transfer', async (req, res) => {
           // rather than inferred.
           const idIndex = commonCols.indexOf('id');
           const rowId = idIndex >= 0 ? rowValues[idIndex] : undefined;
-          const exists =
-            rowId !== undefined &&
-            (dstDb.prepare(`SELECT 1 AS present FROM ${table} WHERE id = ?`).get(rowId) as { present?: number } | undefined)
-              ?.present === 1;
+          const existingRow =
+            rowId !== undefined
+              ? (dstDb.prepare(`SELECT * FROM ${table} WHERE id = ?`).get(rowId) as Record<string, unknown> | undefined)
+              : undefined;
 
-          if (exists) {
-            skipped += 1;
+          if (existingRow) {
+            // Source-wins upsert for profiles: update differing non-key columns from the source row
+            const differingCols: string[] = [];
+            const updateParams: unknown[] = [];
+
+            for (let i = 0; i < commonCols.length; i++) {
+              const colName = commonCols[i];
+              if (colName === 'id') continue;
+              const srcVal = rowValues[i];
+              const dstVal = existingRow[colName];
+              const valuesDiffer =
+                srcVal === null || srcVal === undefined
+                  ? dstVal !== null && dstVal !== undefined
+                  : dstVal === null || dstVal === undefined
+                  ? true
+                  : String(srcVal) !== String(dstVal);
+
+              if (valuesDiffer) {
+                differingCols.push(colName);
+                updateParams.push(srcVal);
+              }
+            }
+
+            if (differingCols.length > 0) {
+              const setClauses = differingCols.map((col) => `"${col}" = ?`).join(', ');
+              dstDb.prepare(`UPDATE ${table} SET ${setClauses} WHERE id = ?`).run(...updateParams, rowId);
+              updated += 1;
+            } else {
+              skipped += 1;
+            }
           } else {
             throw new Error(
               `${table} row ${String(rowId)} could not be imported and is not already present — ` +
@@ -515,6 +593,7 @@ router.post('/api/v1/data/transfer', async (req, res) => {
      * clear result nor a usable one. The count is what tells them whether to look.
      */
     let workspaces = 0;
+    let workspacesVerified = 0;
     const workspaceFailures: Array<{ id: string; error: string }> = [];
     const srcProfilesDir = path.join(resolvedFrom, 'profiles');
     const dstProfilesDir = path.join(currentDataDir, 'profiles');
@@ -523,12 +602,42 @@ router.post('/api/v1/data/transfer', async (req, res) => {
         const src = path.join(srcProfilesDir, entry);
         try {
           if (!fs.statSync(src).isDirectory()) continue;
-          fs.cpSync(src, path.join(dstProfilesDir, entry), {
+          const dst = path.join(dstProfilesDir, entry);
+          fs.cpSync(src, dst, {
             recursive: true,
             force: false,
             errorOnExist: false,
           });
           workspaces += 1;
+
+          // Workspace verification: check if source had session files (Cookies, Login Data)
+          // and verify destination has non-empty file
+          const checkCandidates = [
+            path.join('Default', 'Network', 'Cookies'),
+            path.join('Default', 'Cookies'),
+            path.join('Default', 'Login Data'),
+          ];
+          let srcHadSession = false;
+          let dstHasSession = false;
+
+          for (const relPath of checkCandidates) {
+            const srcFile = path.join(src, relPath);
+            if (fs.existsSync(srcFile)) {
+              const stat = fs.statSync(srcFile);
+              if (stat.isFile() && stat.size > 0) {
+                srcHadSession = true;
+                const dstFile = path.join(dst, relPath);
+                if (fs.existsSync(dstFile) && fs.statSync(dstFile).isFile() && fs.statSync(dstFile).size > 0) {
+                  dstHasSession = true;
+                  break;
+                }
+              }
+            }
+          }
+
+          if (srcHadSession && dstHasSession) {
+            workspacesVerified += 1;
+          }
         } catch (err) {
           workspaceFailures.push({ id: entry, error: (err as Error).message });
         }
@@ -542,14 +651,16 @@ router.post('/api/v1/data/transfer', async (req, res) => {
         ok: true,
         from: fromDir,
         created,
+        updated,
         skipped,
         dependencies,
+        dependents,
         workspaces,
+        workspaces_verified: workspacesVerified,
         workspace_failures: workspaceFailures,
       },
     });
   } catch (err) {
-    console.error('[DEBUG-XFER] transfer failed:', err);
     res.json({
       code: -1,
       msg: (err as Error).message,
@@ -557,9 +668,12 @@ router.post('/api/v1/data/transfer', async (req, res) => {
         ok: false,
         from: fromDir,
         created: 0,
+        updated: 0,
         skipped: 0,
         dependencies: 0,
+        dependents: 0,
         workspaces: 0,
+        workspaces_verified: 0,
         workspace_failures: [],
         error: (err as Error).message,
       },

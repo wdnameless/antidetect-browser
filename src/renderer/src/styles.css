@@ -126,6 +126,7 @@
   --control-h: 32px;
   --control-h-sm: 28px;
   --sidebar-w: 240px;
+  --table-actions-w: 132px;
   --topbar-h: 48px;
 
   /* Type scale.
@@ -1157,8 +1158,29 @@ input, textarea {
   background: transparent;
   border: none;
   border-radius: 0;
-  overflow: hidden;
+  overflow-x: auto;
   box-shadow: none;
+}
+
+.table--wide {
+  min-width: 1080px;
+}
+
+.table th.col-actions,
+.table td.col-actions {
+  position: sticky;
+  right: 0;
+  z-index: 1;
+  background: var(--bg-app);
+}
+
+.table th.col-actions {
+  background: color-mix(in srgb, var(--bg-app) 98%, #ffffff 2%);
+}
+
+.table tbody tr:hover td.col-actions,
+.table tbody tr.row-dense:hover td.col-actions {
+  background: color-mix(in srgb, var(--bg-app) 97.5%, #ffffff 2.5%);
 }
 
 .table {

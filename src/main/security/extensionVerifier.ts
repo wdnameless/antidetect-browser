@@ -14,6 +14,11 @@ import {
   ArtifactVerificationResult,
   SecurityPolicyOptions,
 } from './enforcement';
+import { getStealthKeyRing, hasPersistedStealthKey } from './stealthKey';
+import { DATA_DIR } from '../config';
+
+/** The signed envelope's own filename inside an extension directory. */
+export const STEALTH_SIG_FILENAME = 'stealth-manifest.sig.json';
 
 export class StealthExtensionVerificationError extends Error {
   public readonly profileId?: string;
@@ -68,13 +73,33 @@ export function getEphemeralStealthKeyPair(): KeyPairPem {
 }
 
 /**
- * Returns the KeyRingStore containing the ephemeral stealth public key.
+ * Returns a keyring containing the ephemeral stealth public key.
+ *
+ * This rebuilds the ring from the pair whenever the ring is absent. It used to return
+ * `ephemeralStealthKeyRing!` after calling `getEphemeralStealthKeyPair()`, which only builds a
+ * ring when it also builds the pair — so after `setEphemeralStealthKeyRing(null)` (what every
+ * test's `afterEach` does) the pair still existed, the ring was never rebuilt, and this returned
+ * `null` behind a non-null assertion, so a caller touching the returned ring hit a TypeError
+ * instead of verifying anything.
  */
 export function getEphemeralStealthKeyRing(): KeyRingStore {
   if (!ephemeralStealthKeyRing) {
-    getEphemeralStealthKeyPair();
+    const keyPair = getEphemeralStealthKeyPair();
+    const keyId = computeKeyIdFromPublicPem(keyPair.publicKeyPem);
+    ephemeralStealthKeyRing = new KeyRingStore({
+      version: 1,
+      defaultKeyId: keyId,
+      keys: {
+        [keyId]: {
+          keyId,
+          publicKeyPem: keyPair.publicKeyPem,
+          createdAt: new Date().toISOString(),
+          comment: 'ephemeral-stealth-key',
+        },
+      },
+    });
   }
-  return ephemeralStealthKeyRing!;
+  return ephemeralStealthKeyRing;
 }
 
 /**
@@ -94,14 +119,15 @@ export function signStealthExtension(
   version: string = '1.0.0'
 ): SignedManifestEnvelope {
   const keyId = computeKeyIdFromPublicPem(keyPair.publicKeyPem);
-  const files = buildDirectoryMd5Manifest(extensionDir);
+  // The envelope must not list itself: see `buildDirectoryMd5Manifest`'s `exclude`.
+  const files = buildDirectoryMd5Manifest(extensionDir, [STEALTH_SIG_FILENAME]);
   const envelope = createSignedManifest({
     version,
     files,
     keyId,
     privateKeyPem: keyPair.privateKeyPem,
   });
-  const sigPath = path.join(extensionDir, 'stealth-manifest.sig.json');
+  const sigPath = path.join(extensionDir, STEALTH_SIG_FILENAME);
   fs.writeFileSync(sigPath, JSON.stringify(envelope, null, 2), 'utf8');
   return envelope;
 }
@@ -112,7 +138,7 @@ export function signStealthExtension(
 export function readStealthManifestEnvelope(
   extensionDir: string
 ): SignedManifestEnvelope | null {
-  const sigPath = path.join(extensionDir, 'stealth-manifest.sig.json');
+  const sigPath = path.join(extensionDir, STEALTH_SIG_FILENAME);
   if (!fs.existsSync(sigPath)) {
     return null;
   }
@@ -139,8 +165,22 @@ export function verifyStealthExtensionDirectory(
   options?: VerifyStealthOptions
 ): ArtifactVerificationResult {
   const envelope = readStealthManifestEnvelope(extensionDir);
-  const keyRing = options?.keyRing ?? getEphemeralStealthKeyRing();
   const profileId = options?.profileId ?? 'unknown-profile';
+
+  // The keyring an installation trusts is built from its own persisted signing key. The
+  // ephemeral pair is added as a second trusted key because the test suites sign with it and a
+  // signed artifact must verify in the same process that signed it.
+  //
+  // Both are registered as entries in ONE ring. Merging into whichever store is the cache is
+  // wrong: `getStealthKeyRing` memoises per data directory, so writing the ephemeral public key
+  // into it would hand every later verification a ring that trusts a key no artifact on disk was
+  // signed with. Trust is per-verification, so it is assembled here.
+  const ring = new KeyRingStore();
+  for (const entry of getStealthKeyRing(DATA_DIR).getAllKeys()) ring.addKey(entry);
+  for (const entry of getEphemeralStealthKeyRing().getAllKeys()) {
+    if (!ring.getKey(entry.keyId)) ring.addKey(entry);
+  }
+  const keyRing = options?.keyRing ?? ring;
 
   const result = verifyStealthExtension(
     profileId,

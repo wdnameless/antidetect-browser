@@ -1539,7 +1539,7 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
 
       {/* Profiles Table */}
       <div className="table-container">
-        <table className="table">
+        <table className="table table--wide">
           <thead>
             <tr>
               <th style={{ width: 40, textAlign: 'center' }}>
@@ -1558,7 +1558,7 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
               <th style={{ width: '13%' }}>{t('Fingerprint')}</th>
               <th style={{ width: '11%' }}>{t('Preflight')}</th>
               <th style={{ width: '8%' }}>{t('Status')}</th>
-              <th style={{ width: '14%', textAlign: 'right' }}>{t('Actions')}</th>
+              <th className="col-actions" style={{ width: '14%', textAlign: 'right' }}>{t('Actions')}</th>
             </tr>
           </thead>
           <tbody>
@@ -1705,7 +1705,7 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
                       </span>
                     </span>
                   </td>
-                  <td>
+                  <td className="col-actions">
                     <div className="row-dense__actions" style={{ justifyContent: 'flex-end', position: 'relative' }}>
                       {p.status === 'running' ? (
                         <button

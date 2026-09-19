@@ -428,7 +428,13 @@ impl SidecarManager {
         }
     }
 
-    pub fn terminate_graceful(&self, port: u16, api_key: Option<&str>) {
+    /// Stop the backend, giving it `wait` to finish on its own.
+    ///
+    /// The wait used to be a fixed five seconds, which is shorter than the work the backend does
+    /// on the way out: it stops every running profile first, and each stop may take seconds. The
+    /// shell therefore killed it mid-shutdown and the profiles beyond the first were left open —
+    /// the reported defect. The caller now passes the bound it can afford.
+    pub fn terminate_graceful(&self, port: u16, api_key: Option<&str>, wait: Duration) {
         if self.terminated.swap(true, Ordering::SeqCst) {
             return;
         }
@@ -462,9 +468,9 @@ impl SidecarManager {
             let _ = stream.flush();
         }
 
-        // Step 2: Bounded wait (~5 seconds) for child to exit on its own
+        // Step 2: Bounded wait for the child to stop its profiles and exit on its own
         let wait_start = Instant::now();
-        let timeout = Duration::from_secs(5);
+        let timeout = wait;
         let mut exited = false;
 
         while wait_start.elapsed() < timeout {
@@ -489,7 +495,7 @@ impl SidecarManager {
 
         // Step 3: If child hasn't exited, fallback to kill process tree (taskkill /T /F)
         if !exited {
-            eprintln!("[sidecar] Backend did not exit after graceful shutdown request within 5s, killing PID {pid}");
+            eprintln!("[sidecar] Backend did not exit after graceful shutdown request within {timeout:?}, killing PID {pid}");
             let mut lock = self.child.lock();
             if let Some(mut child) = lock.take() {
                 #[cfg(target_os = "windows")]

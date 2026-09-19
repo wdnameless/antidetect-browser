@@ -40,6 +40,8 @@ import {
   getEphemeralStealthKeyPair,
   StealthExtensionVerificationError,
 } from '../security/extensionVerifier';
+import { getStealthSigningKey } from '../security/stealthKey';
+import { DATA_DIR } from '../config';
 import { mergeManagedBookmarks, getProfileGroupBookmarks } from '../folders/bookmarks';
 
 interface RunningProfile {
@@ -281,11 +283,31 @@ export async function buildChromiumArgs(
   if (cfg.stealth) {
     const stealthExtDir = path.join(cfg.userDataDir, 'stealth-ext');
     const sigFile = path.join(stealthExtDir, 'stealth-manifest.sig.json');
+    const signingKey = getStealthSigningKey(DATA_DIR);
     if (!fs.existsSync(stealthExtDir) || !fs.existsSync(sigFile)) {
-      const signingKey = getEphemeralStealthKeyPair();
       writeStealthExtension(stealthExtDir, cfg.stealth, { signingKey });
     }
-    verifyStealthExtensionDirectory(stealthExtDir, { profileId: cfg.profileId });
+    try {
+      verifyStealthExtensionDirectory(stealthExtDir, { profileId: cfg.profileId });
+    } catch (err: unknown) {
+      // Only `key-not-found` is recoverable. It means this directory was signed by a process
+      // whose key is gone — what the ephemeral-key era left behind, including every artifact the
+      // operator already has — and no process can ever verify it again. Regenerating replaces it
+      // with an artifact this installation signed itself, which is strictly more trustworthy
+      // than one nobody can check.
+      //
+      // `digest-mismatch` is NOT recoverable and must never be rebuilt: it means the bytes
+      // changed after signing, which is the tamper signal itself. Regenerating there would
+      // discard the evidence and run our own code in place of something an attacker altered,
+      // turning the check into decoration. See the `secure-runtime-supply-chain` requirement.
+      if (err instanceof StealthExtensionVerificationError && err.verificationResult?.reason === 'key-not-found') {
+        console.info(`[stealth] Regenerating stealth extension for profile '${cfg.profileId}': its signature names a key this installation no longer has`);
+        writeStealthExtension(stealthExtDir, cfg.stealth, { signingKey });
+        verifyStealthExtensionDirectory(stealthExtDir, { profileId: cfg.profileId });
+      } else {
+        throw err;
+      }
+    }
     extensionsToLoad.push(stealthExtDir);
   }
   if (extensionsToLoad.length > 0) {
@@ -379,7 +401,20 @@ export async function startProfile(cfg: LaunchConfig): Promise<StartResult> {
   if (cfg.stealth) {
     const stealthExtDir = path.join(cfg.userDataDir, 'stealth-ext');
     if (fs.existsSync(stealthExtDir)) {
-      verifyStealthExtensionDirectory(stealthExtDir, { profileId: cfg.profileId });
+      try {
+        verifyStealthExtensionDirectory(stealthExtDir, { profileId: cfg.profileId });
+      } catch (err: unknown) {
+        // Same rule as `buildChromiumArgs`: only a signature naming a key this installation no
+        // longer holds is recoverable. A digest mismatch is the tamper signal and is re-thrown.
+        if (err instanceof StealthExtensionVerificationError && err.verificationResult?.reason === 'key-not-found') {
+          const signingKey = getStealthSigningKey(DATA_DIR);
+          console.info(`[stealth] Regenerating stealth extension for profile '${cfg.profileId}': its signature names a key this installation no longer has`);
+          writeStealthExtension(stealthExtDir, cfg.stealth, { signingKey });
+          verifyStealthExtensionDirectory(stealthExtDir, { profileId: cfg.profileId });
+        } else {
+          throw err;
+        }
+      }
     }
   }
   // Sync folder bookmarks before launch (non-fatal on error)
@@ -744,14 +779,56 @@ export async function stopProfile(profileId: string): Promise<boolean> {
   });
   // Still alive? Force-kill the tree.
   if (running.has(profileId)) {
-    cleanup(rec);
+    try {
+      cleanup(rec);
+    } catch (e) {
+      console.error(`[launcher] Force-kill failed for profile ${profileId}:`, e);
+    }
     running.delete(profileId);
   }
   return true;
 }
 
-export async function stopAll(): Promise<void> {
-  for (const id of Array.from(running.keys())) await stopProfile(id);
+/**
+ * Stop every running profile.
+ *
+ * Profiles are stopped CONCURRENTLY, and that is the point rather than an optimisation. Each
+ * `stopProfile` waits up to five seconds for its browser to exit, and the shell bounds its whole
+ * exit path at five seconds (`sidecar.rs` graceful wait). Sequentially, two open profiles could
+ * spend ten seconds stopping — past the shell's bound — so the backend was killed mid-stop and
+ * the remaining profiles were left running. That is the reported defect: quitting from the tray
+ * left profiles open. Stopping them together keeps the total inside one wait.
+ *
+ * A profile that cannot be stopped is reported in `failed` instead of being thrown away, so the
+ * caller can say which one it was. The tree is force-killed first so a `failed` entry means the
+ * kill itself failed, not that the browser was slow.
+ */
+export async function stopAll(): Promise<{ stopped: string[]; failed: string[] }> {
+  const ids = Array.from(running.keys());
+  const results = await Promise.all(
+    ids.map(async (id) => {
+      try {
+        await stopProfile(id);
+        return { id, ok: !running.has(id) };
+      } catch (err) {
+        console.error(`[launcher] Failed to stop profile ${id}:`, err);
+        const rec = running.get(id);
+        if (rec) {
+          try {
+            cleanup(rec);
+          } catch {
+            // the original error is the one worth reporting
+          }
+          running.delete(id);
+        }
+        return { id, ok: false };
+      }
+    }),
+  );
+  return {
+    stopped: results.filter((r) => r.ok).map((r) => r.id),
+    failed: results.filter((r) => !r.ok).map((r) => r.id),
+  };
 }
 
 async function waitForDevToolsPort(userDataDir: string): Promise<{ port: string; wsPath: string }> {

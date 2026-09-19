@@ -1,5 +1,71 @@
 # Changelog
 
+## [0.6.12] - 2026-09-19
+
+### Fixed — five defects from one report: table clipping, lost profile names and sessions, a launch that always refused, and profiles left open on quit
+
+Operator report (verbatim):
+
+> Нет адапитвности, колонка ACTION зависит от сайза окна, такого быть не должно. И проверь что
+> профили трасферятся правильно, сейчас почему не перенеслись названия профилей. Нужно чтобы
+> переносились сесии и все остальное.
+> так же  убери возможность сворачивать левое меню, эта стрелочка не нужна. Еще такая ошибка
+> (на последнем скриншоте)
+> Еще когда мы закрываем в трее nulltrace, все открытые профиля должна закрываться
+
+**The profile table clipped its own actions.** `.table-container` was `overflow: hidden` while
+the column widths summed to 100% *plus* a fixed 40px checkbox column, so the trailing column
+overflowed a container that could not scroll — the header read `ACTIO` and its buttons were
+unreachable. Measured before the fix at 1400/1100/900 px: the actions column's right edge sat at
+1409 px against a container ending at 1372/1072/872 px, clipped at every width. The container now
+scrolls, the table carries a `min-width` so columns stop compressing, and the actions column is
+pinned with `position: sticky`. At 760 px a click on the kebab now lands on the kebab.
+
+**A transfer never updated a profile, so names stayed stale.** `INSERT OR IGNORE` cannot update:
+a destination holding a stale name for the same id kept it and the row was reported as `skipped`
+— a transfer that says it worked and changes nothing. Reproduced by replaying the exact SQL. The
+operator chose source-wins, so a colliding `profiles` row is now updated from the source and
+counted in a new `updated` field. Proven on the real route: a destination holding
+`STALE NAME THE OPERATOR SAW` received `SOURCE NAME`, reported `updated: 1`.
+
+**Sessions and extension bindings did not travel with a profile.** The transfer moved rows and
+profile directories but never the tables keyed by profile id, so a transferred profile arrived
+without its extension bindings, and the workspace copy counted `cpSync` calls rather than
+verifying content. Dependent rows now travel (`dependents: 1` where it was 0) and each copied
+workspace is verified by reading a session file back (`workspaces_verified: 1`); a cookie file's
+bytes were checked in the destination.
+
+**Every launch refused with `key-not-found`.** The signed envelope's file manifest included
+**the envelope itself**. A signature cannot cover itself: the manifest recorded the previous
+envelope's digest and the write that followed invalidated it, so the first signature verified and
+every later one failed with `digest-mismatch`. Confirmed on the operator's own artifact — the
+envelope listed `stealth-manifest.sig.json`, and that entry was the only mismatch while
+`manifest.json` and `stealth.js` matched. The signing key was also regenerated per process while
+the signed artifact persisted on disk, so a restart could never verify what the last run wrote.
+The key is now durable (DPAPI-protected, under the data folder), the envelope excludes itself,
+and a signature naming a key this installation no longer holds is regenerated instead of refused.
+
+**`digest-mismatch` still aborts the launch.** That reason is the tamper signal, not a stale key:
+regenerating there would discard the evidence and run our code in place of bytes someone altered.
+Only `key-not-found` rebuilds. Verified: an artifact whose `stealth.js` gained 29 bytes after
+signing is refused with `digest-mismatch`.
+
+**Quitting left the profiles running.** The backend stops every profile on shutdown and each stop
+may wait seconds for its browser, but the shell allowed its whole exit path only five seconds — so
+the backend was killed mid-stop and the profiles it had not reached stayed open. Profiles are now
+stopped concurrently, the wait is bounded at twenty seconds, and a profile that cannot be stopped
+is named in the log instead of vanishing. Measured live: two open profiles, 12 Chromium
+processes, quit → **0 processes in 2 seconds**, with the backend logging
+`shutdown: profiles stopped {"stopped":2,"failed":0}` — the graceful path, not a kill.
+
+**The sidebar collapse control was already gone** (removed in 0.6.9) and is re-asserted: zero
+`collapse`/`toggle`/`rail` controls in the live DOM, no stored preference, fixed 240 px column.
+
+Verified on Windows: `npx vitest run` 136 files / 1124 passed; `cargo test` 38 passed; typecheck
+clean. Two latent defects were also fixed en route — `getEphemeralStealthKeyRing()` returned
+`null` behind a non-null assertion after being reset, and the keyring merge mutated a memoised
+store.
+
 ## [0.6.11] - 2026-09-19
 
 ### Fixed — the app could come up as a window with no backend behind it

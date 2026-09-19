@@ -276,9 +276,19 @@ export async function shutdown(reason: string, code = 0): Promise<void> {
   logger.info('shutdown', { reason });
   console.log(`[antidetect] ${reason} received — shutting down...`);
   try {
-    await stopAll();
-  } catch {
-    // ignore
+    // The count matters: the shell bounds its exit path, so a profile that would not stop is
+    // exactly the case where a browser is left running. Naming it turns a silent leak into a
+    // line the operator can act on.
+    const { stopped, failed } = await stopAll();
+    if (failed.length > 0) {
+      logger.error('shutdown: profiles that could not be stopped', { reason, failed });
+      console.error(
+        `[antidetect] ${failed.length} profile(s) could not be stopped and were force-killed: ${failed.join(', ')}`,
+      );
+    }
+    logger.info('shutdown: profiles stopped', { reason, stopped: stopped.length, failed: failed.length });
+  } catch (err) {
+    logger.error('shutdown: stopAll threw', { reason, error: (err as Error).message });
   }
   try {
     await shutdownCleanup();

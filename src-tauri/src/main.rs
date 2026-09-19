@@ -275,6 +275,12 @@ fn html_escape(s: &str) -> String {
 /// — as this did — finds nothing whenever the operator has chosen a data folder, so the
 /// shutdown request went out unauthenticated, the backend answered 401, stayed alive, and
 /// left its instance lock behind for the next launch to misread as a crash.
+///
+/// The wait is what makes quitting close the open profiles. The backend's shutdown path stops
+/// every browser before it exits, and each stop can take seconds; when this waited only five
+/// seconds the backend was killed mid-stop and the profiles it had not reached yet stayed
+/// running. The bound is therefore generous enough for the backend to finish its own work, and
+/// it is still a bound: past it the tree is force-killed, so the app cannot hang on quit.
 pub(crate) fn perform_graceful_teardown(
     sidecar: &sidecar::SidecarManager,
     data_dir: &Path,
@@ -285,8 +291,16 @@ pub(crate) fn perform_graceful_teardown(
     let api_key = read_key_file(&data_dir.join("api_key"))
         .or_else(|| read_key_file(&settings_dir.join("api_key")));
 
-    sidecar.terminate_graceful(port, api_key.as_deref());
+    sidecar.terminate_graceful(port, api_key.as_deref(), TEARDOWN_WAIT);
 }
+
+/// How long the shell waits for the backend to stop its profiles and exit.
+///
+/// Sized for the backend's worst case: it stops profiles concurrently, each waiting up to five
+/// seconds for its browser plus a little for the force-kill fallback, and then closes the
+/// database. Twenty seconds leaves room for that and for a slow disk, while still ending — a
+/// quit that hangs forever is a worse failure than a quit that takes a moment.
+const TEARDOWN_WAIT: Duration = Duration::from_secs(20);
 
 /// Reads a key file, trimming whitespace; `None` when absent or unreadable.
 fn read_key_file(path: &Path) -> Option<String> {
@@ -551,6 +565,7 @@ mod teardown_key_tests {
     use super::read_key_file;
     use std::fs;
     use std::path::PathBuf;
+    use std::time::Duration;
 
     fn tmp(name: &str) -> PathBuf {
         let dir = std::env::temp_dir().join(format!("nulltrace-tk-{}-{}", name, std::process::id()));
@@ -600,5 +615,31 @@ mod teardown_key_tests {
         let resolved = read_key_file(&data.join("api_key"))
             .or_else(|| read_key_file(&settings.join("api_key")));
         assert_eq!(resolved.as_deref(), Some("legacy"));
+    }
+
+    /// The shell's wait must outlast the backend's own shutdown work.
+    ///
+    /// This is the reported defect, expressed as arithmetic. The backend stops profiles
+    /// concurrently, and each stop waits up to five seconds for its browser to exit before
+    /// force-killing it. A budget at or below that figure kills the backend mid-stop, and the
+    /// profiles it had not reached yet are left running — which is exactly what the operator
+    /// saw after quitting from the tray.
+    #[test]
+    fn teardown_wait_outlasts_the_backends_per_profile_stop() {
+        // The backend's bound, mirrored from `stopProfile`'s 5s wait plus its force-kill.
+        let per_profile_stop = Duration::from_secs(5);
+
+        assert!(
+            super::TEARDOWN_WAIT > per_profile_stop,
+            "the shell would kill the backend mid-stop: wait={:?}, per-profile stop={:?}",
+            super::TEARDOWN_WAIT,
+            per_profile_stop
+        );
+        // Still a bound, not an unbounded wait: a quit that never returns is its own defect.
+        assert!(
+            super::TEARDOWN_WAIT <= Duration::from_secs(60),
+            "an exit path this slow will read as a hang: {:?}",
+            super::TEARDOWN_WAIT
+        );
     }
 }
