@@ -7,11 +7,35 @@
 ## Ключевые факты
 
 - **Готовые Windows-бинарники**: installer `.exe` (~114 MB) и portable `.zip` (~181 MB), x86-64. Сборка из исходников **не нужна**.
+- **Готовые macOS-бинарники**: `…-1.1_macos.dmg` (~134 MB) — **нативный arm64**, проверено измерением (см. ниже).
 - **Лицензия**: BSD-3-Clause (пермиссивная, подходит для нашего использования).
 - **Активность**: ~2.9k★, релиз на каждую мажорную версию Chromium. Последняя: Chrome 148 (148.0.7778.215).
 - **Релизы**: https://github.com/adryfish/fingerprint-chromium/releases
 - **Скачать (Chrome 148, Windows ZIP)**:
   `https://github.com/adryfish/fingerprint-chromium/releases/download/148.0.7778.215/ungoogled-chromium_148.0.7778.215-1.1_windows_x64.zip`
+
+## macOS / Apple Silicon — измерено, а не предположено
+
+Установлено прогоном `scripts/probe-macos-kernel.mjs` и `scripts/e2e-macos-kernel.mjs` на реальном
+M1 (GitHub Actions `macos-14`, run 35494974446 и последующие). Причина, по которой это измерялось
+до написания кода: ассет называется просто `…_macos.dmg`, без суффикса архитектуры, а на Apple
+Silicon неподписанный arm64-бинарник не запускается вообще — то есть от архитектуры зависела вся
+работа порта.
+
+| Проверка | Результат |
+|---|---|
+| Архитектура ядра | **`arm64`** (`Mach-O 64-bit executable arm64`, `lipo -archs: arm64`) — **Rosetta не нужна** |
+| Подпись | ad-hoc, `org.chromium.Chromium`, `Format=app bundle with Mach-O thin (arm64)` |
+| Путь бинарника в образе | `Chromium.app/Contents/MacOS/Chromium` (совпадает с закреплённым `executableSubpath`) |
+| Каратин при монтировании | выставлен → снимается (`xattr -dr com.apple.quarantine`) до первого запуска |
+| `navigator.webdriver` под CDP | **`false`** — stealth цел |
+| Флаги фингерпринта | **работают**: seed 2023 → `Apple M2` / 24 ядра, seed 4242 → `Apple M4` / 16 ядер, canvas-хэши разные |
+| `--fingerprint-platform=macos` | `navigator.platform === 'MacIntel'` |
+| Извлечение образа | `hdiutil attach -nobrowse -readonly -plist`, `cp -R`, `hdiutil detach -force`; точка монтирования парсится из plist, потому что при висячем монтировании она становится `/Volumes/Chromium 1` |
+
+**Следствие для продукта:** macOS-сборка — не «эмуляция Windows-ядра под трансляцией», а нативный
+arm64-браузер с работающим kernel-level спуфингом. Ограничение по архитектуре одно: артефакт
+собирается только под arm64 (Intel-маки не покрыты).
 
 ## Что даёт ядро (решает наши задачи)
 

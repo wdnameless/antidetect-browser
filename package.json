@@ -11,6 +11,7 @@
     "node": ">=22.12.0"
   },
   "scripts": {
+    "pretypecheck": "npm run build:sdk",
     "typecheck": "npm run typecheck:main && npm run typecheck:renderer",
     "pretest": "npm run build:sdk",
     "test": "vitest run",

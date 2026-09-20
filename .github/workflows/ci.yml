@@ -23,6 +23,14 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # BEFORE typecheck, and this ordering is the fix: `mcp/src` imports `@antidetect/sdk`, whose
+      # `dist/` is gitignored and produced only by the SDK's own build. The npm `pretest` hook
+      # builds it, which is why the test job never noticed — but `typecheck` has no such hook, so
+      # running it first fails on a clean checkout with "Cannot find module '@antidetect/sdk'".
+      # Reproduced on a macos-14 runner before fixing.
+      - name: Build the SDK
+        run: npm run build:sdk
+
       - name: Typecheck
         run: npm run typecheck
 
@@ -108,6 +116,14 @@ jobs:
       # shell has no runtime to spawn and the app starts to an error page.
       - name: Vendor the Node sidecar (arm64)
         run: npm run vendor:node
+
+      # BEFORE typecheck, and this ordering is the fix: `mcp/src` imports `@antidetect/sdk`, whose
+      # `dist/` is gitignored and produced only by the SDK's own build. The npm `pretest` hook
+      # builds it, which is why the test job never noticed — but `typecheck` has no such hook, so
+      # running it first fails on a clean checkout with "Cannot find module '@antidetect/sdk'".
+      # Reproduced on a macos-14 runner before fixing.
+      - name: Build the SDK
+        run: npm run build:sdk
 
       - name: Typecheck
         run: npm run typecheck
@@ -207,6 +223,14 @@ jobs:
 
       - name: Verify Tauri CLI
         run: npx tauri --version
+
+      # BEFORE typecheck, and this ordering is the fix: `mcp/src` imports `@antidetect/sdk`, whose
+      # `dist/` is gitignored and produced only by the SDK's own build. The npm `pretest` hook
+      # builds it, which is why the test job never noticed — but `typecheck` has no such hook, so
+      # running it first fails on a clean checkout with "Cannot find module '@antidetect/sdk'".
+      # Reproduced on a macos-14 runner before fixing.
+      - name: Build the SDK
+        run: npm run build:sdk
 
       - name: Typecheck
         run: npm run typecheck
