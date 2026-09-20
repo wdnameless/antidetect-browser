@@ -309,6 +309,9 @@
     },
 
     // window controls namespace (App.tsx: 439, 450, 461, 151)
+    licenseRefresh: function() {
+      return internalInvoke('license_publish_verdict');
+    },
     window: {
       minimize: function() {
         try {

@@ -1,0 +1,52 @@
+# NullTrace Commercial License Agreement
+
+This Commercial License Agreement (the "Agreement") is a legal agreement between you (either an individual or a single entity, referred to as "Licensee") and the copyright owner of NullTrace ("Licensor", `REPLACE-ME: Legal Name / Entity Name`, `REPLACE-ME: Contact Address / Jurisdiction`).
+
+---
+
+## 1. Purpose & Dual Licensing Context
+
+NullTrace is publicly available under the GNU Affero General Public License, Version 3 (AGPL-3.0). The AGPL-3.0 imposes specific obligations on users and distributors, including the requirement under Section 13 to make the complete corresponding source code available to all users interacting with the software remotely through a computer network.
+
+This Agreement provides a commercial alternative to the AGPL-3.0 for organizations and individuals who require proprietary use, redistribution, or modification of NullTrace without being subject to the copyleft and network-disclosure requirements of the AGPL-3.0.
+
+---
+
+## 2. Grant of License
+
+Upon payment of the applicable license fees and subject to the terms of this Agreement, Licensor grants Licensee a non-exclusive, worldwide, non-transferable license to:
+
+1. **Closed-Source & Proprietary Use**: Deploy, run, integrate, and embed NullTrace within proprietary infrastructure, internal workflows, or closed commercial products.
+2. **Relief from Copyleft Obligations**: You are explicitly relieved from the obligations of Section 13 (network interaction source disclosure) and Section 6 (conveying complete corresponding source code) of the AGPL-3.0.
+3. **Modification**: Modify, customize, and extend the source code of NullTrace without any obligation to publish, distribute, or make available your modifications or derivatives under the AGPL-3.0 or any other open-source license.
+
+---
+
+## 3. Terms to be Agreed & Commercial Pricing
+
+Commercial terms are customized based on deployment scale, seat count, and distribution model. No standard one-size-fits-all fee applies. 
+
+The specific terms agreed between Licensor and Licensee shall be documented in an accompanying Order Form or Exhibit, specifying:
+- **Licensing Tier / Seats**: `REPLACE-ME` (e.g., developer seats, enterprise deployment, OEM redistribution).
+- **License Fees**: `REPLACE-ME` (pricing, payment schedule, currency).
+- **Term & Renewal**: `REPLACE-ME` (annual subscription, perpetual license with maintenance, etc.).
+- **Support & SLAs**: `REPLACE-ME` (support response time, update access, custom integration).
+- **Jurisdiction & Governing Law**: `REPLACE-ME` (governing law and dispute resolution venue).
+
+---
+
+## 4. Restrictions
+
+Unless explicitly granted in an authorized OEM / Redistribution Exhibit:
+- Licensee shall not sublicense, lease, or resell the standalone software as an anti-detect browser under NullTrace trademarks (see `TRADEMARK.md`).
+- Licensee shall not remove or tamper with cryptographic license validation mechanisms unless explicitly permitted under a custom source-code agreement.
+
+---
+
+## 5. Contact Information
+
+To inquire about commercial licensing, request a quote, or execute a commercial agreement, contact:
+
+- **Commercial Inquiries**: `REPLACE-ME: commercial@nulltrace.io or contact email`
+- **Licensor Contact**: `REPLACE-ME: Legal Entity / Representative Name`
+- **Telegram / Official Channel**: `REPLACE-ME: Official Telegram / Support Link`

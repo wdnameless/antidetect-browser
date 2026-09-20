@@ -38,6 +38,11 @@ export function LicenseSettings() {
         setState(res.data);
         setMsg(t('License activated'));
         setKey('');
+        try {
+          await window.antidetect?.licenseRefresh?.();
+        } catch {
+          // Non-blocking: background verdict file refresh for packaged shell
+        }
       } else if (String(res.code) === 'LICENSE_EXPIRED') {
         setMsg(t('License expired'));
         setErr(true);
@@ -54,8 +59,14 @@ export function LicenseSettings() {
     setBusy(true);
     try {
       const res = await api.licenseDeactivate();
-      if (res.code === 0) setState(res.data);
-      setMsg(t('License removed'));
+      if (res.code === 0) {
+        setState(res.data);
+        try {
+          await window.antidetect?.licenseRefresh?.();
+        } catch {
+          // Non-blocking: background verdict file refresh for packaged shell
+        }
+      }
     } finally {
       setBusy(false);
     }
