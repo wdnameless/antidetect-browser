@@ -162,6 +162,16 @@ jobs:
       - name: Build backend and renderer
         run: npm run build && npm run copy:prod-deps
 
+      # The Rust suite on real Unix. It has a branch that cannot execute on the Windows host this
+      # project is developed on: `#[cfg(unix)]` in `a_bundle_in_an_unwritable_parent_is_not_portable`
+      # asserts that a read-only directory is refused as a portable root. The `release-macos` job
+      # runs `cargo test` too, but only on a version tag — so that assertion had never run anywhere.
+      # A test that has never executed is a claim, not a check.
+      - name: Rust shell tests (exercises the unix-only branch)
+        id: rust
+        continue-on-error: true
+        run: cargo test --manifest-path src-tauri/Cargo.toml 2>&1 | tail -25
+
       # The step that proves the port: this is a full Tauri compile for arm64 plus the bundle
       # layout, on the platform it targets. Everything else in this workflow verifies pieces;
       # this one verifies that the application itself builds here.
