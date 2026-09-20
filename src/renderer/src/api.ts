@@ -447,16 +447,6 @@ export interface TaskGroupItem {
   updated_at: number;
 }
 
-export interface CatalogScriptItem {
-  id: string;
-  name: string;
-  description: string;
-  tags: string[];
-  version: string;
-  url: string;
-  checksum_sha256: string;
-}
-
 // ---- Email (read-only IMAP + code extraction) ----
 export interface EmailAccount {
   id: string;
@@ -492,6 +482,16 @@ export interface McpStatus {
   tier1Count: number;
   tier2Count: number;
   startedAt: string | null;
+  /**
+   * Whether a bundle has been produced before and its folder is still there.
+   *
+   * The operator's ask was that MCP read as a state, not a control: «если скачано и установлено,
+   * то просто MCP будет показывать, что оно включено, и там столько-то тулзов». A folder the
+   * operator deleted (or carried off on a USB stick) must stop counting as installed, so the
+   * backend re-checks the path per request rather than caching this.
+   */
+  installed: boolean;
+  bundleDir: string | null;
 }
 
 
@@ -1066,18 +1066,6 @@ export const api = {
     }),
   triggerDelete: (id: string) =>
     request<Record<string, never>>(`/api/v1/triggers/${encodeURIComponent(id)}/delete`, { method: 'POST' }),
-  // ---- Catalog (Sprint 4.4) ----
-  catalogFetch: () => request<{ url: string; scripts: CatalogScriptItem[] }>('/api/v1/catalog'),
-  catalogCode: (url: string) =>
-    request<{ code: string; checksum: string }>(`/api/v1/catalog/code?url=${encodeURIComponent(url)}`),
-  catalogInstall: (catalogId: string) =>
-    request<{ id: string }>('/api/v1/catalog/install', {
-      method: 'POST',
-      body: JSON.stringify({ catalog_id: catalogId }),
-    }),
-  catalogGetUrl: () => request<{ url: string }>('/api/v1/catalog/url'),
-  catalogSetUrl: (url: string) =>
-    request<{ url: string }>('/api/v1/catalog/url', { method: 'POST', body: JSON.stringify({ url }) }),
   // ---- Preflight & Launch Guard (Task 3.1 & 3.2) ----
   preflightRun: (profileId: string) =>
     request<PreflightVerdict>(`/api/profiles/${encodeURIComponent(profileId)}/preflight`, {

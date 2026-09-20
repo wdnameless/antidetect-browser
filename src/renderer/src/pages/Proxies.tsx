@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api, type ProxyItem } from '../api';
 import { ProxiesIcon, PlusIcon, TrashIcon, RefreshIcon, CheckIcon } from '../icons';
 import { EmptyState } from '../components/EmptyState';
+import { useColumnResize } from '../useColumnResize';
 import { useI18n } from '../i18n';
 
 export function Proxies() {
@@ -17,6 +18,22 @@ export function Proxies() {
   const [pass, setPass] = useState('');
   const [privateKey, setPrivateKey] = useState('');
   const [checkResult, setCheckResult] = useState<Record<string, { ok: boolean; ip?: string; latencyMs?: number; error?: string }>>({});
+
+  /**
+   * Resizable columns, same contract as the profiles table: shares of the container rather than
+   * pixels, and the trailing Actions column takes the remainder so the table can never outgrow
+   * its container and bring back a horizontal scrollbar.
+   */
+  const columns = useMemo(
+    () => [
+      { key: 'type', defaultFraction: 0.12, minWidth: 90 },
+      { key: 'host', defaultFraction: 0.3, minWidth: 160 },
+      { key: 'username', defaultFraction: 0.22, minWidth: 120 },
+      { key: 'location', defaultFraction: 0.2, minWidth: 130 },
+    ],
+    [],
+  );
+  const { containerRef: tableRef, colWidths, beginResize, resetColumn, dragging } = useColumnResize('proxies', columns);
 
   const load = useCallback(async () => {
     try {
@@ -305,15 +322,65 @@ export function Proxies() {
         </div>
       ) : null}
 
-      <div className="table-container">
+      <div className="table-container" ref={tableRef}>
         <table className="table">
+          <colgroup>
+            {colWidths.map((col) => (
+              <col key={col.key} style={{ width: `${col.percent}%` }} />
+            ))}
+            <col />
+          </colgroup>
           <thead>
             <tr>
-              <th style={{ width: '12%' }}>{t('Type')}</th>
-              <th style={{ width: '30%' }}>{t('Host : Port')}</th>
-              <th style={{ width: '22%' }}>{t('Username')}</th>
-              <th style={{ width: '20%' }}>{t('Location / IP')}</th>
-              <th style={{ width: '16%', textAlign: 'right' }}>{t('Actions')}</th>
+              <th>
+                {t('Type')}
+                <button
+                  type="button"
+                  className={`col-resize-handle ${dragging === 'type' ? 'is-dragging' : ''}`}
+                  onPointerDown={(e) => beginResize('type', e)}
+                  onDoubleClick={() => resetColumn('type')}
+                  title={t('Drag to resize. Double-click to reset.')}
+                  aria-label={t('Resize column')}
+                  tabIndex={-1}
+                />
+              </th>
+              <th>
+                {t('Host : Port')}
+                <button
+                  type="button"
+                  className={`col-resize-handle ${dragging === 'host' ? 'is-dragging' : ''}`}
+                  onPointerDown={(e) => beginResize('host', e)}
+                  onDoubleClick={() => resetColumn('host')}
+                  title={t('Drag to resize. Double-click to reset.')}
+                  aria-label={t('Resize column')}
+                  tabIndex={-1}
+                />
+              </th>
+              <th>
+                {t('Username')}
+                <button
+                  type="button"
+                  className={`col-resize-handle ${dragging === 'username' ? 'is-dragging' : ''}`}
+                  onPointerDown={(e) => beginResize('username', e)}
+                  onDoubleClick={() => resetColumn('username')}
+                  title={t('Drag to resize. Double-click to reset.')}
+                  aria-label={t('Resize column')}
+                  tabIndex={-1}
+                />
+              </th>
+              <th>
+                {t('Location / IP')}
+                <button
+                  type="button"
+                  className={`col-resize-handle ${dragging === 'location' ? 'is-dragging' : ''}`}
+                  onPointerDown={(e) => beginResize('location', e)}
+                  onDoubleClick={() => resetColumn('location')}
+                  title={t('Drag to resize. Double-click to reset.')}
+                  aria-label={t('Resize column')}
+                  tabIndex={-1}
+                />
+              </th>
+              <th style={{ textAlign: 'right' }}>{t('Actions')}</th>
             </tr>
           </thead>
           <tbody>

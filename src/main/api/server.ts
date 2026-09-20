@@ -46,6 +46,13 @@ import { motionRouter } from './routes/motion';
 import { dataDirRouter } from './routes/dataDir';
 import { shutdownRouter } from './routes/shutdown';
 import { mcpRouter } from './routes/mcp';
+import { eventsRouter } from './routes/events';
+import {
+  classifyRequest,
+  describeRequest,
+  extractProfileId,
+  publishAgentActivity,
+} from '../agentActivity';
 
 const LOOPBACK_HOST_RE = /^(127\.0\.0\.1|localhost|\[::1\])(:\d+)?$/i;
 
@@ -220,8 +227,58 @@ export function createApp(): Express {
     }
     next();
   });
+  /*
+   * The panel's event stream, BEFORE the Bearer gate.
+   *
+   * `EventSource` cannot set an `Authorization` header — that is a limitation of the browser API,
+   * not a choice — so a stream mounted below `authMiddleware` answers 401 to every client that
+   * could legitimately use it. Measured: the identical request returned 401 without the header and
+   * streamed `hello` with one.
+   *
+   * It is not left unauthenticated: the route validates the same key itself, from `?key=`, with a
+   * timing-safe comparison (see `events.ts`). Moving it above the gate is what makes the route's
+   * own check the one that decides, instead of being pre-empted by a middleware that cannot see a
+   * query parameter.
+   */
+  app.use(eventsRouter);
+
   // Everything below requires Bearer auth
   app.use(authMiddleware);
+
+  /*
+   * Agent-activity observation.
+   *
+   * Placed after auth so only authenticated callers are classified, and before the routes so it
+   * sees a request whatever handler answers it. It records what the request MEANS on the way in,
+   * then publishes only once the response is finished and succeeded — an action that was refused
+   * or failed is not something to tell the operator about, and publishing first would announce
+   * work that never happened.
+   */
+  app.use((req: Request, res: Response, next: NextFunction) => {
+    const source = classifyRequest(req.headers as Record<string, unknown>);
+    if (source !== 'agent') {
+      next();
+      return;
+    }
+    const described = describeRequest(req.method, req.path);
+    if (!described) {
+      next();
+      return;
+    }
+    const profileId = extractProfileId(req.body, req.query);
+    res.on('finish', () => {
+      if (res.statusCode >= 400) return;
+      publishAgentActivity({
+        kind: described.kind,
+        summary: profileId ? `${described.verb} ${profileId}` : described.verb,
+        source: 'agent',
+        profileId,
+        route: req.path,
+      });
+    });
+    next();
+  });
+
   // CDP tunnel before rate limiting — automation traffic streams through it
   // continuously and must not be throttled.
   app.use(createCdpRouter(getCdpEndpoint));

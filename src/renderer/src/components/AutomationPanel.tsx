@@ -168,11 +168,36 @@ export function AutomationPanel() {
     }
   };
 
-  const mcpLabel = mcp?.running
-    ? mcp.toolCount !== undefined
-      ? t('{n} tools').replace('{n}', String(mcp.toolCount))
-      : t('On')
-    : t('Off');
+  /**
+   * What the MCP row says.
+   *
+   * The operator's ask: «если скачано и установлено, то просто MCP будет показывать, что оно
+   * включено, и там столько-то тулзов». So this is a status line, not a button — three states,
+   * each one a fact about the machine rather than about this render:
+   *   running   → enabled, with the real tool count the server reports;
+   *   installed → a bundle exists but the server is not up;
+   *   neither    → nothing is installed yet, which is what the Download button is for.
+   */
+  const mcpState: { tone: 'ok' | 'idle' | 'off'; label: string; title: string } = mcp?.running
+    ? {
+        tone: 'ok',
+        label:
+          mcp.toolCount !== undefined
+            ? t('Enabled — {n} tools').replace('{n}', String(mcp.toolCount))
+            : t('Enabled'),
+        title: mcp.httpUrl ? `${t('MCP')}: ${mcp.httpUrl}` : t('MCP'),
+      }
+    : mcp?.installed
+      ? {
+          tone: 'idle',
+          label: t('Installed'),
+          title: mcp.bundleDir ?? t('Installed'),
+        }
+      : {
+          tone: 'off',
+          label: t('Not installed'),
+          title: t('Write a ready-to-use MCP server into a folder, for your agent to run'),
+        };
 
   return (
     <section className="automation-api-panel" aria-label={t('Automation API')}>
@@ -205,17 +230,36 @@ export function AutomationPanel() {
         </button>
       </div>
 
-      {/* Three short controls on one wrapping row instead of two fixed rows. */}
-      <div className="automation-actions-row" style={{ flexWrap: 'wrap' }}>
+      {/*
+        MCP is a STATUS, not a control — the operator asked for exactly two buttons
+        («Кнопки две документайшн и даунлоуант MCP») and for MCP itself to report whether it is
+        enabled and how many tools it exposes.
+
+        It stays clickable while the server is down, because the app's own autostart can fail
+        (that was the «МСП не включается» report) and a status line with no way to retry would
+        leave the operator stuck. Clicking it while enabled is a no-op: shutting the server down
+        is not an action this panel needs to offer, and having the same row mean "start" and
+        "stop" depending on state is how a status becomes a trap.
+      */}
+      <div className="automation-mcp-row">
         <button
           type="button"
-          className="automation-action-btn"
-          onClick={toggleMcp}
-          disabled={busy || backendDown}
-          title={mcp?.running ? t('Stop the MCP server') : t('Start the MCP server')}
+          className={`automation-mcp-status tone-${mcpState.tone}`}
+          data-testid="mcp-status"
+          onClick={() => {
+            if (!mcp?.running) toggleMcp();
+          }}
+          disabled={busy || backendDown || Boolean(mcp?.running)}
+          title={mcpState.title}
         >
-          {t('MCP')}: {mcpLabel}
+          <span className={`status-dot ${mcp?.running ? 'online' : 'offline'}`} aria-hidden="true" />
+          <span className="automation-mcp-label">
+            {t('MCP')}: {mcpState.label}
+          </span>
         </button>
+      </div>
+
+      <div className="automation-actions-row" style={{ flexWrap: 'wrap' }}>
         <button
           type="button"
           className="automation-action-btn"

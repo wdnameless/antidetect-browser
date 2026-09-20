@@ -1,6 +1,8 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { isAuthorized, isProhibitedTool } from './auth';
+import { isAnnounceableTool } from '../../src/main/agentActivity';
+import { ActivityReporter } from './activityReporter';
 import { McpAuditLogger } from './audit';
 import { AntidetectClient } from '@antidetect/sdk';
 import { BrowserDriver } from './browser';
@@ -29,12 +31,14 @@ export class ToolRouter {
   private readonly client: AntidetectClient;
   private readonly browserDriver: BrowserDriver;
   private readonly auditLogger: McpAuditLogger;
+  private readonly activityReporter: ActivityReporter;
   private readonly allowlist: Map<string, AllowlistEntry> = new Map();
 
   constructor(options?: {
     client?: AntidetectClient;
     browserDriver?: BrowserDriver;
     auditLogger?: McpAuditLogger;
+    activityReporter?: ActivityReporter;
     allowlistPath?: string;
   }) {
     // The API lives on the app's own loopback port, and every /api/v1 route requires a
@@ -54,6 +58,9 @@ export class ToolRouter {
       });
     this.browserDriver = options?.browserDriver || new BrowserDriver(this.client);
     this.auditLogger = options?.auditLogger || new McpAuditLogger();
+    this.activityReporter =
+      options?.activityReporter ||
+      new ActivityReporter({ apiBaseUrl, token: process.env.ANTIDETECT_API_TOKEN });
 
     const allowlistFile = options?.allowlistPath || path.resolve(__dirname, '../allowlist.json');
     this.loadAllowlist(allowlistFile);
@@ -139,6 +146,19 @@ export class ToolRouter {
         decision: 'allow',
         caller,
       });
+      /*
+       * Report the action so the desktop panel can show it.
+       *
+       * Only on success, and only for tools that actually changed something: a refused or failed
+       * call is not something to tell the operator about, and announcing reads would bury the real
+       * actions. `isAnnounceableTool` owns that distinction.
+       *
+       * Deliberately NOT awaited — see `ActivityReporter`. Reporting must not add latency to an
+       * agent's automation or be able to fail a tool that already succeeded.
+       */
+      if (isAnnounceableTool(name)) {
+        this.activityReporter.report(name, typeof args.profile_id === 'string' ? args.profile_id : undefined);
+      }
       return { success: true, data: result };
     } catch (err: unknown) {
       const errMsg = err instanceof Error ? err.message : String(err);

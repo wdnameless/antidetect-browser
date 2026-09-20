@@ -1,0 +1,12 @@
+# Key material must never be rewritten by checkout.
+#
+# The licence public key is baked into the Rust binary with `include_str!` at COMPILE time, while
+# the TypeScript constant is generated from the WORKING TREE by scripts/sync-license-key.mjs. With
+# `core.autocrlf=true` (the Git-for-Windows default) git rewrote this file's LF endings to CRLF on
+# the way out, so the two languages hashed different bytes and every valid licence was refused.
+#
+# The fingerprints now hash the key's base64 BODY, which makes them immune to this. Marking the
+# files binary keeps the bytes on disk identical to the bytes in the repository anyway — the
+# failure is expensive to diagnose, and `-text` costs nothing.
+resources/license-public-key.pem -text
+resources/release-keyring.json -text

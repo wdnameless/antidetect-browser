@@ -13,6 +13,7 @@ mod secrets;
 mod sidecar;
 mod tray;
 mod updater;
+mod license;
 
 use sidecar::SidecarManager;
 
@@ -54,6 +55,120 @@ pub fn default_settings_dir() -> PathBuf {
     }
     sidecar::default_settings_dir()
 }
+
+/// Converts top-down RGBA pixels into the pair `CreateIcon` requires.
+///
+/// `CreateIcon` wants the colour bitmap in BGRA order and a 1-bit AND mask that is the INVERSE
+/// of the alpha channel (0 where the pixel is opaque). Getting either wrong produces a visibly
+/// mangled icon rather than an error, which is why this is a separate, tested function instead
+/// of inline code inside the `unsafe` block. The conversion is identical to tao's own
+/// `RgbaIcon::into_windows_icon`, so an icon built here matches one the window system builds.
+fn rgba_to_bgra_with_mask(rgba: &[u8]) -> (Vec<u8>, Vec<u8>) {
+    let pixel_count = rgba.len() / 4;
+    let mut bgra = Vec::with_capacity(rgba.len());
+    let mut and_mask = Vec::with_capacity(pixel_count);
+    for chunk in rgba.chunks_exact(4) {
+        let (r, g, b, a) = (chunk[0], chunk[1], chunk[2], chunk[3]);
+        and_mask.push(a.wrapping_sub(u8::MAX));
+        bgra.extend_from_slice(&[b, g, r, a]);
+    }
+    (bgra, and_mask)
+}
+
+/// Sets both ICON_BIG and ICON_SMALL on the Windows window from the embedded application icon.
+///
+/// Tauri's window builder and runtime (wry -> tao) set only IconType::Small (WM_SETICON / ICON_SMALL)
+/// during window creation. The taskbar on Windows (at 96 DPI and higher) queries ICON_BIG (32x32+)
+/// via WM_GETICON. When ICON_BIG is unpopulated, Windows falls back to scaling the small icon or
+/// class icon, resulting in a visibly blurred taskbar icon.
+///
+/// By taking `app.default_window_icon()` (a 256x256 RGBA image decoded from icons/icon.ico) and
+/// constructing a native Win32 HICON via `CreateIcon`, then explicitly sending `WM_SETICON` for both
+/// `ICON_BIG` and `ICON_SMALL`, we guarantee Windows has high-resolution icon data for all taskbar
+/// and alt-tab rendering.
+///
+/// Windows does NOT copy the icon resource when receiving WM_SETICON; destroying or dropping the
+/// HICON while the window is still alive blanks or corrupts the taskbar/window icon. We leak the
+/// created HICON using `Box::leak` so it persists for the lifetime of the process.
+#[cfg(target_os = "windows")]
+fn apply_taskbar_icon(app: &tauri::AppHandle, window: &tauri::WebviewWindow) {
+    use windows::Win32::Foundation::{HWND, LPARAM, WPARAM};
+    use windows::Win32::UI::WindowsAndMessaging::{
+        CreateIcon, SendMessageW, HICON, ICON_BIG, ICON_SMALL, WM_SETICON,
+    };
+
+    let icon_image = match app.default_window_icon() {
+        Some(icon) => icon,
+        None => return,
+    };
+
+    let width = icon_image.width();
+    let height = icon_image.height();
+    let rgba_bytes = icon_image.rgba();
+    if rgba_bytes.len() != (width as usize * height as usize * 4) {
+        eprintln!(
+            "[shell] Warning: window icon buffer size mismatch ({} bytes for {}x{})",
+            rgba_bytes.len(),
+            width,
+            height
+        );
+        return;
+    }
+
+    let (bgra, and_mask) = rgba_to_bgra_with_mask(rgba_bytes);
+
+    let hicon = unsafe {
+        CreateIcon(
+            None,
+            width as i32,
+            height as i32,
+            1,
+            32,
+            and_mask.as_ptr(),
+            bgra.as_ptr(),
+        )
+    };
+
+    let hicon: HICON = match hicon {
+        Ok(h) => h,
+        Err(err) => {
+            eprintln!("[shell] Failed to CreateIcon for taskbar: {err}");
+            return;
+        }
+    };
+
+    // Windows requires the HICON to remain valid as long as the window exists (it does not copy the resource).
+    // Storing the created HICON handle in a static OnceLock guarantees process-lifetime persistence.
+    // HICON wraps a raw pointer `*mut c_void`; we store it as `usize` (`isize`) so the cell implements `Send + Sync`.
+    static TASKBAR_HICON: std::sync::OnceLock<usize> = std::sync::OnceLock::new();
+    let &stored_handle = TASKBAR_HICON.get_or_init(|| hicon.0 as usize);
+    let hwnd_raw = match window.hwnd() {
+        Ok(h) => h,
+        Err(err) => {
+            eprintln!("[shell] Failed to get HWND for taskbar icon: {err}");
+            return;
+        }
+    };
+
+    unsafe {
+        let hwnd = HWND(hwnd_raw.0);
+        SendMessageW(
+            hwnd,
+            WM_SETICON,
+            Some(WPARAM(ICON_BIG as usize)),
+            Some(LPARAM(stored_handle as isize)),
+        );
+        SendMessageW(
+            hwnd,
+            WM_SETICON,
+            Some(WPARAM(ICON_SMALL as usize)),
+            Some(LPARAM(stored_handle as isize)),
+        );
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn apply_taskbar_icon(_app: &tauri::AppHandle, _window: &tauri::WebviewWindow) {}
 
 /// Resolves the data directory the backend uses.
 /// Matches backend config.ts resolveDataDir:
@@ -550,6 +665,8 @@ fn main() {
             updater::update_check,
             updater::update_download,
             updater::update_install,
+            license::license_verify,
+            license::license_publish_verdict,
         ]);
 
     let app = builder
@@ -631,8 +748,16 @@ fn main() {
                 .build()
                 .expect("failed to create main window");
 
+            apply_taskbar_icon(&handle, &window);
+
             match sidecar_result {
                 Ok(_) => {
+                    // Publish initial license verdict so <settings_dir>/license-verdict.json exists
+                    // immediately on startup. Without this call, packaged builds default getLicenseState()
+                    // to Free even when a valid Pro license key is stored in settings.json.
+                    if let Err(e) = license::publish_verdict_in_dir(&setup_settings_dir) {
+                        eprintln!("[license] Failed to publish initial license verdict: {e}");
+                    }
                     let target_url: url::Url = format!("http://127.0.0.1:{api_port}").parse().unwrap();
                     let _ = window.navigate(target_url);
                 }
@@ -1120,5 +1245,49 @@ mod teardown_key_tests {
             "an exit path this slow will read as a hang: {:?}",
             super::TEARDOWN_WAIT
         );
+    }
+}
+
+#[cfg(test)]
+mod icon_pixels_tests {
+    use super::rgba_to_bgra_with_mask;
+
+    /// Red and blue must SWAP, and alpha must stay put.
+    ///
+    /// This is the one part of the taskbar-icon path with no runtime feedback: `CreateIcon`
+    /// accepts any byte layout without complaint, so a mix-up does not fail — it draws a
+    /// wrong-coloured icon. The brand mark is monochrome, so a swap would be invisible in the
+    /// mark itself and only show up as a wrong-tinted edge against a coloured taskbar.
+    #[test]
+    fn rgba_becomes_bgra_with_alpha_preserved() {
+        let rgba = [10, 20, 30, 255, 40, 50, 60, 128];
+        let (bgra, mask) = rgba_to_bgra_with_mask(&rgba);
+        assert_eq!(bgra, vec![30, 20, 10, 255, 60, 50, 40, 128]);
+        // The mask is `alpha - 255` with wrapping, exactly as tao builds it. It is a 1-BIT mask,
+        // so what matters is zero vs non-zero, not the magnitude.
+        assert_eq!(mask, vec![0, 129]);
+    }
+
+    /// The mask must distinguish the two ends: opaque -> 0 (draw the pixel), transparent ->
+    /// non-zero (let the window behind show through). A constant would paint the mark's
+    /// transparent corners as solid black, which is the defect this pins.
+    #[test]
+    fn the_and_mask_distinguishes_opaque_from_transparent() {
+        let opaque = [1, 2, 3, 255];
+        let transparent = [1, 2, 3, 0];
+        let (_, mask_opaque) = rgba_to_bgra_with_mask(&opaque);
+        let (_, mask_transparent) = rgba_to_bgra_with_mask(&transparent);
+        assert_eq!(mask_opaque[0], 0, "an opaque pixel must set no mask bit");
+        assert_ne!(mask_transparent[0], 0, "a transparent pixel must set its mask bit");
+    }
+
+    /// Pixel count is preserved, so a buffer sized from the image dimensions stays consistent
+    /// with what `CreateIcon` is told to read.
+    #[test]
+    fn every_pixel_survives_the_conversion() {
+        let rgba: Vec<u8> = (0..(8 * 4)).map(|i| i as u8).collect();
+        let (bgra, mask) = rgba_to_bgra_with_mask(&rgba);
+        assert_eq!(bgra.len(), rgba.len());
+        assert_eq!(mask.len(), rgba.len() / 4);
     }
 }

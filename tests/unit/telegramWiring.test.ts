@@ -86,10 +86,25 @@ describe('Telegram Wiring - Settings API endpoints', () => {
     const res = await dispatch('get', '/api/v1/settings/telegram');
     expect(res.status).toBe(200);
     expect(res.body.code).toBe(0);
+    /*
+     * `events` is part of the response now: every notification kind can be routed to Telegram or
+     * not, which is the operator's ask («все уведомления, которые могут приходить, должны
+     * настраиваться, отсылать их в БОт или нет»). An install that has never saved them gets the
+     * defaults, and `agent.activity` is OFF by default because an agent can act many times a
+     * minute — the operator asked not to be flooded, and to get those in-app instead.
+     */
     expect(res.body.data).toEqual({
       has_token: false,
       chatIds: [],
       enabled: false,
+      events: {
+        'profile.started': true,
+        'profile.stopped': true,
+        'profile.created': true,
+        'profile.deleted': true,
+        'taskgroup.finished': true,
+        'agent.activity': false,
+      },
     });
     // Secret rule: token MUST NOT be present in GET response
     expect(res.body.data?.token).toBeUndefined();
@@ -109,6 +124,14 @@ describe('Telegram Wiring - Settings API endpoints', () => {
       has_token: true,
       chatIds: ['100200300', '400500600'],
       enabled: true,
+      events: {
+        'profile.started': true,
+        'profile.stopped': true,
+        'profile.created': true,
+        'profile.deleted': true,
+        'taskgroup.finished': true,
+        'agent.activity': false,
+      },
     });
     expect(putRes.body.data?.token).toBeUndefined();
 
@@ -125,6 +148,14 @@ describe('Telegram Wiring - Settings API endpoints', () => {
       has_token: true,
       chatIds: ['100200300', '400500600'],
       enabled: true,
+      events: {
+        'profile.started': true,
+        'profile.stopped': true,
+        'profile.created': true,
+        'profile.deleted': true,
+        'taskgroup.finished': true,
+        'agent.activity': false,
+      },
     });
     expect(getRes.body.data?.token).toBeUndefined();
     expect(JSON.stringify(getRes.body)).not.toContain('123456:ABC-DEF');

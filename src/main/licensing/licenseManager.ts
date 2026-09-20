@@ -4,14 +4,13 @@
 // Key format: "<base64url-payload>.<base64url-signature>"
 //   payload    — JSON {plan:"pro", exp?:<unix-seconds>, email?:string}
 //   signature  — Ed25519 over the exact payload bytes (PKCS8/SPKI PEM keys)
-// The public key is embedded in the build (publicKey.ts); the private key is
-// held by the vendor only (see .env.example: LICENSE_PRIVATE_KEY).
-
-import { sign, verify } from 'crypto';
-import { getSetting, setSetting } from '../config';
+import fs from 'node:fs';
+import path from 'node:path';
+import os from 'node:os';
+import { createHash, sign, verify } from 'node:crypto';
+import { getSetting, setSetting, isPortableMode, portableBaseDir } from '../config';
 import { protectSecret, revealSecret } from '../util/secretStore';
 import { LICENSE_PUBLIC_KEY_PEM } from './publicKey';
-
 export type LicensePlan = 'free' | 'pro';
 
 export interface LicensePayload {
@@ -55,8 +54,39 @@ export function signLicensePayload(payload: LicensePayload, privateKeyPem: strin
   return `${b64urlEncode(payloadBuf)}.${b64urlEncode(signature)}`;
 }
 
-/** Validate a license key offline. Signature must verify against the pinned key. */
-export function validateLicenseKey(key: string): LicenseValidationResult {
+/**
+ * Fingerprint of the pinned key, computed over its BASE64 BODY rather than the file bytes.
+ *
+ * Hashing the raw file made the value depend on the checkout's line endings: the PEM is stored
+ * with LF, and `core.autocrlf=true` (the Git-for-Windows default) rewrites it to CRLF on checkout.
+ * Rust bakes the bytes in with `include_str!` at COMPILE time while this constant is generated
+ * from the WORKING TREE, so the two sides hashed different bytes and every valid licence was
+ * refused. The base64 body IS the key material and carries no line endings, so both agree.
+ *
+ * Kept in lockstep with `normalize_pem_body` in `src-tauri/src/license.rs`.
+ */
+export function getPinnedKeyFingerprint(): string {
+  const keyBody = LICENSE_PUBLIC_KEY_PEM.split('\n')
+    .filter((line) => !line.trimStart().startsWith('-----'))
+    .map((line) => line.trim())
+    .join('');
+  return createHash('sha256').update(keyBody, 'utf8').digest('hex').slice(0, 16);
+}
+
+/** Locate settings directory where settings.json (and license-verdict.json) live. */
+function getSettingsDir(): string {
+  if (process.env.ANTIDETECT_SETTINGS_DIR && process.env.ANTIDETECT_SETTINGS_DIR.length > 0) {
+    return process.env.ANTIDETECT_SETTINGS_DIR;
+  }
+  if (isPortableMode()) {
+    const p = portableBaseDir();
+    if (p) return p;
+  }
+  return path.join(os.homedir(), '.antidetect');
+}
+
+/** Validate a license key offline. Signature must verify against the pinned key (or provided key). */
+export function validateLicenseKey(key: string, publicKeyPem?: string): LicenseValidationResult {
   const trimmed = String(key ?? '').trim();
   const dot = trimmed.lastIndexOf('.');
   if (dot <= 0 || dot === trimmed.length - 1) return { ok: false, reason: 'INVALID_LICENSE' };
@@ -74,8 +104,9 @@ export function validateLicenseKey(key: string): LicenseValidationResult {
   if (sigBuf.length !== 64) return { ok: false, reason: 'INVALID_LICENSE' };
 
   let verified = false;
+  const keyToUse = publicKeyPem ?? LICENSE_PUBLIC_KEY_PEM;
   try {
-    verified = verify(null, payloadBuf, LICENSE_PUBLIC_KEY_PEM, sigBuf);
+    verified = verify(null, payloadBuf, keyToUse, sigBuf);
   } catch {
     verified = false;
   }
@@ -116,6 +147,34 @@ export function getLicenseState(): LicenseState {
     // Tampered/expired stored key falls back to Free but stays removable.
     return { plan: 'free', expired: res.reason === 'LICENSE_EXPIRED' };
   }
+
+  // Cross-check ONLY when running inside packaged build (ANTIDETECT_PACKAGED === '1').
+  // Outside packaged builds (tests, CI, npm run service), pure Ed25519 is authoritative.
+  if (process.env.ANTIDETECT_PACKAGED === '1') {
+    const verdictPath = path.join(getSettingsDir(), 'license-verdict.json');
+    try {
+      if (!fs.existsSync(verdictPath)) {
+        return { plan: 'free', expired: false, email: res.payload.email, exp: res.payload.exp };
+      }
+      const raw = fs.readFileSync(verdictPath, 'utf8');
+      const verdict = JSON.parse(raw);
+      const tokenFp = createHash('sha256').update(stored, 'utf8').digest('hex').slice(0, 16);
+      const isVerdictValid =
+        verdict &&
+        verdict.schema === 1 &&
+        verdict.valid === true &&
+        verdict.key_fp === getPinnedKeyFingerprint() &&
+        verdict.token_fp === tokenFp;
+
+      if (!isVerdictValid) {
+        return { plan: 'free', expired: false, email: res.payload.email, exp: res.payload.exp };
+      }
+    } catch {
+      // Missing, unreadable, or invalid JSON verdict file falls back to Free (never throws).
+      return { plan: 'free', expired: false, email: res.payload.email, exp: res.payload.exp };
+    }
+  }
+
   return {
     plan: 'pro',
     email: res.payload.email,

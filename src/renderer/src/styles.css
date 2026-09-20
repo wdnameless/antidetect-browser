@@ -122,11 +122,11 @@
   /* Density + shell metrics. The expanded width follows the reference's 240px, which is
      what its navigation's 18px icons and 10px gaps were measured against; the collapsed
      rail is ours (the reference has no collapse) and stays at 52px. */
+  --table-actions-w: 132px;
   --row-h: 52px;
   --control-h: 32px;
   --control-h-sm: 28px;
   --sidebar-w: 240px;
-  --table-actions-w: 132px;
   --topbar-h: 48px;
 
   /* Type scale.
@@ -652,6 +652,65 @@ pre {
   display: flex;
   align-items: center;
   gap: 6px;
+}
+
+/*
+ * The MCP status row.
+ *
+ * It is a button (so a failed autostart can be retried) styled as a readout: a dot and a label on
+ * the app's flat ground, with no control chrome, because it reports state rather than inviting a
+ * click. The tone only affects the label's colour — the dot carries the state, and colouring the
+ * whole row would make a status compete with the two real buttons below it.
+ */
+.automation-mcp-row {
+  display: flex;
+  align-items: center;
+}
+
+.automation-mcp-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 2px 4px;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+  font-family: inherit;
+  font-size: 11px;
+  color: var(--text-secondary);
+  text-align: left;
+  cursor: pointer;
+  min-width: 0;
+}
+
+.automation-mcp-status:disabled {
+  /* Enabled state is final for this row: the label still reads, it just is not an action. */
+  cursor: default;
+  opacity: 1;
+}
+
+.automation-mcp-status:not(:disabled):hover {
+  background: var(--control-bg-hover);
+  color: var(--text);
+}
+
+.automation-mcp-status.tone-ok .automation-mcp-label {
+  color: var(--text);
+}
+
+.automation-mcp-status.tone-idle .automation-mcp-label {
+  color: var(--text-secondary);
+}
+
+.automation-mcp-status.tone-off .automation-mcp-label {
+  color: var(--text-muted);
+}
+
+.automation-mcp-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .automation-action-btn {
@@ -1294,6 +1353,166 @@ pre {
   border-color: var(--border-focus);
 }
 
+/*
+ * Dropdown — the app's own select.
+ *
+ * A native `<select>` popup is drawn by the OS, so the list opens in system colours: on WebView2
+ * that is a light panel over this app's `#09090b` ground, which is the operator's «поломанные с
+ * цветами… как будто классические». The closed trigger can be themed; the open list cannot. This
+ * control renders both from the token set.
+ *
+ * The menu is `position: fixed` and its coordinates come from the trigger — inside a table
+ * container (which clips, by design) an absolutely-positioned menu would be cut off.
+ */
+.dropdown {
+  position: relative;
+  display: inline-flex;
+  min-width: 0;
+}
+
+.dropdown-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  width: 100%;
+  min-width: 0;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 13px;
+  padding: 7px 10px;
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+
+.dropdown-trigger:hover:not(:disabled) {
+  border-color: var(--control-bg-active);
+}
+
+.dropdown-trigger:focus-visible {
+  outline: none;
+  border-color: var(--border-focus);
+}
+
+.dropdown-trigger:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.dropdown-trigger svg {
+  flex-shrink: 0;
+  color: var(--text-muted);
+  transition: transform 0.15s ease;
+}
+
+.dropdown-trigger[aria-expanded='true'] svg {
+  transform: rotate(180deg);
+}
+
+.dropdown-value,
+.dropdown-placeholder {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* An unset filter must read as unset, so the caller's placeholder is muted. */
+.dropdown-placeholder {
+  color: var(--text-muted);
+}
+
+/* Compact density for the filter toolbar, where the control shares a row with the search box. */
+.dropdown-sm .dropdown-trigger {
+  height: var(--control-h-sm);
+  padding: 0 10px;
+  font-size: var(--text-xs);
+  border-radius: var(--radius-sm);
+}
+
+.dropdown-menu {
+  position: fixed;
+  z-index: 200;
+  max-height: 260px;
+  overflow-y: auto;
+  padding: 4px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-md);
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.dropdown-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  width: 100%;
+  padding: 7px 8px;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  color: var(--text-secondary);
+  font-family: inherit;
+  font-size: 12.5px;
+  text-align: left;
+  cursor: pointer;
+}
+
+/* Hover and keyboard share one highlight: the pointer sets the active index, so a keyboard user
+   who then moves the mouse sees exactly one row highlighted rather than two. */
+.dropdown-item.is-active {
+  background: var(--control-bg-hover);
+  color: var(--text);
+}
+
+.dropdown-item.is-selected {
+  color: var(--text);
+}
+
+.dropdown-item.is-selected svg {
+  color: var(--accent);
+  flex-shrink: 0;
+}
+
+.dropdown-item-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dropdown-hint {
+  color: var(--text-muted);
+}
+
+/*
+ * A native `<select>` remains in a few places (multi-selects and OS-level pickers); its popup
+ * still takes the OS palette, but `color-scheme` is what makes that palette dark to match the
+ * app rather than a white list with unreadable options. It is declared once, on `:root` and
+ * `:root[data-theme='light']` at the top of this file, so those controls follow the theme.
+ */
+
+/*
+ * The filter toolbar keeps native `<select>` elements out of the layout: each Dropdown sits in
+ * its own bordered segment, so the group reads as one control strip without any inner borders
+ * on the dropdowns themselves.
+ */
+.header-filters .dropdown-trigger {
+  background: transparent;
+  border: none;
+  border-radius: 0;
+}
+
+.header-filters .dropdown + .dropdown {
+  border-left: 1px solid var(--border);
+}
+
 input, textarea {
   background: var(--panel);
   border: 1px solid var(--border);
@@ -1312,35 +1531,81 @@ input, textarea {
   background: transparent;
   border: none;
   border-radius: 0;
-  overflow-x: auto;
   box-shadow: none;
-}
-
-.table--wide {
-  min-width: 1080px;
-}
-
-.table th.col-actions,
-.table td.col-actions {
-  position: sticky;
-  right: 0;
-  z-index: 1;
-  background: var(--bg-app);
-}
-
-.table th.col-actions {
-  background: color-mix(in srgb, var(--bg-app) 98%, #ffffff 2%);
-}
-
-.table tbody tr:hover td.col-actions,
-.table tbody tr.row-dense:hover td.col-actions {
-  background: color-mix(in srgb, var(--bg-app) 97.5%, #ffffff 2.5%);
+  /* NEVER scrolls sideways. The operator's report was «уберём этот стрёмный скрол
+     горизонтальный… чтобы всё помещалось». The table below is `table-layout: fixed` and the
+     resizable columns live in `<col>` elements, so the sum is always exactly the container
+     width: there is no content that can push it wider, and therefore nothing to scroll to.
+     `overflow: hidden` is the guarantee, not the mechanism — if a future change reintroduces a
+     too-wide cell, it clips visibly instead of silently adding a scrollbar back. */
+  overflow: hidden;
+  /* The drag handles are 8px wide and sit ON the column border, so the outermost one overhangs
+     the table by ~4px. Clipping it would make the last resizable column undraggable. */
+  padding: 0 4px;
+  margin: 0 -4px;
 }
 
 .table {
   width: 100%;
   border-collapse: collapse;
   text-align: left;
+  /* Fixed layout is what makes the `<col>` widths authoritative: with `auto`, a long profile
+     name or a wide action cluster overrides the declared widths and the table outgrows its
+     container — which is exactly what forced the min-width + scrollbar this replaces. */
+  table-layout: fixed;
+}
+
+/* Column widths come from `<col>` elements (see useColumnResize). Cells must not re-declare
+   their own widths, and a cell's content must be allowed to shrink below its intrinsic size,
+   or fixed layout still overflows. */
+.table th,
+.table td {
+  overflow: hidden;
+}
+
+/* Drag handle: an 8px strip centred on the column's right border. It is transparent until the
+   header row is hovered, so the table stays a flat surface at rest. */
+.col-resize-handle {
+  position: absolute;
+  top: 0;
+  right: -4px;
+  width: 8px;
+  height: 100%;
+  cursor: col-resize;
+  z-index: 2;
+  background: transparent;
+  border: none;
+  padding: 0;
+}
+
+.col-resize-handle::after {
+  content: '';
+  position: absolute;
+  top: 20%;
+  left: 3px;
+  width: 2px;
+  height: 60%;
+  border-radius: 1px;
+  background: transparent;
+  transition: background-color 0.12s ease;
+}
+
+.table th:hover .col-resize-handle::after,
+.col-resize-handle:hover::after,
+.col-resize-handle.is-dragging::after {
+  background: var(--border-focus);
+}
+
+/* While dragging, the cursor must stay a resize cursor everywhere and text must not be
+   selectable — otherwise a fast drag selects the header labels. */
+body.col-resizing,
+body.col-resizing * {
+  cursor: col-resize !important;
+  user-select: none !important;
+}
+
+.table th {
+  position: relative;
 }
 
 .table thead {
@@ -2222,4 +2487,106 @@ tr.row-dense:focus-within .row-dense__actions {
   color: var(--text);
   font-size: 12px;
   padding: 2px 0;
+}
+
+/* ==========================================================================
+   Toast Notifications (Quiet Agent Activity Toasts)
+   Tokens only. Subdued, Telegram-like stack in bottom-right corner.
+   ========================================================================== */
+
+.toast-stack {
+  position: fixed;
+  bottom: var(--space-4);
+  right: var(--space-4);
+  z-index: 900;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  max-width: 360px;
+  width: calc(100vw - var(--space-8));
+  pointer-events: none;
+}
+
+.toast {
+  pointer-events: auto;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-2);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-md);
+  padding: var(--space-2) var(--space-3);
+  cursor: pointer;
+  user-select: none;
+  animation: toast-enter 160ms cubic-bezier(0.16, 1, 0.3, 1);
+  transition: background-color 140ms ease, border-color 140ms ease;
+}
+
+.toast:hover {
+  background: var(--control-bg-hover);
+  border-color: var(--border-hover);
+}
+
+.toast-content {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+
+.toast-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+  line-height: 1.3;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.toast-body {
+  font-size: 11px;
+  color: var(--text-secondary);
+  line-height: 1.35;
+  word-break: break-word;
+}
+
+.toast-close {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  padding: 2px;
+  margin-top: -2px;
+  margin-right: -4px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-sm);
+  flex-shrink: 0;
+  transition: color 120ms ease;
+}
+
+.toast-close:hover {
+  color: var(--text);
+}
+
+@keyframes toast-enter {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .toast {
+    animation: none;
+  }
 }
