@@ -35,6 +35,24 @@ pub struct AppState {
     pub data_dir: PathBuf,
     pub sidecar: Arc<SidecarManager>,
 }
+/// Returns the default directory where settings (and settings.json) live.
+///
+/// 1. ANTIDETECT_SETTINGS_DIR if set and non-empty.
+/// 2. In portable mode (PORTABLE_EXECUTABLE_DIR is set and non-empty): the portable folder itself.
+/// 3. Otherwise: delegates to sidecar::default_settings_dir() (%APPDATA%/antidetect-browser on Windows).
+pub fn default_settings_dir() -> PathBuf {
+    if let Ok(dir) = std::env::var("ANTIDETECT_SETTINGS_DIR") {
+        if !dir.trim().is_empty() {
+            return PathBuf::from(dir.trim());
+        }
+    }
+    if let Ok(dir) = std::env::var("PORTABLE_EXECUTABLE_DIR") {
+        if !dir.trim().is_empty() {
+            return PathBuf::from(dir.trim());
+        }
+    }
+    sidecar::default_settings_dir()
+}
 
 /// Resolves the data directory the backend uses.
 /// Matches backend config.ts resolveDataDir:
@@ -308,7 +326,7 @@ fn read_key_file(path: &Path) -> Option<String> {
 }
 
 fn main() {
-    let settings_dir = sidecar::default_settings_dir();
+    let settings_dir = default_settings_dir();
     // Did the location arrive from OUTSIDE (operator, CI, a script) rather than from us?
     // The backend asks the operator where data should live on first run, but must not ask
     // when the path is imposed. It cannot tell the difference by looking at the variable
@@ -429,7 +447,7 @@ fn main() {
 
             let bridge_script = include_str!("bridge.js");
 
-            let window = WebviewWindowBuilder::new(
+            let mut builder = WebviewWindowBuilder::new(
                 &handle,
                 "main",
                 WebviewUrl::App("index.html".into()),
@@ -437,9 +455,18 @@ fn main() {
             .title("NullTrace")
             .inner_size(1280.0, 800.0)
             .decorations(false)
-            .initialization_script(bridge_script)
-            .build()
-            .expect("failed to create main window");
+            .initialization_script(bridge_script);
+
+            if let Ok(portable_dir) = std::env::var("PORTABLE_EXECUTABLE_DIR") {
+                if !portable_dir.trim().is_empty() {
+                    let webview_dir = PathBuf::from(portable_dir.trim()).join("webview");
+                    builder = builder.data_directory(webview_dir);
+                }
+            }
+
+            let window = builder
+                .build()
+                .expect("failed to create main window");
 
             match sidecar_result {
                 Ok(_) => {
@@ -493,7 +520,7 @@ fn main() {
 
 #[cfg(test)]
 mod data_dir_tests {
-    use super::{resolve_data_dir, saved_data_dir};
+    use super::{default_settings_dir, resolve_data_dir, saved_data_dir};
     use std::fs;
     use std::path::PathBuf;
 
@@ -509,8 +536,14 @@ mod data_dir_tests {
     /// This is the bug that shipped: the shell resolved the DEFAULT path, exported it as
     /// ANTIDETECT_DATA_DIR, and the backend (which prefers the env var) wrote there — the
     /// chosen folder stayed empty while profiles piled up in the profile directory.
+    static ENV_LOCK: parking_lot::Mutex<()> = parking_lot::Mutex::new(());
+
     #[test]
     fn honours_the_directory_recorded_in_settings() {
+        let _lock = ENV_LOCK.lock();
+        let orig_data = std::env::var("ANTIDETECT_DATA_DIR").ok();
+        let orig_portable = std::env::var("PORTABLE_EXECUTABLE_DIR").ok();
+
         let settings = tmp("honours");
         let chosen = settings.join("my-profiles");
         fs::write(
@@ -523,18 +556,53 @@ mod data_dir_tests {
         std::env::remove_var("ANTIDETECT_DATA_DIR");
         std::env::remove_var("PORTABLE_EXECUTABLE_DIR");
 
-        assert_eq!(resolve_data_dir(&settings), chosen);
+        let res = resolve_data_dir(&settings);
+
+        if let Some(v) = orig_data { std::env::set_var("ANTIDETECT_DATA_DIR", v); }
+        if let Some(v) = orig_portable { std::env::set_var("PORTABLE_EXECUTABLE_DIR", v); }
+
+        assert_eq!(res, chosen);
     }
 
     /// Portable mode must still resolve beside the executable when nothing was recorded.
     #[test]
     fn falls_back_to_portable_beside_the_executable() {
+        let _lock = ENV_LOCK.lock();
+        let orig_data = std::env::var("ANTIDETECT_DATA_DIR").ok();
+        let orig_portable = std::env::var("PORTABLE_EXECUTABLE_DIR").ok();
+
         let settings = tmp("portable");
         std::env::remove_var("ANTIDETECT_DATA_DIR");
         std::env::set_var("PORTABLE_EXECUTABLE_DIR", settings.join("app"));
         let resolved = resolve_data_dir(&settings);
-        std::env::remove_var("PORTABLE_EXECUTABLE_DIR");
+
+        if let Some(v) = orig_data { std::env::set_var("ANTIDETECT_DATA_DIR", v); } else { std::env::remove_var("ANTIDETECT_DATA_DIR"); }
+        if let Some(v) = orig_portable { std::env::set_var("PORTABLE_EXECUTABLE_DIR", v); } else { std::env::remove_var("PORTABLE_EXECUTABLE_DIR"); }
+
         assert_eq!(resolved, settings.join("app").join("data"));
+    }
+
+    #[test]
+    fn default_settings_dir_resolves_portable_when_env_is_set() {
+        let _lock = ENV_LOCK.lock();
+        let orig_settings = std::env::var("ANTIDETECT_SETTINGS_DIR").ok();
+        let orig_portable = std::env::var("PORTABLE_EXECUTABLE_DIR").ok();
+
+        let fake_portable = tmp("portable_settings");
+        std::env::remove_var("ANTIDETECT_SETTINGS_DIR");
+        std::env::set_var("PORTABLE_EXECUTABLE_DIR", &fake_portable);
+
+        let dir = default_settings_dir();
+        assert_eq!(dir, fake_portable);
+
+        // ANTIDETECT_SETTINGS_DIR takes precedence even in portable mode
+        let custom_settings = tmp("custom_settings");
+        std::env::set_var("ANTIDETECT_SETTINGS_DIR", &custom_settings);
+        let dir_custom = default_settings_dir();
+        assert_eq!(dir_custom, custom_settings);
+
+        if let Some(v) = orig_settings { std::env::set_var("ANTIDETECT_SETTINGS_DIR", v); } else { std::env::remove_var("ANTIDETECT_SETTINGS_DIR"); }
+        if let Some(v) = orig_portable { std::env::set_var("PORTABLE_EXECUTABLE_DIR", v); } else { std::env::remove_var("PORTABLE_EXECUTABLE_DIR"); }
     }
 
     /// A missing, unreadable or malformed settings file means "no choice recorded".

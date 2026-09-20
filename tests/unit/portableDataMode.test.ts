@@ -71,9 +71,22 @@ describe('data directory resolution order', () => {
 
   it('keeps a user-chosen directory winning over portable mode', () => {
     const chosen = path.join(tmpRoot, 'chosen');
+    // The folder must look like an installation: `resolveDataDir` honours a recorded path only
+    // while it exists AND holds data, because a moved USB stick carries the OLD machine's path
+    // and treating it as valid would open an empty library there.
+    fs.mkdirSync(path.join(chosen, 'profiles'), { recursive: true });
+    fs.writeFileSync(path.join(chosen, 'antidetect.db'), 'fixture');
     writeSettingsFile({ dataDir: chosen });
     setEnv('PORTABLE_EXECUTABLE_DIR', tmpRoot);
     expect(resolveDataDir()).toBe(chosen);
+  });
+
+  it('falls back to the portable folder when the recorded path belongs to another machine', () => {
+    // The moved-stick case: the recorded folder is absent here, so the folder beside the
+    // executable wins instead of resolving to a path that does not exist.
+    writeSettingsFile({ dataDir: path.join(tmpRoot, 'not-here-on-this-machine') });
+    setEnv('PORTABLE_EXECUTABLE_DIR', tmpRoot);
+    expect(resolveDataDir()).toBe(path.join(tmpRoot, 'data'));
   });
 
   it('resolves beside the executable in portable mode', () => {

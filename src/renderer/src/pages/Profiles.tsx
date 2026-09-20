@@ -134,8 +134,6 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
   const [batchPrefix, setBatchPrefix] = useState('profile');
   const [batchGroup, setBatchGroup] = useState('');
 
-  const [showCsv, setShowCsv] = useState(false);
-  const [csvText, setCsvText] = useState('');
 
   // Groups Management Modal
   const [showGroupModal, setShowGroupModal] = useState(false);
@@ -739,25 +737,6 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
     }
   };
 
-  const handleImportBundle = async (file: File) => {
-    setBusy(true);
-    setError('');
-    try {
-      const text = await file.text();
-      const bundle = JSON.parse(text);
-      const res = await api.profileImportBundle(bundle);
-      if (res.code === 0) {
-        await loadProfiles();
-      } else {
-        setError(`Import failed: ${res.msg}`);
-      }
-    } catch (err) {
-      setError(`Import failed: ${(err as Error).message}`);
-    } finally {
-      setBusy(false);
-    }
-  };
-
   const handleRandomizeFingerprint = async (id: string) => {
     setBusy(true);
     setError('');
@@ -1032,26 +1011,6 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
           }
         }
         setShowBatch(false);
-        await loadProfiles();
-        await loadGroups();
-      } else {
-        setError(res.msg);
-      }
-    } catch (err) {
-      setError((err as Error).message);
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const importCsv = async () => {
-    setBusy(true);
-    setError('');
-    try {
-      const res = await api.importCsv(csvText);
-      if (res.code === 0) {
-        setShowCsv(false);
-        setCsvText('');
         await loadProfiles();
         await loadGroups();
       } else {
@@ -1403,26 +1362,6 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
             <button className="btn btn-sm" onClick={() => setShowBatch(true)}>
               {t('Batch Create')}
             </button>
-            <button className="btn btn-sm" onClick={() => setShowCsv(true)}>
-              {t('Import CSV')}
-            </button>
-            <button className="btn btn-sm" onClick={() => window.open(api.exportCsvUrl(), '_blank')} title={t('Export all profiles to CSV')}>
-              {t('Export CSV')}
-            </button>
-            <button className="btn btn-sm" onClick={() => document.getElementById('import-bundle-input')?.click()} disabled={busy} title={t('Import a profile bundle (.json) exported from this or another machine')}>
-              {t('Import Bundle')}
-            </button>
-            <input
-              id="import-bundle-input"
-              type="file"
-              accept="application/json,.json"
-              style={{ display: 'none' }}
-              onChange={(e) => {
-                const f = e.target.files?.[0];
-                if (f) void handleImportBundle(f);
-                e.target.value = '';
-              }}
-            />
           </div>
 
           {/* Primary Action Button */}
@@ -1586,26 +1525,23 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
                   />
                 </span>
               </th>
-              <th style={{ width: '24%' }}>{t('Profile Name')}</th>
-              <th style={{ width: '18%' }}>{t('Proxy')}</th>
-              <th style={{ width: '12%' }}>{t('Device / OS')}</th>
-              <th style={{ width: '13%' }}>{t('Fingerprint')}</th>
-              <th style={{ width: '11%' }}>{t('Preflight')}</th>
-              <th style={{ width: '8%' }}>{t('Status')}</th>
-              <th className="col-actions" style={{ width: '14%', textAlign: 'right' }}>{t('Actions')}</th>
+              <th style={{ width: '40%' }}>{t('Profile Name')}</th>
+              <th style={{ width: '28%' }}>{t('Proxy')}</th>
+              <th style={{ width: '14%' }}>{t('Status')}</th>
+              <th className="col-actions" style={{ width: '18%', textAlign: 'right' }}>{t('Actions')}</th>
             </tr>
           </thead>
           <tbody>
             {filteredProfiles.length === 0 ? (
               searchQuery ? (
                 <tr>
-                  <td colSpan={8} className="empty-cell">
+                  <td colSpan={5} className="empty-cell">
                     {t('No profiles match your search criteria.')}
                   </td>
                 </tr>
               ) : (
                 <EmptyState
-                  colSpan={8}
+                  colSpan={5}
                   icon={<ProfilesIcon size={32} />}
                   title={t('No profiles yet')}
                   description={t('Create your first browser profile — each profile gets a unique fingerprint, device, and proxy.')}
@@ -1675,61 +1611,6 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
                       ) : (
                         <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>Direct (No Proxy)</span>
                       )}
-                    </div>
-                  </td>
-                  <td>
-                    <div className="row-dense__meta">
-                      <span className="proxy-type-badge" style={{ color: p.platform === 'ios' || p.platform === 'android' ? 'var(--ok)' : 'var(--text-secondary)' }}>
-                        {(p.platform || 'windows').toUpperCase()}
-                      </span>
-                    </div>
-                  </td>
-                  <td>
-                    <div className="row-dense__meta" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                      <span
-                        style={{
-                          fontSize: 12,
-                          fontWeight: 500,
-                          color: 'var(--text)',
-                        }}
-                      >
-                        {p.device_name ? (
-                          <span>{p.device_name}</span>
-                        ) : (
-                          <span>
-                            {p.platform === 'android' ? 'Android' : p.platform === 'ios' ? 'iOS' : p.platform === 'macos' ? 'macOS' : 'Windows'}
-                          </span>
-                        )}
-                      </span>
-                      <span
-                        style={{
-                          fontSize: 11,
-                          color: copiedSeed === p.fingerprint_seed ? 'var(--ok)' : 'var(--text-muted)',
-                          fontFamily: 'var(--font-mono)',
-                          cursor: 'pointer',
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: 4,
-                        }}
-                        onClick={() => copySeedToClipboard(p.fingerprint_seed)}
-                        title="Click to copy full Seed"
-                      >
-                        {copiedSeed === p.fingerprint_seed ? (
-                          '✓ Copied!'
-                        ) : (
-                          <>{p.fingerprint_seed ? String(p.fingerprint_seed).slice(0, 8) + '..' : 'auto'}</>
-                        )}
-                      </span>
-                    </div>
-                  </td>
-                  <td>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                      <PreflightBadge
-                        status={preflightCache[p.user_id]?.status}
-                        verdict={preflightCache[p.user_id]?.verdict}
-                        onClick={() => void inspectPreflight(p.user_id, p.name || undefined)}
-                        onRun={() => void runPreflight(p.user_id, p.name || undefined, true)}
-                      />
                     </div>
                   </td>
                   <td>
@@ -3059,35 +2940,6 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
         </div>
       ) : null}
 
-      {/* CSV Import Modal */}
-      {showCsv ? (
-        <div className="modal-overlay" onClick={() => setShowCsv(false)}>
-          <div className="modal-card" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
-              <h3>Import Profiles via CSV</h3>
-              <button className="btn-icon" onClick={() => setShowCsv(false)}>✕</button>
-            </div>
-            <div className="modal-body">
-              <p className="hint" style={{ margin: 0 }}>
-                CSV format: <code>name,proxy_type,proxy_host,proxy_port,proxy_user,proxy_pass</code>
-              </p>
-              <textarea
-                placeholder="acc1,http,1.2.3.4,8080,usr,pass&#10;acc2,socks5,5.6.7.8,1080"
-                value={csvText}
-                onChange={(e) => setCsvText(e.target.value)}
-                rows={6}
-                style={{ width: '100%', fontFamily: 'var(--font-mono)' }}
-              />
-            </div>
-            <div className="modal-footer">
-              <button className="btn" onClick={() => setShowCsv(false)}>Cancel</button>
-              <button className="btn primary" onClick={() => void importCsv()} disabled={busy || !csvText.trim()}>
-                Import Profiles
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : null}
 
       {/* Manage Drawer / Modal for Cookies, Fingerprint Overrides, Extensions */}
       {manage ? (

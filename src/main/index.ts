@@ -22,6 +22,7 @@ import {
   notifyTaskGroupFinished,
 } from './telegram/bot';
 import { logger, initLogger, flushLogs } from './util/logger';
+import { McpService } from './mcpService';
 
 // ---------------------------------------------------------------------------
 // Single-instance lock: two service instances would race on the DB file.
@@ -301,6 +302,14 @@ export async function shutdown(reason: string, code = 0): Promise<void> {
     // ignore
   }
   try {
+    const mcp = McpService.getInstance();
+    if (mcp.status().running) {
+      await mcp.stop();
+    }
+  } catch {
+    // ignore
+  }
+  try {
     stopScheduler();
     stopAllWorkers();
   } catch {
@@ -398,6 +407,33 @@ export function wireTelegramBot(): void {
     notifyTaskGroupFinished(groupId, String(finalStatus), group?.name);
   });
 }
+/** Start the MCP server during service start. Returns the reason on failure; never throws. */
+export async function startMcpWithService(): Promise<{ started: boolean; error?: string }> {
+  try {
+    const service = McpService.getInstance();
+    if (service.status().running) {
+      return { started: true };
+    }
+    // `start()` either returns a running status or throws with the reason, so the failure path
+    // is the catch below rather than a flag on the returned value.
+    const status = await service.start();
+    if (status.running) {
+      logger.info('MCP server autostart succeeded', {
+        tools: status.toolCount,
+        url: status.httpUrl,
+      });
+      return { started: true };
+    }
+    const reason = 'MCP server did not report itself running after start';
+    logger.warn('MCP server autostart failed', { reason });
+    return { started: false, error: reason };
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : String(err);
+    logger.warn('MCP server autostart failed', { reason });
+    return { started: false, error: reason };
+  }
+}
+
 
 export async function startService(): Promise<void> {
   initLogger();
@@ -455,6 +491,9 @@ export async function startService(): Promise<void> {
   logger.info('service ready', { apiKey: getApiKey() });
   console.log(`[antidetect] ready. API key: ${getApiKey()}`);
   console.log(`[antidetect] try: curl http://${API_HOST}:${API_PORT}/status`);
+
+  // Start MCP server with service (R07)
+  await startMcpWithService();
 }
 
 // Allow running the backend standalone (without Electron): `npm run service`

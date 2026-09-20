@@ -154,8 +154,23 @@ describe('when the first-run prompt is due', () => {
 });
 
 describe('recording the choice', () => {
+
+  /**
+   * Give a directory the contents a real installation has.
+   *
+   * `resolveDataDir` now honours a recorded folder only while it EXISTS and HOLDS DATA: a USB
+   * stick carries the old machine's absolute path, and treating that as valid would open an empty
+   * library there. A bare directory therefore no longer counts, so a fixture that means "a real
+   * chosen folder" has to contain something only real use produces.
+   */
+  function seedDataDir(dir: string): void {
+    fs.mkdirSync(path.join(dir, 'profiles'), { recursive: true });
+    fs.writeFileSync(path.join(dir, 'antidetect.db'), 'fixture');
+  }
+
   it('stores the picked folder and the resolver honours it afterwards', () => {
     const picked = path.join(tmpRoot, 'my-profiles');
+    seedDataDir(picked);
     setFirstRunDataChoice({ dir: picked });
     expect(readSettings().dataDir).toBe(picked);
     // The point of recording it: a later process resolves to the chosen folder.
@@ -165,6 +180,7 @@ describe('recording the choice', () => {
   it('lets an explicit folder win over a previously recorded mode', () => {
     setFirstRunDataChoice({ mode: 'system' });
     const picked = path.join(tmpRoot, 'explicit');
+    seedDataDir(picked);
     setFirstRunDataChoice({ dir: picked });
     expect(resolveDataDir()).toBe(picked);
   });

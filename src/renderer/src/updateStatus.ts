@@ -92,6 +92,12 @@ export interface UpdatePresentation {
   titleKey: string;
   /** Percent complete, present only while downloading (the shell reports it). */
   percent: number | null;
+  /**
+   * The state this presentation describes, so a caller can style by state without re-deriving it
+   * from the label text — which would break the moment a translation changed a word.
+   * `'idle'` is the not-yet-checked case, which has no `UpdateStatus` behind it.
+   */
+  state: UpdateStatus['state'] | 'idle';
 }
 
 /**
@@ -102,34 +108,37 @@ export interface UpdatePresentation {
  */
 export function presentUpdate(status: UpdateStatus | null, hasRunCheck: boolean): UpdatePresentation {
   if (!hasRunCheck || !status) {
-    return { labelKey: 'Not checked', titleKey: 'Update check has not run', percent: null };
+    return { labelKey: 'Not checked', titleKey: 'Update check has not run', percent: null, state: 'idle' };
   }
 
   switch (status.state) {
     case 'checking':
-      return { labelKey: 'Checking…', titleKey: 'Checking for updates...', percent: null };
+      return { labelKey: 'Checking…', titleKey: 'Checking for updates...', percent: null, state: 'checking' };
     case 'available':
       return {
         labelKey: 'Update available',
         titleKey: `Update available: ${status.info?.version ?? 'new'}`,
         percent: null,
+        state: 'available',
       };
     case 'downloading':
       return {
         labelKey: 'Downloading…',
         titleKey: 'Downloading update...',
         percent: Math.round(status.percent),
+        state: 'downloading',
       };
     case 'downloaded':
       return {
         labelKey: 'Restart to update',
         titleKey: 'Update downloaded (ready to install)',
         percent: null,
+        state: 'downloaded',
       };
     case 'installing':
-      return { labelKey: 'Installing…', titleKey: 'Applying the update...', percent: null };
+      return { labelKey: 'Installing…', titleKey: 'Applying the update...', percent: null, state: 'installing' };
     case 'not-available':
-      return { labelKey: 'Up to date', titleKey: 'You are on the latest version.', percent: null };
+      return { labelKey: 'Up to date', titleKey: 'You are on the latest version.', percent: null, state: 'not-available' };
     case 'error':
       // A release without `latest.json` is not a failure the operator can act on — the endpoint
       // genuinely has nothing to serve until a release publishes it, so say that instead.
@@ -138,14 +147,16 @@ export function presentUpdate(status: UpdateStatus | null, hasRunCheck: boolean)
             labelKey: 'Updates not configured',
             titleKey: 'Automatic updates are not configured for this build yet',
             percent: null,
+            state: 'error',
           }
         : {
             labelKey: 'Check failed',
             titleKey: `Update error: ${status.message}`,
             percent: null,
+            state: 'error',
           };
     default:
-      return { labelKey: 'Not checked', titleKey: 'Update check has not run', percent: null };
+      return { labelKey: 'Not checked', titleKey: 'Update check has not run', percent: null, state: 'idle' };
   }
 }
 

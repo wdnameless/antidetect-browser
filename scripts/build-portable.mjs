@@ -193,8 +193,15 @@ const renderFileTree = (files, destPrefix) => {
   const out = [];
   for (const dir of [...byDir.keys()].sort()) {
     const target = dir ? `${destPrefix}\\${dir}` : destPrefix;
-    out.push(`  CreateDirectory "$LOCALAPPDATA\\NullTrace\\portable\\\${VERSION}\\${target}"`);
-    out.push(`  SetOutPath "$LOCALAPPDATA\\NullTrace\\portable\\\${VERSION}\\${target}"`);
+    // `${RUNTIME_DIR}` is the macro the template defines: the extraction root BESIDE the launcher.
+    // These lines used to spell out `$LOCALAPPDATA\NullTrace\portable\<version>` independently of
+    // the template — two places that had to agree and did not, so moving the extraction inside the
+    // operator's folder silently kept writing most of the payload into the system.
+    //
+    // The macro is escaped (`\${RUNTIME_DIR}`) because this is a JS template literal: an unescaped
+    // `${...}` would be interpolated by Node and NSIS would receive whatever that name held.
+    out.push(`  CreateDirectory "\${RUNTIME_DIR}\\${target}"`);
+    out.push(`  SetOutPath "\${RUNTIME_DIR}\\${target}"`);
     for (const f of byDir.get(dir).sort((a, b) => a.name.localeCompare(b.name))) {
       out.push(`  File "/oname=${f.name}" "${nsisPath(f.abs)}"`);
     }

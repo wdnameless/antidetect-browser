@@ -42,6 +42,8 @@ declare global {
   interface Window {
     antidetect?: {
       getApiKey: () => Promise<string>;
+      /** Open a URL with the system handler — bridge.js exposes this as `openExternal`. */
+      openExternal?: (url: string) => Promise<unknown>;
       data: {
         getDir: () => Promise<string>;
         setDir: () => Promise<{ ok: boolean; dir: string }>;

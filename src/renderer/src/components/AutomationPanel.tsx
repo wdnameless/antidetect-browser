@@ -229,19 +229,20 @@ export function AutomationPanel() {
         <button
           type="button"
           className="automation-action-btn"
-          onClick={() => void copy('mcp', mcpClientConfig())}
-          title={t('Copy the MCP client configuration')}
-        >
-          {copied === 'mcp' ? t('Copied') : t('MCP config')}
-        </button>
-        <a
-          className="automation-action-btn"
-          href="https://github.com/wdnameless/antidetect-browser/tree/main/docs"
-          target="_blank"
-          rel="noreferrer noopener"
+          onClick={() => {
+            const docUrl = 'https://github.com/wdnameless/antidetect-browser/tree/main/docs';
+            // The bridge exposes this as `openExternal` (src-tauri/src/bridge.js), which opens
+            // the URL through the system handler. A plain <a target="_blank"> does nothing inside
+            // a Tauri webview, which is why the button appeared broken.
+            if (window.antidetect?.openExternal) {
+              void window.antidetect.openExternal(docUrl);
+            } else {
+              window.open(docUrl, '_blank', 'noreferrer,noopener');
+            }
+          }}
         >
           {t('Documentation')}
-        </a>
+        </button>
       </div>
 
       {bundleResult && (

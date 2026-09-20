@@ -463,27 +463,28 @@ export function App() {
             */}
           <AutomationPanel />
           {/*
-           * The version line is the update control.
+           * The version line is the update control, and it shows its own state.
            *
-           * It used to be a passive label reading "Not checked", then a check-only button:
-           * clicking it reported "Update available" and stopped, because `download()` and
-           * `quitAndInstall()` lived only behind buttons in Settings. Clicking here now
-           * authorises the whole flow — check → download → install → relaunch — and the
-           * effect above advances each step as the shell reports it. A state that cannot
-           * proceed (up to date, error) simply stops there and says so.
+           * Clicking it authorises the whole flow — check → download → install → relaunch — and
+           * the effect above advances each step as the shell reports it. A state that cannot
+           * proceed (up to date, error) stops there and says so.
+           *
+           * Styled as a card rather than three lines of loose text: the state is carried by
+           * `data-state`, so the appearance and the behaviour cannot drift apart, and the
+           * progress bar appears only while there is progress to show. The animation is
+           * suppressed under `prefers-reduced-motion`.
            *
            * Rendered as a button, not a div with onClick, so it is keyboard reachable and
            * announced as interactive.
-           *
-           * It is no longer conditional: the sidebar cannot collapse any more, so there is
-           * no state in which the version would be hidden.
            */}
           <button
             type="button"
             className="sidebar-version"
             data-testid="check-updates"
+            data-state={updateView.state}
             title={updateTitle}
             aria-label={t('Check for updates')}
+            aria-busy={updateView.state === 'checking' || updateView.state === 'downloading' || updateView.state === 'installing'}
             onClick={() => {
               const apiObj = window.antidetect as (typeof window.antidetect & {
                 update?: { check?: () => Promise<void> };
@@ -504,21 +505,22 @@ export function App() {
               setKernelUpdateState({ state: 'checking' });
               void apiObj.update.check();
             }}
-            style={{
-              background: 'none',
-              border: 'none',
-              padding: 0,
-              cursor: 'pointer',
-              textAlign: 'left',
-              width: '100%',
-              font: 'inherit',
-              color: 'inherit',
-            }}
           >
-            <strong style={{ color: 'var(--text-secondary)', fontWeight: 600 }}>
-              {appVersion ? `${PRODUCT_NAME} v${appVersion}` : PRODUCT_NAME}
-            </strong>
-            <div style={{ marginTop: 2 }}>{updateLabel}</div>
+            <span className="sidebar-version__row">
+              <span className="sidebar-version__name">{PRODUCT_NAME}</span>
+              <span className="sidebar-version__badge">{appVersion ? `v${appVersion}` : '—'}</span>
+            </span>
+            <span className="sidebar-version__status">
+              <span className="sidebar-version__dot" aria-hidden="true" />
+              {updateLabel}
+            </span>
+            {/* A determinate bar only while bytes are actually moving; otherwise a thin
+                indeterminate sweep, which is what "checking" honestly represents. */}
+            <span className="sidebar-version__progress" aria-hidden="true">
+              {updateView.percent !== null ? (
+                <span className="sidebar-version__progress-fill" style={{ width: `${updateView.percent}%` }} />
+              ) : null}
+            </span>
           </button>
         </div>
       </aside>
@@ -575,7 +577,18 @@ export function App() {
               matching the navigation's first group. */}
           <div className="page-breadcrumb-row">
             <nav className="breadcrumb" aria-label={t('Breadcrumb')}>
-              <span className="breadcrumb-item">{t('Workspace')}</span>
+              <span className="breadcrumb-item">
+                {/* The first segment names the SIDEBAR GROUP the page lives in, so the crumb
+                    matches what the operator clicked. It used to be a literal `Workspace`, which
+                    contradicted the menu: Devices sits under LIBRARY and the breadcrumb still
+                    read "Workspace". Title-cased from the group id; a destination without a
+                    group (the Dashboard) falls back to the workspace name. */}
+                {t(
+                  activeDest.group
+                    ? activeDest.group.charAt(0).toUpperCase() + activeDest.group.slice(1).toLowerCase()
+                    : 'Workspace'
+                )}
+              </span>
               <span className="breadcrumb-sep" aria-hidden="true">/</span>
               <span className="breadcrumb-current">{activeNav ? t(activeNav.label) : 'Dashboard'}</span>
             </nav>

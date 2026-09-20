@@ -1,3 +1,4 @@
+import { getDataDir } from '../../src/main/config';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
@@ -36,12 +37,23 @@ export class McpAuditLogger {
     } else if (process.env.ANTIDETECT_MCP_AUDIT_PATH) {
       this.filePath = path.resolve(process.env.ANTIDETECT_MCP_AUDIT_PATH);
     } else {
-      const appData =
-        process.env.APPDATA ||
-        (process.platform === 'darwin'
-          ? path.join(os.homedir(), 'Library', 'Application Support')
-          : path.join(os.homedir(), '.config'));
-      this.filePath = path.join(appData, 'antidetect-browser', 'mcp-audit.jsonl');
+      let dataDir: string | undefined;
+      try {
+        dataDir = getDataDir();
+      } catch {
+        // Fall through if config is unreachable
+      }
+
+      if (dataDir && typeof dataDir === 'string' && dataDir.length > 0) {
+        this.filePath = path.join(dataDir, 'mcp-audit.jsonl');
+      } else {
+        const appData =
+          process.env.APPDATA ||
+          (process.platform === 'darwin'
+            ? path.join(os.homedir(), 'Library', 'Application Support')
+            : path.join(os.homedir(), '.config'));
+        this.filePath = path.join(appData, 'antidetect-browser', 'mcp-audit.jsonl');
+      }
     }
 
     this.prevHash = '0'.repeat(64);

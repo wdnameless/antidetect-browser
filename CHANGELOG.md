@@ -1,5 +1,49 @@
 # Changelog
 
+## [0.6.18] - 2026-09-19
+
+### Changed — the application is now genuinely one folder
+
+Operator: «чтобы наш спорт был реально хранился в одной папке и не создавал в системе под папок,
+чтобы можно было взять, перенести браузер на флешке и открыть все со своими профилями и сессиями».
+
+It was not, in three separate ways — all measured, then fixed:
+
+| What | Where it went | Now |
+|---|---|---|
+| `settings.json` (holding the record of where data lives) | `%APPDATA%\antidetect-browser` | beside the executable |
+| WebView2 cache | `%LOCALAPPDATA%\NullTrace` | inside the folder |
+| The extracted payload itself | `%LOCALAPPDATA%\NullTrace\portable\<version>` | `<folder>\runtime\<version>` |
+
+Measured before the change: launching from a fresh folder grew `%LOCALAPPDATA%\NullTrace\portable\0.6.17`
+while the folder itself held only the launcher. After it, that directory is not created at all and
+the folder contains `runtime/`, `data/` and `webview/`.
+
+A recorded data location is honoured only while it exists AND holds data. That is what makes a
+moved folder work: a USB stick carries the old machine's absolute path, and treating it as valid
+would point at a directory that is not there. On the machine that recorded it, nothing changes —
+and a settings file left at the pre-move location is still read once and migrated, so an existing
+installation keeps the folder it chose.
+
+Verified by copying a real installation to a fresh folder and opening it: the profile, its groups
+and its extension all came with it, and the app reported the same version from the new location.
+
+### Changed — interface
+
+- **The profiles table no longer carries Device/OS, Fingerprint or Preflight.** Columns are now
+  Profile Name, Proxy, Status, Actions.
+- **Import CSV, Export CSV and Import Bundle moved** from the Profiles toolbar to Settings → Data
+  Folder, beside the folder they act on.
+- **The breadcrumb names the sidebar group.** It read a literal `Workspace` on the Devices page
+  while Devices sits under LIBRARY; it now reads `Library / Devices`, `System / Settings`, and so on.
+- **MCP starts with the application.** It was always off until clicked, because nothing started it
+  at boot. A failure to start is logged with its reason and leaves the manual control working.
+- **The "MCP config" button is gone** and **Documentation opens** the GitHub docs — the link used
+  `target="_blank"`, which a Tauri webview ignores, so it did nothing.
+- **The version/update line is a card** with a state of its own: a coloured dot, a progress bar
+  while work is happening, the version as a chip, and no animation under `prefers-reduced-motion`.
+  Every value comes from the design tokens rather than bespoke colours.
+
 ## [0.6.17] - 2026-09-19
 
 ### Fixed — the browser language did not change, and a reopened profile started blank

@@ -6,8 +6,15 @@ import { randomUUID } from 'crypto';
 // Base directory for app settings (settings.json). Electron sets ANTIDETECT_SETTINGS_DIR
 // to app.getPath('userData'); standalone service falls back to ~/.antidetect.
 function settingsBase(): string {
+  // ANTIDETECT_SETTINGS_DIR wins over portability on purpose: a managed deployment or a test
+  // pins where settings live, and silently relocating them would break that contract.
   if (process.env.ANTIDETECT_SETTINGS_DIR && process.env.ANTIDETECT_SETTINGS_DIR.length > 0) {
     return process.env.ANTIDETECT_SETTINGS_DIR;
+  }
+  // Portable launch: the settings file travels WITH the folder, so the recorded data location
+  // is not left behind on the machine the stick was prepared on.
+  if (isPortableMode()) {
+    return portableBaseDir() as string;
   }
   // KEEP: Preserves existing install directory location ~/.antidetect across updates.
   return path.join(os.homedir(), '.antidetect');
@@ -17,10 +24,49 @@ function settingsFile(): string {
   return path.join(settingsBase(), 'settings.json');
 }
 
+/**
+ * The settings file this installation used BEFORE settings moved beside the executable.
+ *
+ * An installation created before that change keeps its `settings.json` — and with it the record
+ * of where its data lives — under the user profile. Reading only the portable location made that
+ * record invisible: measured on a real install whose settings file held `dataDir: "D:\\NULLTRACE"`,
+ * `readSettings()` returned `{}` and the app created a SECOND data directory beside itself,
+ * leaving the profiles in the original one.
+ *
+ * Only consulted when the portable settings file does not exist, so a migrated installation is
+ * never read from two places at once.
+ */
+function legacySettingsFile(): string | null {
+  if (!isPortableMode()) return null;
+  // An explicitly pinned settings directory is a deliberate decision by a deployment or a test:
+  // it means "read settings HERE", so looking elsewhere would override that instruction with a
+  // stale file from the user profile.
+  if (process.env.ANTIDETECT_SETTINGS_DIR && process.env.ANTIDETECT_SETTINGS_DIR.length > 0) {
+    return null;
+  }
+  const candidates = [
+    process.env.APPDATA ? path.join(process.env.APPDATA, 'antidetect-browser', 'settings.json') : null,
+    path.join(os.homedir(), '.antidetect', 'settings.json'),
+  ].filter((p): p is string => Boolean(p));
+  return candidates.find((p) => fs.existsSync(p)) ?? null;
+}
+
 export function readSettings(): Record<string, unknown> {
   try {
     return JSON.parse(fs.readFileSync(settingsFile(), 'utf8')) as Record<string, unknown>;
   } catch {
+    // Fall back to the pre-move location, and MIGRATE it: once the portable file exists the
+    // legacy one is never read again, which is what keeps a copied folder self-contained.
+    const legacy = legacySettingsFile();
+    if (legacy) {
+      try {
+        const parsed = JSON.parse(fs.readFileSync(legacy, 'utf8')) as Record<string, unknown>;
+        writeSettings(parsed);
+        return parsed;
+      } catch {
+        // A corrupt legacy file means "no choice recorded", same as a corrupt portable one.
+      }
+    }
     return {};
   }
 }
@@ -56,28 +102,57 @@ export function portableBaseDir(): string | null {
 /**
  * Resolve the data directory from the current environment and settings.
  *
- * Exported so the resolution order (env → saved choice → portable → system
- * default) can be exercised directly: `DATA_DIR` is a module-level constant, so
- * testing the order through it would need a module reload per case.
+ * Exported so the resolution order can be exercised directly: `DATA_DIR` is a module-level
+ * constant, so testing the order through it would need a module reload per case.
+ *
+ * The portable rule is what makes the folder movable. A recorded `dataDir` used to win
+ * unconditionally, which on removable media is the OLD machine's absolute path — the folder the
+ * stick is plugged into would resolve to a directory that is not there. A recorded path is
+ * therefore honoured only while it exists AND holds data; otherwise a portable launch falls
+ * through to the folder beside the executable. On the machine that recorded it, the path still
+ * exists and nothing changes.
  */
 export function resolveDataDir(): string {
-  // 1) Explicit env override (used by tests and CI).
+  // 1) Explicit env override (used by tests and CI, and by the shell so both agree).
   if (process.env.ANTIDETECT_DATA_DIR && process.env.ANTIDETECT_DATA_DIR.length > 0) {
     return process.env.ANTIDETECT_DATA_DIR;
   }
   const settings = readSettings();
-  // 2) User-chosen directory persisted in settings.json.
+
+  // 2) A recorded choice, but only one that is still usable HERE. A path that is absent, or
+  //    present without any data, belongs to another machine — that is the moved-folder case.
   const saved = settings.dataDir;
-  if (typeof saved === 'string' && saved.length > 0) {
+  if (typeof saved === 'string' && saved.length > 0 && dataDirHoldsData(saved)) {
     return saved;
   }
+
   // 3) Portable mode: data beside the executable so the folder can be moved whole.
   //    Honours an explicit 'system' choice, which falls through to the default below.
   if (isPortableMode() && settings.dataMode !== 'system') {
     return path.join(portableBaseDir() as string, 'data');
   }
+
   // 4) Default: <settingsBase>/data (writable, stable across updates).
   return path.join(settingsBase(), 'data');
+}
+
+/**
+ * True when `candidateDir` exists and holds real data:
+ * - the database file `antidetect.db` exists inside it, OR
+ * - the `profiles/` directory exists inside it and is non-empty.
+ *
+ * The marker must be something only real use can produce: `config.ts` eagerly creates the data
+ * dir, `profiles/`, `chromium/` and an empty database at import, so their mere existence proves
+ * nothing.
+ */
+export function dataDirHoldsData(candidateDir: string): boolean {
+  try {
+    if (!fs.existsSync(candidateDir)) return false;
+    if (fs.existsSync(path.join(candidateDir, 'antidetect.db'))) return true;
+    return hasProfileData(path.join(candidateDir, 'profiles'));
+  } catch {
+    return false;
+  }
 }
 
 /**

@@ -195,6 +195,58 @@ export function Settings() {
   const [transferringDir, setTransferringDir] = useState<string | null>(null);
   const [transferAllBusy, setTransferAllBusy] = useState(false);
   const [deletingDir, setDeletingDir] = useState<string | null>(null);
+  const [showCsv, setShowCsv] = useState(false);
+  const [csvText, setCsvText] = useState('');
+  const [csvBusy, setCsvBusy] = useState(false);
+  const [csvMsg, setCsvMsg] = useState('');
+  /** Whether `csvMsg` reports a failure — the colour depends on this, not on the message text. */
+  const [csvFailed, setCsvFailed] = useState(false);
+  const [bundleBusy, setBundleBusy] = useState(false);
+
+  const importCsv = async () => {
+    setCsvBusy(true);
+    setCsvMsg('');
+    setCsvFailed(false);
+    try {
+      const res = await api.importCsv(csvText);
+      if (res.code === 0) {
+        setShowCsv(false);
+        setCsvText('');
+        setCsvMsg(t('Profiles imported successfully'));
+      } else {
+        setCsvFailed(true);
+        setCsvMsg(`Import failed: ${res.msg}`);
+      }
+    } catch (err) {
+      setCsvFailed(true);
+      setCsvMsg(`Import failed: ${(err as Error).message}`);
+    } finally {
+      setCsvBusy(false);
+    }
+  };
+
+  const handleImportBundle = async (file: File) => {
+    setBundleBusy(true);
+    setCsvMsg('');
+    setCsvFailed(false);
+    try {
+      const text = await file.text();
+      const bundle = JSON.parse(text);
+      const res = await api.profileImportBundle(bundle);
+      if (res.code === 0) {
+        setCsvMsg(t('Profile bundle imported successfully'));
+      } else {
+        setCsvFailed(true);
+        setCsvMsg(`Import failed: ${res.msg}`);
+      }
+    } catch (err) {
+      setCsvFailed(true);
+      setCsvMsg(`Import failed: ${(err as Error).message}`);
+    } finally {
+      setBundleBusy(false);
+    }
+  };
+
 
   const checkKernel = (): void => {
     setKernelChecking(true);
@@ -213,6 +265,7 @@ export function Settings() {
    */
   const installKernel = (): void => {
     setKernelBusy(true);
+
     setKernelInstallError(null);
     setKernelProgress({ received: 0, total: 0 });
     // Poll the server's own counters; a 425 MB download with no feedback looks hung.
@@ -709,9 +762,30 @@ export function Settings() {
                   <button className="btn" onClick={onOpenDataDir} disabled={migrating}>
                     {t('Open in Explorer')}
                   </button>
+                  <button className="btn" onClick={() => setShowCsv(true)}>
+                    {t('Import CSV')}
+                  </button>
+                  <button className="btn" onClick={() => window.open(api.exportCsvUrl(), '_blank')} title={t('Export all profiles to CSV')}>
+                    {t('Export CSV')}
+                  </button>
+                  <button className="btn" onClick={() => document.getElementById('settings-import-bundle-input')?.click()} disabled={bundleBusy} title={t('Import a profile bundle (.json) exported from this or another machine')}>
+                    {bundleBusy ? t('Importing…') : t('Import Bundle')}
+                  </button>
+                  <input
+                    id="settings-import-bundle-input"
+                    type="file"
+                    accept="application/json,.json"
+                    style={{ display: 'none' }}
+                    onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      if (f) void handleImportBundle(f);
+                      e.target.value = '';
+                    }}
+                  />
                 </div>
               </div>
               {dataDirMsg ? <p className="hint" style={{ color: 'var(--warn)' }}>{dataDirMsg}</p> : null}
+              {csvMsg ? <p className="hint" style={{ color: csvFailed ? 'var(--danger)' : 'var(--accent)' }}>{csvMsg}</p> : null}
               <p className="hint">
                 {t('All browser profiles, cookies, extensions, the Chromium kernel and the database are stored here. Changing the folder takes effect after restarting the app.')}
               </p>
@@ -978,6 +1052,35 @@ export function Settings() {
           ) : null}
         </div>
       </div>
+      {/* CSV Import Modal */}
+      {showCsv ? (
+        <div className="modal-overlay" onClick={() => setShowCsv(false)}>
+          <div className="modal-card" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>{t('Import Profiles via CSV')}</h3>
+              <button className="btn-icon" onClick={() => setShowCsv(false)}>✕</button>
+            </div>
+            <div className="modal-body">
+              <p className="hint" style={{ margin: 0 }}>
+                CSV format: <code>name,proxy_type,proxy_host,proxy_port,proxy_user,proxy_pass</code>
+              </p>
+              <textarea
+                placeholder="acc1,http,1.2.3.4,8080,usr,pass&#10;acc2,socks5,5.6.7.8,1080"
+                value={csvText}
+                onChange={(e) => setCsvText(e.target.value)}
+                rows={6}
+                style={{ width: '100%', fontFamily: 'var(--font-mono)' }}
+              />
+            </div>
+            <div className="modal-footer">
+              <button className="btn" onClick={() => setShowCsv(false)}>{t('Cancel')}</button>
+              <button className="btn primary" onClick={() => void importCsv()} disabled={csvBusy || !csvText.trim()}>
+                {csvBusy ? t('Importing…') : t('Import Profiles')}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

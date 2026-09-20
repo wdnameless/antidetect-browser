@@ -37,6 +37,10 @@ SetCompressor /SOLID "zlib"
 !define NODEBINARYSRCPATH "{{node_binary_path}}"
 !define OUTFILE "{{out_file}}"
 !define KEYRINGSRCPATH "{{keyring_path}}"
+; The extraction root, BESIDE the launcher rather than under %LOCALAPPDATA%, so the operator's
+; folder is self-contained. Defined here at file scope because the build script substitutes
+; `CreateDirectory`/`SetOutPath` lines that reference it.
+!define RUNTIME_DIR "$EXEDIR\runtime\${VERSION}"
 
 ; The launcher IS the file the operator sees and double-clicks, so it has to wear the
 ; product mark. Without this directive NSIS compiles its own default (`modern-install.ico`)
@@ -59,14 +63,38 @@ VIAddVersionKey "FileVersion" "${VERSION}"
 VIAddVersionKey "ProductVersion" "${VERSION}"
 
 Section "Main"
-  SetOutPath "$LOCALAPPDATA\NullTrace\portable\${VERSION}"
+  ; Everything the application needs lives INSIDE the folder the operator copied.
+  ;
+  ; It used to extract to `%LOCALAPPDATA%\NullTrace\portable\<version>`, which is a directory in
+  ; the system that the folder being moved does not contain: copy the launcher to a USB stick and
+  ; the new machine re-extracts there, leaving a second copy behind and — more importantly —
+  ; making the operator's folder not self-contained. Measured before this change: a launch from a
+  ; fresh folder grew `%LOCALAPPDATA%\NullTrace\portable\0.6.17` while the folder itself held only
+  ; the launcher.
+  ;
+  ; Extracting beside the launcher means the payload, the data, the settings and the webview cache
+  ; all sit under one directory that can be copied whole.
+  ;
+  ; The version is part of the path so an older extraction cannot be mistaken for the current one
+  ; after an in-app update replaces the launcher.
+  ;
+  ; `RUNTIME_DIR` is defined at the top of this file, outside the section: the generated
+  ; `CreateDirectory`/`SetOutPath` lines the build script substitutes reference it too, and a
+  ; define inside a section is not visible to text substituted before it.
+
+  ; Skip the extraction when this version is already unpacked. Re-extracting ~200 files on every
+  ; launch is what made a start take the better part of a minute; the marker file is written last,
+  ; so its presence means the previous extraction completed rather than stopped halfway.
+  IfFileExists "${RUNTIME_DIR}\.extracted" ExtractionDone 0
+
+  SetOutPath "${RUNTIME_DIR}"
 
   File "/oname=${MAINBINARYNAME}.exe" "${MAINBINARYSRCPATH}"
   File "/oname=node.exe" "${NODEBINARYSRCPATH}"
 
   ; Release keyring for artifact verification (resolve_keyring_path checks resources/release-keyring.json)
-  CreateDirectory "$LOCALAPPDATA\NullTrace\portable\${VERSION}\resources"
-  SetOutPath "$LOCALAPPDATA\NullTrace\portable\${VERSION}\resources"
+  CreateDirectory "${RUNTIME_DIR}\resources"
+  SetOutPath "${RUNTIME_DIR}\resources"
   File "/oname=release-keyring.json" "${KEYRINGSRCPATH}"
 
   ; Built backend + renderer, one file at a time (see the header for why).
@@ -84,13 +112,20 @@ Section "Main"
 {{this}}
 {{/each}}
 
+  ; Written last, so its presence proves the extraction completed.
+  FileOpen $0 "${RUNTIME_DIR}\.extracted" w
+  FileWrite $0 "${VERSION}"
+  FileClose $0
+
+  ExtractionDone:
+
   ; Relocatable data: config.ts resolves DATA_DIR from this variable.
   System::Call 'Kernel32::SetEnvironmentVariable(t "PORTABLE_EXECUTABLE_DIR", t "$EXEDIR")'
   ; Self-update target: an in-app update must replace the launcher (the file the operator owns
-  ; in their application folder), not the extracted shell under %LOCALAPPDATA%\NullTrace\portable\<version>\.
+  ; in their application folder), not the extracted shell inside the runtime folder.
   System::Call 'Kernel32::SetEnvironmentVariable(t "PORTABLE_EXECUTABLE_FILE", t "$EXEPATH")'
   ; Working directory must be the extracted root, or the shell resolves dist/ relative
   ; to wherever the launcher happened to be invoked from.
-  SetOutPath "$LOCALAPPDATA\NullTrace\portable\${VERSION}"
-  Exec '"$LOCALAPPDATA\NullTrace\portable\${VERSION}\${MAINBINARYNAME}.exe"'
+  SetOutPath "${RUNTIME_DIR}"
+  Exec '"${RUNTIME_DIR}\${MAINBINARYNAME}.exe"'
 SectionEnd
