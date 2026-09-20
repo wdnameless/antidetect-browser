@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [0.6.22] - 2026-09-20
 
 ### Fixed — an agent-opened profile did not appear until something else refreshed the table
 
@@ -66,6 +66,87 @@ instead. An install with no stored `events` back-fills the defaults rather than 
 `saveTelegramSettings` now MERGES the events map instead of writing it through: a caller omitting it
 means "leave routing alone", and writing `undefined` silently discarded the operator's choices.
 Found by a test that enabled `agent.activity`, saved without the map, and read it back as off.
+
+### Changed — the tables no longer scroll sideways; the columns are dragged instead
+
+Operator: «я хочу убрать этот горизонтальный скроллбар и чтобы можно было двигать элементы таблицы
+(profile name, proxy, state) и тд».
+
+`.table--wide { min-width: 1080px }` inside `.table-container { overflow-x: auto }` put a scrollbar
+on the profiles table at any ordinary window — measured at 1280×800, `scrollWidth 1080` against
+`clientWidth 984` — and the Actions column only stayed reachable through a `position: sticky`
+workaround. Column widths were percentages on the `<th>`, which `table-layout: auto` ignores the
+moment a long profile name appears.
+
+Both tables are now `table-layout: fixed` with widths in `<col>` elements, so the specified widths
+are authoritative and the sum is always exactly the container. The trailing Actions column carries
+no width and takes the remainder, which makes "everything fits" structural rather than a number to
+keep correct. Every other column has a drag handle (double-click resets it), and the widths are
+stored as FRACTIONS, not pixels, so a layout saved on a wide window still fits a narrow one.
+`overflow: hidden` on the container is the guarantee: an over-wide cell clips visibly instead of
+silently restoring the scrollbar.
+
+Measured after, on a real profile row: `scrollWidth == clientWidth` on both tables with three
+resize handles present, Actions getting 241px for its four buttons, and no clipped cells. The
+clamp that enforces this is unit-tested, and that test found a real 1% overflow in its first
+version (`Math.max(min, max)` silently preferred the column floor when the bounds crossed).
+
+### Fixed — every dropdown was the OS's, so it opened in system colours
+
+Operator: «дропдаун менюшки, поломанные с цветами, и они как будто классические».
+
+A native `<select>` popup is drawn by the OS, not the page: the closed trigger could be themed, the
+open list could not, so a light system popup appeared over this app's `#09090b` ground. The one
+styled component that could have prevented this, `components/Dropdown.tsx`, was imported by nothing
+and had no CSS rules at all — `grep dropdown src/renderer/src/styles.css` returned zero hits.
+
+`Dropdown` is now a real control: a themed trigger and a themed list, positioned `fixed` so a table
+container's clipping cannot cut it off, with flip-on-overflow, keyboard navigation and the selected
+row marked. It replaced the four filter selects on Profiles. Verified rendering `rgb(17,17,19)` on
+`rgb(250,250,250)` — the app's own tokens — in both themes.
+
+### Fixed — a Rust test failed 5 runs out of 5, and would have failed the release on the tag
+
+`license::tests::test_publish_verdict_aes_roundtrip_valid` sets a process-global
+`ANTIDETECT_DATA_DIR` and reads it back through `decrypt_aes_payload`. Another module's test could
+overwrite that variable between the two points, so the decrypt read a `secret.key` from a directory
+the test never wrote and reported `UNREADABLE_STORAGE` — a failure that looks like broken encryption
+rather than a test race. It passed every time in isolation and failed in the full suite, which is
+why it went unnoticed until a release was being prepared.
+
+The test now takes the shared `test_env_lock` that already exists for exactly this class of race
+(and whose own comment documents the same interleaving between `data_dir_tests` and
+`updater::tests`). Measured: 5 of 5 full-suite runs failed before, 0 of 5 after.
+
+### Fixed — the two MCP buttons were different sizes
+
+Operator: «кнопку Documentations поменяй на Docs и сделай такого же размера как остальные».
+
+`Download MCP` wrapped to two lines while `Documentation` did not, so the row ended with two
+buttons of different heights. `flex: 1` alone could not fix it: the flex basis followed each label's
+intrinsic width. Now `flex: 1 1 0` + `min-width: 0` + `white-space: nowrap` give both an equal
+share on one line by construction, the label is `Docs`, and the row no longer wraps. Measured on the
+running app: both buttons 100×22.
+
+### Removed — Library holds Email only
+
+Calendar and Catalog were sub-tabs under Library; both are gone, along with their pages,
+`cronProjection.ts` (used only by the calendar), the renderer's five `catalog*` API methods, the
+orphaned `CalendarIcon`, and the i18n keys whose only callers were those pages. The backend
+`/api/v1/catalog` routes and `scriptCatalog.ts` stay — they are documented API surface, not UI.
+
+### Fixed — the taskbar icon was a 16×16 bitmap stretched to 32×32
+
+Operator: «на панели задач иконка приложения выглядит размыто».
+
+Measured on the live window with `WM_GETICON`: `ICON_BIG` was **unset** and `ICON_SMALL` was
+`16x16`, while the taskbar draws 32×32 at this DPI — Windows upscaled a 16px bitmap. Two causes,
+both fixed: `tauri-codegen`'s `CachedIcon::new_ico` decodes `entries()[0]` of the `.ico`, and
+Pillow writes ICO frames ascending, so entry 0 was the 16px frame (the `.ico` is now emitted
+256-first, all nine sizes kept); and Tauri only ever sets `ICON_SMALL`, so the shell now sends
+`WM_SETICON` for both slots from the embedded 256×256 icon, holding the handle for the process
+lifetime because Windows does not copy it.
+
 ## [0.6.21] - 2026-09-20
 
 ### Added — a macOS build, published with the release

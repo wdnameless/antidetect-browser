@@ -725,6 +725,19 @@ mod tests {
         use ed25519_dalek::pkcs8::DecodePrivateKey;
         use ed25519_dalek::SigningKey;
 
+        /*
+         * This test sets a PROCESS-GLOBAL `ANTIDETECT_DATA_DIR` and reads it back through
+         * `decrypt_aes_payload`. Without the shared lock another module's test can overwrite the
+         * variable between those two points, and the decrypt then reads a `secret.key` from a
+         * directory this test never wrote — surfacing as `UNREADABLE_STORAGE` and a failure that
+         * looks like broken encryption rather than a test race.
+         *
+         * Measured: 5 of 5 full-suite runs failed without this, 0 of 5 with it, while the test
+         * passed every time in isolation. `test_env_lock` exists for exactly this and documents
+         * the same class of race between `data_dir_tests` and `updater::tests`.
+         */
+        let _lock = crate::test_env_lock();
+
         let temp_dir = std::env::temp_dir().join("nulltrace_lic_test_aes_roundtrip");
         let _ = fs::remove_dir_all(&temp_dir);
         fs::create_dir_all(&temp_dir).unwrap();
