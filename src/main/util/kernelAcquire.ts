@@ -120,8 +120,18 @@ function extractDmg(dmgPath: string, kernelDir: string, assetInfo: KernelAssetIn
       );
     }
 
+    // A previous interrupted run can leave a half-copied bundle. Replacing it is the intent, but
+    // the removal must be VERIFIED: if the old tree survives, `cp -R` merges into it and the
+    // result is a blend of two extractions, which no digest covers and which can hold a mix of
+    // binaries. Better to fail than to leave a kernel that is neither version.
     const destApp = path.join(kernelDir, appName);
     fs.rmSync(destApp, { recursive: true, force: true });
+    if (fs.existsSync(destApp)) {
+      throw new KernelAcquireError(
+        `Cannot replace the existing kernel bundle at ${destApp} (still present after removal)`,
+        'ERR_EXTRACTION_FAILED'
+      );
+    }
 
     // `cp -R` and not a recursive JavaScript copy: the bundle contains symlinks (its frameworks),
     // and `fs.cpSync`'s default would either follow or flatten them, producing a bundle macOS
@@ -139,7 +149,55 @@ function extractDmg(dmgPath: string, kernelDir: string, assetInfo: KernelAssetIn
   } finally {
     // In a finally so a failure above cannot leave the image mounted — a leaked mount would make
     // the NEXT acquisition land on `/Volumes/Chromium 1` and confuse anything that assumed a path.
-    run('hdiutil', ['detach', mountPoint, '-force']);
+    //
+    // A failed detach is REPORTED, not swallowed: an image left mounted keeps its volume in the
+    // user's Finder and, worse, silently changes the mount point of the next attempt. The error
+    // says what to do, because nothing in the app can unmount it later.
+    const detach = run('hdiutil', ['detach', mountPoint, '-force']);
+    if (detach.status !== 0) {
+      console.error(
+        `[kernelAcquire] the kernel image could not be unmounted and is still mounted at ${mountPoint}. ` +
+          `Eject it in Finder, or run: hdiutil detach '${mountPoint}' -force. ` +
+          `Reason: ${detach.stderr.trim() || `hdiutil exited ${detach.status}`}`
+      );
+    }
+  }
+}
+
+/** How long an abandoned download must be untouched before it is safe to remove. */
+const STALE_DOWNLOAD_MS = 60 * 60 * 1000;
+
+/**
+ * Remove download files abandoned by an earlier attempt.
+ *
+ * A 134-190 MB partial `.download-*` file is otherwise never reclaimed: the cleanup paths only
+ * know the file they created themselves, so a crash or a kill during the download leaves that
+ * payload in the operator's kernel folder forever.
+ *
+ * Age-gated on purpose. Two acquisitions of the SAME kernel cannot run concurrently in this
+ * process (`api/routes/kernel.ts` joins an in-flight install, and the desktop shell is a
+ * single-instance app), so a recent file belongs to a live attempt — most likely this very call —
+ * and only files older than `STALE_DOWNLOAD_MS` are treated as abandoned. The check is a
+ * heuristic, and it is deliberately biased towards leaving a file alone.
+ */
+function removeStaleDownloads(kernelDir: string): void {
+  let entries: string[];
+  try {
+    entries = fs.readdirSync(kernelDir);
+  } catch {
+    return;
+  }
+  const cutoff = Date.now() - STALE_DOWNLOAD_MS;
+  for (const name of entries) {
+    if (!name.startsWith('.download-') || !name.endsWith('.tmp')) continue;
+    const file = path.join(kernelDir, name);
+    try {
+      if (fs.statSync(file).mtimeMs < cutoff) {
+        fs.unlinkSync(file);
+      }
+    } catch {
+      // A file that vanished or cannot be read is not this function's problem.
+    }
   }
 }
 
@@ -163,6 +221,8 @@ export async function ensureKernel(opts: EnsureKernelOptions = {}): Promise<{ ex
   const downloadUrl = `${UPSTREAM_RELEASE_BASE_URL}/${assetInfo.asset}`;
 
   fs.mkdirSync(kernelDir, { recursive: true });
+  // Reclaim what a previous crash left behind, before adding to it.
+  removeStaleDownloads(kernelDir);
 
   const tmpDownloadPath = path.join(kernelDir, `.download-${Date.now()}-${assetInfo.asset}.tmp`);
 

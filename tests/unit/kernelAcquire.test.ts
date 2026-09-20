@@ -445,6 +445,7 @@ describe('kernelAcquire — macOS dmg branch', () => {
     // Verification is the whole point of this path: a bad digest must not reach hdiutil at all.
     expect(readCalls(hdiutilLog)).toEqual([]);
   });
+
 });
 
 describe('kernel version report matches where the kernel actually lives', () => {
@@ -468,4 +469,81 @@ describe('kernel version report matches where the kernel actually lives', () => 
     // environment the list is exactly the data dir, and it must not be empty.
     expect(dirs.every((d) => typeof d === 'string' && d.length > 0)).toBe(true);
   });
+
+  it.skipIf(!canStubExecutables)('refuses to merge into a bundle left behind by an interrupted run', async () => {
+    const dmg = Buffer.from('pretend disk image');
+    const asset = { ...DMG_ASSET, sha256: crypto.createHash('sha256').update(dmg).digest('hex'), size: dmg.length };
+
+    const mount = path.join(tmpDir, 'Volumes', 'Chromium');
+    fs.mkdirSync(path.join(mount, 'Chromium.app'), { recursive: true });
+    // A half-copied bundle from a previous attempt, holding a file the new one will not have.
+    const stale = path.join(tmpDir, 'Chromium.app');
+    fs.mkdirSync(path.join(stale, 'Contents', 'MacOS'), { recursive: true });
+    fs.writeFileSync(path.join(stale, 'Contents', 'MacOS', 'leftover-from-old-run'), 'stale');
+
+    stubTool('hdiutil', `<key>mount-point</key>\n<string>${mount}</string>\n`, 0);
+    stubTool('cp', '', 0);
+    stubTool('xattr', '', 0);
+
+    // The removal is verified, so a surviving tree is an error rather than a silent merge. This
+    // stub platform can remove directories, so the call SUCCEEDS here — which is the correct
+    // happy path. The refusal branch is what the macOS acceptance script would exercise if a
+    // directory could not be removed; asserted here only to the extent this platform allows.
+    const result = await ensureKernel({
+      platform: 'darwin',
+      targetDir: tmpDir,
+      expectedDigests: { darwin: asset },
+      fetchFn: createMockFetch(dmg) as unknown as typeof fetch,
+    });
+
+    // The previous tree was replaced, not merged into: the leftover is gone.
+    expect(fs.existsSync(path.join(stale, 'Contents', 'MacOS', 'leftover-from-old-run'))).toBe(false);
+    expect(result.executablePath).toBe(path.join(tmpDir, 'Chromium.app', 'Contents', 'MacOS', 'Chromium'));
+  });
+});
+
+
+/**
+ * Reclaiming abandoned downloads. Deliberately outside the dmg group: it exercises the zip path,
+ * which needs no stubbed tools, so it runs everywhere — including on the Windows runner whose
+ * gate skips the dmg cases.
+ */
+describe('kernelAcquire — abandoned downloads', () => {
+  let tmpDir: string;
+  beforeEach(() => { tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'kernel-stale-')); });
+  afterEach(() => { try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch { /* ignore */ } });
+
+  function createMockZipBuffer(relativeFilePath: string, content = 'dummy binary content'): Buffer {
+    const zip = new AdmZip();
+    zip.addFile(relativeFilePath, Buffer.from(content, 'utf-8'));
+    return zip.toBuffer();
+  }
+
+    it('reclaims a download abandoned by an earlier run, and leaves a recent one alone', async () => {
+      // A crash mid-download leaves a 134 MB partial file that no cleanup path knows about: the
+      // error paths only know the file THEY created. This is the reclamation, and its age gate.
+      const relativeExe = PINNED_PLATFORM_ASSETS.win32.executableSubpath;
+      const zipBuffer = createMockZipBuffer(relativeExe, 'mock binary');
+      const digest = crypto.createHash('sha256').update(zipBuffer).digest('hex');
+      const assets = { win32: { ...PINNED_PLATFORM_ASSETS.win32, sha256: digest, size: zipBuffer.length } };
+
+      const abandoned = path.join(tmpDir, '.download-1111-old.tmp');
+      fs.writeFileSync(abandoned, 'partial');
+      // Two hours old, i.e. past the one-hour gate.
+      const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000);
+      fs.utimesSync(abandoned, twoHoursAgo, twoHoursAgo);
+
+      const recent = path.join(tmpDir, '.download-2222-recent.tmp');
+      fs.writeFileSync(recent, 'partial');
+
+      await ensureKernel({
+        platform: 'win32',
+        targetDir: tmpDir,
+        expectedDigests: assets,
+        fetchFn: createMockFetch(zipBuffer) as unknown as typeof fetch,
+      });
+
+      expect(fs.existsSync(abandoned)).toBe(false);  // reclaimed
+      expect(fs.existsSync(recent)).toBe(true);      // could belong to a live attempt: left alone
+    });
 });
