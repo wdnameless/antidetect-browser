@@ -20,16 +20,20 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # `macos-14-arm64` is Apple Silicon — the target platform, and the only one whose result
-        # decides whether the port works.
+        # `macos-14` IS Apple Silicon — the target platform, and the only one whose result decides
+        # whether the port works. Proven from the runner's own banner in a successful job:
+        # "Image: macos-14-arm64" while the label was `macos-14`.
         #
-        # `macos-15-intel` is the native-x86_64 CONTROL. The pinned asset is named plainly
-        # `..._macos.dmg`, and this control is what would distinguish "the kernel is arm64" from
-        # "the kernel is x86_64 and only appeared to work because the runner translated it". The
-        # result on the arm64 runner already settles it (`lipo -archs` reads the binary itself,
-        # which translation cannot fake), so the control is confirmatory — but it must use a label
-        # that EXISTS: `macos-13` was retired, and a queued-forever job is worse than no job.
-        os: [macos-14-arm64, macos-15-intel]
+        # The `-arm64` suffix was tried and is WRONG here: `macos-14-arm64` is a larger-runner label
+        # that a standard account does not have, so every job using it sat queued indefinitely —
+        # measured across four runs. That is the same failure `macos-13` produced for the opposite
+        # reason, and it is why each label below is one that has actually executed.
+        #
+        # `macos-15-intel` is the native-x86_64 CONTROL: the pinned asset is named plainly
+        # `..._macos.dmg`, and the control is what shows the real answer — it reports `arm64` for the
+        # same image and fails to launch it with EBADARCH, i.e. the kernel is arm64-ONLY. It has run
+        # successfully, so the label is real.
+        os: [macos-14, macos-15-intel]
     steps:
       - uses: actions/checkout@v4
 
@@ -87,7 +91,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-14-arm64]
+        os: [macos-14]
     steps:
       - uses: actions/checkout@v4
 
@@ -137,7 +141,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-14-arm64]
+        os: [macos-14]
     steps:
       - uses: actions/checkout@v4
 

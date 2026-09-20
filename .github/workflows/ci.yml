@@ -87,15 +87,16 @@ jobs:
     # put `if: runner.os == ...` guards on every one of them. A parallel job keeps the Windows
     # path exactly as it was — which is what its own tests assert — and gives macOS its own.
     #
-    # `macos-14` is Apple Silicon (M1). The macOS SDK exists only on macOS, so this is the only
-    # way to produce the artefact at all; Windows cannot cross-compile to it.
+    # `macos-14` is Apple Silicon (M1) — confirmed by the runner's banner, which reports
+    # "Image: macos-14-arm64" for this label. The macOS SDK exists only on macOS, so this is the
+    # only way to produce the artefact at all; Windows cannot cross-compile to it.
     #
     # Measured before this job was written (run 35494974446): the pinned kernel image is native
     # arm64 and its stealth holds on M1, so an Apple Silicon artefact is a working product here
     # rather than a speculative one.
     if: startsWith(github.ref, 'refs/tags/v')
     needs: [test, sdk]
-    runs-on: macos-14-arm64
+    runs-on: macos-14
     permissions:
       contents: write
     steps:
