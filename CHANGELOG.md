@@ -105,6 +105,21 @@ container's clipping cannot cut it off, with flip-on-overflow, keyboard navigati
 row marked. It replaced the four filter selects on Profiles. Verified rendering `rgb(17,17,19)` on
 `rgb(250,250,250)` — the app's own tokens — in both themes.
 
+### Fixed — a test could never pass on CI or macOS, and it failed a release after the bundle was built
+
+`license::tests::test_publish_verdict_aes_roundtrip_valid` read its signing key from a hardcoded
+`D:/nulltrace-keys/license-private.pem`. It therefore passed on the one developer machine that had
+that file and could never pass anywhere else: it failed the `Release macOS portable` job with
+`No such file or directory` — after the app bundle had built successfully, taking the whole release
+down with it.
+
+Signing a VALID token genuinely needs the production private key, because verification uses the
+public key baked into the binary via `include_str!` and there is no seam to substitute it — and
+that key must never be in the repository. The path now comes from `ANTIDETECT_LICENSE_TEST_KEY`, and
+absence SKIPS with a message naming the variable rather than failing. The decryption pipeline, which
+is what the test exists to cover, still runs everywhere. Verified both ways: 58/58 Rust tests pass
+with and without the variable.
+
 ### Fixed — a Rust test failed 5 runs out of 5, and would have failed the release on the tag
 
 `license::tests::test_publish_verdict_aes_roundtrip_valid` sets a process-global
