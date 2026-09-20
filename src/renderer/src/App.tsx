@@ -116,15 +116,22 @@ export const NAV_DESTINATIONS: NavDestination[] = [
     ],
   },
   // LIBRARY
+  // Devices and Extensions are separate destinations rather than sub-tabs of one entry. They used
+  // to be sub-tabs under a "Fingerprints" heading, which meant the only way to reach either was a
+  // pair of pills inside the content area — the operator asked for them in the left menu instead,
+  // where every other destination lives. Nothing is lost by the split: the parent's key was
+  // `devices`, so its label was only ever a heading for these two pages.
   {
     key: 'devices',
-    label: 'Fingerprints',
+    label: 'Devices',
     icon: DevicesIcon,
     group: 'LIBRARY',
-    subTabs: [
-      { key: 'devices', label: 'Devices' },
-      { key: 'extensions', label: 'Extensions' },
-    ],
+  },
+  {
+    key: 'extensions',
+    label: 'Extensions',
+    icon: ExtensionsIcon,
+    group: 'LIBRARY',
   },
   {
     key: 'email',

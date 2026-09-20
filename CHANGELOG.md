@@ -1,5 +1,51 @@
 # Changelog
 
+## [0.6.15] - 2026-09-19
+
+### Fixed — "Installed" appeared for an extension that was never installed
+
+Operator report: the Extensions page said an extension had been installed, but it was not there.
+
+Two defects stacked, and either one alone would have hidden the other.
+
+**Every Web Store install failed.** Chrome's update service no longer returns the `.crx` bytes.
+It answers with an Omaha update manifest — XML naming a `codebase` URL, the archive's `size` and
+its `hash_sha256` — and the archive must then be fetched from that URL. The code assumed the
+response body **was** the archive, so the CRX header check received `<?xml` and refused it:
+`Invalid CRX magic header: <?xm`. The manifest is now parsed, the download followed, and the
+archive checked against the published SHA-256 before it is unpacked — a truncated or substituted
+download is refused rather than installed.
+
+**The failure was displayed as success.** Every other action on that page checks the response's
+`code`; the install did not, and a refusal arrives as an HTTP error envelope that the client
+returns rather than throwing. So the operator saw `Installed "" (v)` — with an empty name and
+version, because the failing path has no data — for an extension that was never installed. The
+empty quotes were the tell.
+
+**Re-installing duplicated the extension.** `unpackCrx` writes the CRX to
+`extensions/<store-id>/<version>`, but registration then *copied* it into a new `ext_<uuid>`, so
+the recorded path no longer contained the store id — and both idempotency checks look for the
+store id in that path, so neither could ever match. Every re-install downloaded the archive again
+and left a second copy on disk. Registration now records the directory where it already is.
+
+**Binding an extension to a profile failed.** The route asked the database for
+`SELECT userDataDir FROM profiles`, and `profiles` has no such column: the workspace path is
+derived from the profile id. The request answered `no such column: userDataDir` — after the
+binding row had already been written — so the UI reported failure and the extension was never
+injected into the profile's preferences. The path is now derived the same way the launcher does.
+
+Verified end to end on Windows: the archive is fetched and digest-checked, a second install
+returns `reused: true` with one copy on disk (125 files, where a duplicate left two directories),
+binding answers success, and a launched profile carries
+`--load-extension=…\extensions\ojfebgpkimhlhcblbalbfjblapadhbol\3.0.5`.
+
+### Changed — Devices and Extensions moved into the left menu
+
+They were sub-tabs of a "Fingerprints" heading, reachable only through a pair of pills inside the
+content area. They are now destinations in the sidebar's LIBRARY group, where every other page
+lives. Splitting the heading into its two children is what adds the item; no page became
+unreachable, which the navigation guard still enforces.
+
 ## [0.6.14] - 2026-09-19
 
 ### Fixed — the browser language could be chosen but never saved

@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import path from 'path';
 import fs from 'fs';
+import { createHash } from 'crypto';
 import {
   normalizeWebStoreInput,
   verifyCrx,
@@ -228,6 +229,67 @@ describe('webstore extension installer', () => {
 
       await expect(fetchCrx('cjpalhdlnbpafiamejdnhcphjbkeiagm')).rejects.toThrowError(/FETCH_ERROR/);
     });
+
+    // Chrome's update service answers with an Omaha update manifest (XML naming a `codebase`
+    // URL) rather than the CRX itself. The code assumed the response body WAS the archive, so it
+    // handed `<?xml` to `verifyCrx`, which refused it as "Invalid CRX magic header" — every
+    // Web Store install failed. These cases pin the manifest path.
+    it('follows the manifest to the download location when the service answers with XML', async () => {
+      const zip = createMinimalZip({ 'manifest.json': '{"name":"mock","version":"1.0"}' });
+      const crx = buildCrx3(zip);
+      const hash = createHash('sha256').update(crx).digest('hex');
+      const codebase = 'https://clients2.googleusercontent.com/crx/blobs/example/app.crx';
+
+      const requested: string[] = [];
+      setFetchCrxTransport(async (url: string) => {
+        requested.push(url);
+        if (url === codebase) return crx;
+        return Buffer.from(
+          `<?xml version="1.0" encoding="UTF-8"?><gupdate protocol="2.0"><app appid="cjpalhdlnbpafiamejdnhcphjbkeiagm">` +
+            `<updatecheck status="ok" codebase="${codebase}" size="${crx.length}" hash_sha256="${hash}" version="1.0"/>` +
+            `</app></gupdate>`,
+          'utf8',
+        );
+      });
+
+      const bytes = await fetchCrx('cjpalhdlnbpafiamejdnhcphjbkeiagm');
+
+      expect(requested[0]).toContain('clients2.google.com/service/update2/crx');
+      expect(requested[1]).toBe(codebase);
+      expect(bytes.subarray(0, 4).toString('latin1')).toBe('Cr24');
+    });
+
+    it('refuses an archive whose digest does not match the manifest', async () => {
+      // The manifest publishes hash_sha256. Without checking it, a truncated or substituted
+      // download would be unpacked into the extensions directory and loaded into profiles.
+      const zip = createMinimalZip({ 'manifest.json': '{"name":"mock","version":"1.0"}' });
+      const crx = buildCrx3(zip);
+      const codebase = 'https://example.invalid/app.crx';
+
+      setFetchCrxTransport(async (url: string) => {
+        if (url === codebase) return crx;
+        return Buffer.from(
+          `<?xml version="1.0"?><gupdate><app><updatecheck status="ok" codebase="${codebase}" ` +
+            `hash_sha256="${'0'.repeat(64)}"/></app></gupdate>`,
+          'utf8',
+        );
+      });
+
+      await expect(fetchCrx('cjpalhdlnbpafiamejdnhcphjbkeiagm')).rejects.toThrowError(/digest mismatch/i);
+    });
+
+    it('reports an unavailable extension instead of a magic-header error', async () => {
+      // `status` is how the service says "no". Reporting it as a signature problem would send the
+      // operator looking for a corrupt download that does not exist.
+      setFetchCrxTransport(async () =>
+        Buffer.from(
+          `<?xml version="1.0"?><gupdate><app><updatecheck status="noupdate"/></app></gupdate>`,
+          'utf8',
+        ),
+      );
+
+      await expect(fetchCrx('cjpalhdlnbpafiamejdnhcphjbkeiagm')).rejects.toThrowError(/NOT_FOUND|status/i);
+    });
   });
 
   describe('unpackCrx and localization', () => {
@@ -305,9 +367,19 @@ describe('webstore extension installer', () => {
     });
     it('installs fresh extension if not already present', async () => {
       const extId = 'abbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb';
+      let registeredPath = '';
       setExtensionManager({
         listExtensions: () => [],
-        importExtension: () => 'ext_registered',
+        // A Web Store install registers the directory `unpackCrx` already wrote, rather than
+        // copying it into a new `ext_<uuid>`. The copy is what removed the store id from the
+        // recorded path and made the idempotency checks unable to match.
+        registerExtensionDir: (_name, dirPath) => {
+          registeredPath = dirPath;
+          return 'ext_registered';
+        },
+        importExtension: () => {
+          throw new Error('a Web Store install must not copy the unpacked directory');
+        },
       });
 
       const zip = createMinimalZip({
@@ -322,6 +394,8 @@ describe('webstore extension installer', () => {
       expect(res.name).toBe('Fresh Extension');
       expect(res.version).toBe('1.0.0');
       expect(res.id).toBe('ext_registered');
+      // The registered path must carry the store id, or a second install cannot recognise it.
+      expect(registeredPath).toContain(extId);
     });
 
     it('handles local directory path directly', async () => {

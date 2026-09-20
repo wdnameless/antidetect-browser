@@ -69,9 +69,15 @@ describe('navigation is compact and complete', () => {
     expect(duplicates, 'a destination must appear exactly once').toEqual([]);
   });
 
-  it('there are exactly seven top-level destinations', () => {
-    // The user asked for a short menu («удобные меню»); seven is the agreed shape.
-    expect(navEntries().length).toBe(7);
+  it('there are exactly eight top-level destinations', () => {
+    // Seven was the shape agreed when the operator asked for a shorter menu
+    // («удобные меню») and the sidebar went from 15 items to 7. It is eight now because the
+    // operator then asked for the Devices and Extensions *tabs* — which lived as pills inside
+    // the content area under a single "Fingerprints" heading — to move into the left menu:
+    // «расширения и devices вкладки вынеси в левое меню». Splitting that heading into its two
+    // children is what adds the item, and no page became unreachable: the guard below still
+    // requires every rendered page to be clickable.
+    expect(navEntries().length).toBe(8);
   });
 
   it('every page in the union is reachable by clicking', () => {

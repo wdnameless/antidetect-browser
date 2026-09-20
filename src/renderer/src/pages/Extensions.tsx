@@ -60,6 +60,14 @@ export function Extensions() {
     setWebStoreSuccess('');
     try {
       const res = await api.extensionInstall({ url: webStoreInput.trim() });
+      // Every other action on this page checks `code`; this one did not, so a refused install
+      // still printed a success line. The failure is reported as an HTTP error envelope, and
+      // `request()` returns that envelope rather than throwing — so without this the operator
+      // saw `Installed "" (v)` for an extension that was never installed.
+      if (res.code !== 0) {
+        setError(res.msg || 'Install failed');
+        return;
+      }
       const info = res.data ?? { extension_id: '', name: '', version: '', reused: false };
       setWebStoreSuccess(`Installed "${info.name}" (v${info.version})${info.reused ? ' [reused]' : ''}`);
       setWebStoreInput('');

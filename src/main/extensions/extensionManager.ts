@@ -66,6 +66,32 @@ export function importExtension(name: string, sourcePath: string): string {
   return id;
 }
 
+/**
+ * Register an extension whose files are already unpacked at `dirPath`.
+ *
+ * `importExtension` copies the source into a fresh `ext_<uuid>` directory. For a Web Store
+ * install that copy is pure waste and actively harmful: `unpackCrx` has already written the CRX
+ * to `extensions/<store-id>/<version>`, and copying it means the recorded path no longer contains
+ * the store id — so the idempotency checks in `webstore.ts`, which look for the store id in the
+ * recorded path, could never match. Every re-install of the same extension downloaded it again
+ * and left a second copy on disk.
+ *
+ * This registers the directory where it already is, so the path carries the store id and those
+ * checks work.
+ */
+export function registerExtensionDir(name: string, dirPath: string): string {
+  if (!fs.existsSync(path.join(dirPath, 'manifest.json'))) {
+    throw new Error('invalid extension: manifest.json not found');
+  }
+  const db = getDb();
+  const id = 'ext_' + randomUUID();
+  const version = readManifestVersion(dirPath);
+  db.prepare(
+    'INSERT INTO extensions (id, name, path, version, enabled, created_at) VALUES (?, ?, ?, ?, ?, ?)'
+  ).run(id, name, dirPath, version, 1, Date.now());
+  return id;
+}
+
 export function listExtensions(): ExtensionRow[] {
   return getDb().prepare('SELECT * FROM extensions ORDER BY created_at DESC').all() as ExtensionRow[];
 }

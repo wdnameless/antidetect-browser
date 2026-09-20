@@ -1,24 +1,35 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import { createHash } from 'crypto';
 import AdmZip from 'adm-zip';
 import { EXTENSIONS_DIR } from '../config';
 import { getInstalledKernelVersion } from '../util/kernelUpdate';
-import { importExtension, listExtensions, ExtensionRow } from './extensionManager';
+import { importExtension, registerExtensionDir, listExtensions, ExtensionRow } from './extensionManager';
 
 export type NormalizedInput = { kind: 'id'; id: string } | { kind: 'path'; path: string };
 
 /**
  * Injectable extension-manager seam (tests substitute this to avoid the DB).
  */
-let manager: { importExtension(name: string, sourcePath: string): string; listExtensions(): ExtensionRow[] } = {
+interface ExtensionManager {
+  importExtension(name: string, sourcePath: string): string;
+  /** Register a directory whose files are already unpacked, without copying them. */
+  registerExtensionDir(name: string, dirPath: string): string;
+  listExtensions(): ExtensionRow[];
+}
+
+let manager: ExtensionManager = {
   importExtension,
+  registerExtensionDir,
   listExtensions,
 };
 
-export function setExtensionManager(
-  m: { importExtension(name: string, sourcePath: string): string; listExtensions(): ExtensionRow[] } | null
-): void {
-  manager = m ?? { importExtension, listExtensions };
+export function setExtensionManager(m: Partial<ExtensionManager> | null): void {
+  // Partial so a test that only stubs what it exercises keeps working; the real implementation
+  // fills the rest.
+  manager = m
+    ? { importExtension, registerExtensionDir, listExtensions, ...m }
+    : { importExtension, registerExtensionDir, listExtensions };
 }
 
 export class WebStoreError extends Error {
@@ -123,6 +134,50 @@ export function getEngineMajorVersion(): string {
 }
 
 /**
+ * Parse the update service's XML response.
+ *
+ * Chrome's update service stopped returning the CRX bytes directly. It answers with an Omaha
+ * update manifest — XML naming a `codebase` URL, the artefact's `size` and its `hash_sha256` —
+ * and the CRX has to be fetched from that URL. The code used to assume the response body WAS the
+ * archive, so `verifyCrx` saw `<?xml` instead of the `Cr24` magic and every install failed with
+ * "Invalid CRX magic header" while the UI reported success.
+ *
+ * `status` is read too: the service answers `status="ok"` for an installable extension and
+ * something else (with no `codebase`) when the id is not available.
+ */
+export interface UpdateManifest {
+  codebase: string;
+  size?: number;
+  hashSha256?: string;
+  version?: string;
+}
+
+export function parseUpdateManifest(xml: string): UpdateManifest {
+  const attr = (name: string): string | undefined => {
+    const m = new RegExp(`\\b${name}="([^"]*)"`).exec(xml);
+    return m ? m[1] : undefined;
+  };
+
+  const status = attr('status');
+  const codebase = attr('codebase');
+  if (status && status !== 'ok') {
+    throw new WebStoreError('NOT_FOUND', `Chrome Web Store reported status "${status}"`);
+  }
+  if (!codebase) {
+    throw new WebStoreError('NOT_FOUND', 'Chrome Web Store returned no download location for this extension');
+  }
+
+  const sizeRaw = attr('size');
+  const size = sizeRaw ? Number(sizeRaw) : undefined;
+  return {
+    codebase,
+    size: Number.isFinite(size) ? size : undefined,
+    hashSha256: attr('hash_sha256'),
+    version: attr('version'),
+  };
+}
+
+/**
  * Fetches CRX binary from Chrome Web Store update service.
  */
 export async function fetchCrx(id: string): Promise<Buffer> {
@@ -154,7 +209,51 @@ export async function fetchCrx(id: string): Promise<Buffer> {
     throw new WebStoreError('FETCH_ERROR', `Chrome Web Store returned HTTP ${response.status}`);
   }
 
-  return await response.buffer();
+  const body = await response.buffer();
+
+  // The response is either the archive itself (older behaviour, and what the tests inject) or an
+  // Omaha update manifest naming where to get it. Decide by the archive's own magic rather than
+  // by content type, which the service does not set helpfully.
+  const isCrx = body.length >= 4 && body.subarray(0, 4).toString('latin1') === 'Cr24';
+
+  let crx = body;
+  let expectedHash: string | undefined;
+
+  if (!isCrx) {
+    const manifest = parseUpdateManifest(body.toString('utf8'));
+    expectedHash = manifest.hashSha256?.toLowerCase();
+
+    let crxResponse: { status: number; ok: boolean; buffer: () => Promise<Buffer> };
+    try {
+      crxResponse = await transport(manifest.codebase);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      throw new WebStoreError('FETCH_ERROR', `Network error downloading the extension archive: ${message}`);
+    }
+    if (!crxResponse.ok) {
+      throw new WebStoreError('FETCH_ERROR', `Extension download returned HTTP ${crxResponse.status}`);
+    }
+    crx = await crxResponse.buffer();
+
+    if (crx.length >= 4 && crx.subarray(0, 4).toString('latin1') !== 'Cr24') {
+      throw new WebStoreError('BAD_SIGNATURE', 'The download location did not return a CRX archive');
+    }
+  }
+
+  // The manifest publishes the archive's SHA-256. Checking it means a truncated or substituted
+  // download is refused here rather than unpacked into the extensions directory — the same
+  // fail-closed rule the CRX header and the signature are checked under.
+  if (expectedHash) {
+    const actual = createHash('sha256').update(crx).digest('hex');
+    if (actual !== expectedHash) {
+      throw new WebStoreError(
+        'BAD_SIGNATURE',
+        `Extension archive digest mismatch: expected ${expectedHash}, received ${actual}`,
+      );
+    }
+  }
+
+  return crx;
 }
 
 export interface VerifiedCrx {
@@ -340,7 +439,10 @@ export function registerUnpacked(unpacked: InstalledExtensionResult): InstalledE
     };
   }
 
-  const extensionId = manager.importExtension(unpacked.name, unpacked.path);
+  // Register the directory `unpackCrx` already wrote. Copying it into a new `ext_<uuid>` would
+  // record a path without the store id in it, which is what made the idempotency checks above
+  // and in `installFromWebStore` unable to match — the cause of duplicate installs.
+  const extensionId = manager.registerExtensionDir(unpacked.name, unpacked.path);
   return { ...unpacked, id: extensionId };
 }
 

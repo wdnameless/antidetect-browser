@@ -5,6 +5,7 @@ import * as path from 'path';
 import * as em from '../../extensions/extensionManager';
 import { installFromWebStore, WebStoreError } from '../../extensions/webstore';
 import { getDb } from '../../db';
+import { PROFILES_DIR } from '../../config';
 import { injectExtensionIntoSecurePreferences } from '../../extensions/securePreferences';
 const router = Router();
 
@@ -95,9 +96,19 @@ router.post('/api/v1/browser-profile/extensions/bind', async (req, res) => {
     const { user_id, extension_ids } = parsed.data;
     em.bindExtensions(user_id, extension_ids);
 
+    // A profile's workspace directory is DERIVED from its id, not stored: `profiles` has no
+    // `userDataDir` column, so the query this used to run failed with "no such column" and the
+    // whole bind was reported as an error. That made binding unreachable — the row in
+    // `profile_extensions` had already been written by `bindExtensions` above, but the request
+    // answered `code: -1`, so the UI showed a failure and the extension was never injected into
+    // the profile's preferences.
+    //
+    // The path is the same one the launcher resolves (`profileManager.resolveLaunchConfig`), so
+    // the extension lands where the browser will look for it.
     const db = getDb();
-    const profile = db.prepare('SELECT userDataDir FROM profiles WHERE id = ?').get(user_id) as { userDataDir?: string } | undefined;
-    if (profile && profile.userDataDir) {
+    const profile = db.prepare('SELECT id FROM profiles WHERE id = ?').get(user_id) as { id?: string } | undefined;
+    if (profile && profile.id) {
+      const userDataDir = path.join(PROFILES_DIR, profile.id);
       const allExts = em.listExtensions();
       for (const extId of extension_ids) {
         const ext = allExts.find((e) => e.id === extId);
@@ -108,7 +119,7 @@ router.post('/api/v1/browser-profile/extensions/bind', async (req, res) => {
             try {
               manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
             } catch {}
-            injectExtensionIntoSecurePreferences(profile.userDataDir, 'Default', extId, ext.path, manifest);
+            injectExtensionIntoSecurePreferences(userDataDir, 'Default', extId, ext.path, manifest);
           }
         }
       }
