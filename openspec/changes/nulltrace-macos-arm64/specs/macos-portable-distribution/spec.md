@@ -96,6 +96,22 @@ with the measurement behind it.
 - **THEN** the documentation MUST state the requirement it places on the operator
 - **AND** MUST NOT describe the build as fully functional on that platform
 
+### Requirement: The supported architecture is established by measurement, not by the asset name
+The pinned macOS asset is named without an architecture suffix. Whether it is arm64-only, x86_64-only
+or universal MUST be determined by inspecting the binary, and the supported platform MUST be stated
+from that result.
+
+#### Scenario: The architecture is read from the binary
+- **WHEN** the extracted kernel is inspected
+- **THEN** its architectures MUST be read from the executable itself, not inferred from the file name
+- **AND** attempting to launch it on an unsupported host MUST be observed rather than assumed
+
+#### Scenario: An unsupported host fails cleanly and the exclusion is documented
+- **GIVEN** a host whose architecture the kernel does not contain
+- **WHEN** the kernel is launched there
+- **THEN** the failure MUST be observable as an architecture mismatch
+- **AND** the platform MUST be documented as unsupported, without offering an artefact for it
+
 ### Requirement: Platform-specific gaps are stated, not silently absent
 Features implemented only for Windows MUST be identified on macOS rather than appearing present but
 doing nothing.
