@@ -22,6 +22,7 @@
     "build:mcp": "tsc -p mcp/tsconfig.json",
     "build:main": "tsc -p tsconfig.main.json",
     "build:renderer": "vite build --config src/renderer/vite.config.ts",
+    "prebuild": "npm run build:sdk",
     "build": "npm run build:main && npm run build:renderer && npm run build:mcp",
     "copy:prod-deps": "node scripts/copy-prod-deps.mjs",
     "build:sdk": "npm run build --workspace @antidetect/sdk",
