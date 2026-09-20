@@ -167,10 +167,21 @@ jobs:
       # asserts that a read-only directory is refused as a portable root. The `release-macos` job
       # runs `cargo test` too, but only on a version tag — so that assertion had never run anywhere.
       # A test that has never executed is a claim, not a check.
+      #
+      # The output is FILTERED rather than tail-ed: `| tail -25` hid the test names, so the previous
+      # run proved a count of 44 without showing that the unix-gated case was among them. Evidence
+      # that does not name the check is not evidence for that check.
       - name: Rust shell tests (exercises the unix-only branch)
         id: rust
         continue-on-error: true
-        run: cargo test --manifest-path src-tauri/Cargo.toml 2>&1 | tail -25
+        run: |
+          cargo test --manifest-path src-tauri/Cargo.toml > rust-tests.log 2>&1
+          echo "=== failures, if any ==="
+          grep -E "^test .* FAILED|^failures:|panicked" rust-tests.log || echo "(none)"
+          echo "=== the unix-only case and its group ==="
+          grep -E "unwritable_parent|bundle_root_tests" rust-tests.log || echo "(group not found)"
+          echo "=== totals ==="
+          grep -E "^test result" rust-tests.log
 
       # The step that proves the port: this is a full Tauri compile for arm64 plus the bundle
       # layout, on the platform it targets. Everything else in this workflow verifies pieces;
