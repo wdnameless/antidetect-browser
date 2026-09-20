@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.6.20] - 2026-09-19
+
+### Fixed — the moved-folder protection did not cover the shell, so a USB stick could open an empty library
+
+`config.ts` refuses a recorded data path that exists nowhere on this machine, which is what makes
+a copied folder work: the stick carries the absolute path recorded on the machine it was prepared
+on. The Rust shell resolves the same path independently and exports it as `ANTIDETECT_DATA_DIR`,
+which the backend treats as authoritative — and that resolution had no such check. On another
+machine the shell therefore pinned the whole app to a directory that did not exist, while the
+folder the operator had actually opened stayed unused.
+
+Found by launching a real build from a different directory and reading what it resolved.
+
+The shell now applies the same rule (`data_dir_holds_data`), and `mark_data_root` /
+`data_dir_holds_data` mirror `config.ts` exactly — a folder is honoured when it carries
+`.nulltrace-data-root`, holds `antidetect.db`, or has a non-empty `profiles/`. It also reads the
+pre-move `settings.json` and migrates it, so the shell and the backend agree about an upgraded
+installation instead of disagreeing about where its data lives.
+
+Verified across both layers: a `settings.json` recording an absent path (the USB case) resolves
+to `<folder>/data`, a recorded path holding real data still wins, and an existing but empty
+directory that no NullTrace ever claimed is still refused. Three Rust tests pin this.
+
 ## [0.6.19] - 2026-09-19
 
 ### Fixed — a chosen data folder was honoured once and then silently abandoned

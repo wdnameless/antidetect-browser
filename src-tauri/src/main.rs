@@ -1,6 +1,7 @@
 // Prevents additional console window on Windows in release, DO NOT REMOVE!!
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
@@ -73,14 +74,55 @@ pub fn resolve_data_dir(settings_dir: &Path) -> PathBuf {
         }
     }
     if let Some(saved) = saved_data_dir(settings_dir) {
-        return saved;
+        // Mirror `config.ts` exactly: a recorded path is honoured only while it is usable on
+        // THIS machine. The shell exports its answer as ANTIDETECT_DATA_DIR, which the backend
+        // treats as authoritative — so a check that lived only in the backend would be
+        // bypassed here. That is the USB case: the folder carries `settings.json` with the
+        // path recorded on the machine it was prepared on, and on another machine that path
+        // usually does not exist. Honouring it blindly pointed the whole app at a directory
+        // that is not there, while the folder the operator actually opened stayed unused.
+        if data_dir_holds_data(&saved) {
+            mark_data_root(&saved);
+            return saved;
+        }
     }
     if let Ok(portable_dir) = std::env::var("PORTABLE_EXECUTABLE_DIR") {
         if !portable_dir.trim().is_empty() {
-            return PathBuf::from(portable_dir.trim()).join("data");
+            let portable_data = PathBuf::from(portable_dir.trim()).join("data");
+            mark_data_root(&portable_data);
+            return portable_data;
         }
     }
-    settings_dir.join("data")
+    let fallback = settings_dir.join("data");
+    mark_data_root(&fallback);
+    fallback
+}
+
+/// The settings file an installation used BEFORE settings moved beside the executable.
+///
+/// Mirrors `config.ts:legacySettingsFile`. Reading only the portable location made the record
+/// of an existing installation's data folder invisible: the backend then created a SECOND data
+/// directory beside the app. This shell resolves the path independently and exports it, so it
+/// needs the same fallback — otherwise the shell and the backend would disagree.
+fn legacy_settings_file(settings_dir: &Path) -> Option<PathBuf> {
+    // A pinned settings directory means "read settings HERE"; looking elsewhere would override
+    // that with a stale file from the user profile.
+    if let Ok(dir) = std::env::var("ANTIDETECT_SETTINGS_DIR") {
+        if !dir.trim().is_empty() {
+            return None;
+        }
+    }
+    if std::env::var("PORTABLE_EXECUTABLE_DIR").map(|d| d.trim().is_empty()).unwrap_or(true) {
+        return None;
+    }
+    let mut candidates: Vec<PathBuf> = Vec::new();
+    if let Ok(appdata) = std::env::var("APPDATA") {
+        candidates.push(PathBuf::from(appdata).join("antidetect-browser").join("settings.json"));
+    }
+    if let Ok(home) = std::env::var("USERPROFILE") {
+        candidates.push(PathBuf::from(home).join(".antidetect").join("settings.json"));
+    }
+    candidates.into_iter().find(|p| p.exists())
 }
 
 /// Reads `dataDir` from `settings.json`, if present and non-empty.
@@ -89,7 +131,23 @@ pub fn resolve_data_dir(settings_dir: &Path) -> PathBuf {
 /// recorded", which falls through to the default rather than aborting startup. The prompt
 /// re-asks in that case, so a bad file costs one question, not a broken install.
 fn saved_data_dir(settings_dir: &Path) -> Option<PathBuf> {
-    let raw = std::fs::read_to_string(settings_dir.join("settings.json")).ok()?;
+    if let Some(dir) = read_data_dir_from(&settings_dir.join("settings.json")) {
+        return Some(dir);
+    }
+    // Fall back to the pre-move location and MIGRATE it: once the portable copy exists the
+    // legacy one is never read again, which is what keeps a copied folder self-contained.
+    let legacy = legacy_settings_file(settings_dir)?;
+    let dir = read_data_dir_from(&legacy)?;
+    if let Some(text) = fs::read_to_string(&legacy).ok() {
+        let _ = fs::create_dir_all(settings_dir);
+        let _ = fs::write(settings_dir.join("settings.json"), text);
+    }
+    Some(dir)
+}
+
+/// `dataDir` from one settings file, or None when it is absent, unreadable, empty or malformed.
+fn read_data_dir_from(file: &Path) -> Option<PathBuf> {
+    let raw = fs::read_to_string(file).ok()?;
     let parsed: serde_json::Value = serde_json::from_str(&raw).ok()?;
     let dir = parsed.get("dataDir")?.as_str()?.trim().to_string();
     if dir.is_empty() {
@@ -97,6 +155,38 @@ fn saved_data_dir(settings_dir: &Path) -> Option<PathBuf> {
     } else {
         Some(PathBuf::from(dir))
     }
+}
+
+/// Claim a directory as this installation's data root.
+///
+/// Mirrors `config.ts:markDataRoot`. The marker is what lets a folder the operator has just
+/// chosen — empty, with no database and no profiles yet — still count as "ours" on the next
+/// launch, while a stranger's directory that merely exists does not.
+fn mark_data_root(dir: &Path) {
+    let _ = fs::create_dir_all(dir);
+    let _ = fs::write(dir.join(".nulltrace-data-root"), "nulltrace\n");
+}
+
+/// Whether `dir` holds data this installation can use — the mirror of `config.ts:dataDirHoldsData`.
+///
+/// The signals must be ones only real use produces: `config.ts` eagerly creates the data dir,
+/// `profiles/`, `chromium/` and an empty database, so their mere existence proves nothing.
+fn data_dir_holds_data(dir: &Path) -> bool {
+    if !dir.exists() {
+        return false;
+    }
+    if dir.join("antidetect.db").exists() || dir.join(".nulltrace-data-root").exists() {
+        return true;
+    }
+    match fs::read_dir(dir.join("profiles")) {
+        Ok(mut entries) => entries.next().is_some(),
+        Err(_) => false,
+    }
+}
+
+/// Reads a key file, trimming whitespace; `None` when absent or unreadable.
+fn read_key_file(path: &Path) -> Option<String> {
+    std::fs::read_to_string(path).ok().map(|s| s.trim().to_string())
 }
 
 #[tauri::command]
@@ -320,11 +410,6 @@ pub(crate) fn perform_graceful_teardown(
 /// quit that hangs forever is a worse failure than a quit that takes a moment.
 const TEARDOWN_WAIT: Duration = Duration::from_secs(20);
 
-/// Reads a key file, trimming whitespace; `None` when absent or unreadable.
-fn read_key_file(path: &Path) -> Option<String> {
-    std::fs::read_to_string(path).ok().map(|s| s.trim().to_string())
-}
-
 fn main() {
     let settings_dir = default_settings_dir();
     // Did the location arrive from OUTSIDE (operator, CI, a script) rather than from us?
@@ -531,6 +616,19 @@ mod data_dir_tests {
         dir
     }
 
+    /// Point the pre-move settings location at an empty directory.
+    ///
+    /// `saved_data_dir` falls back to `%APPDATA%\antidetect-browser\settings.json` so a
+    /// migrated installation keeps the data folder it recorded there. Without isolating that,
+    /// these assertions would depend on whatever this machine happens to hold — which is
+    /// exactly how they failed when the fallback was added.
+    fn isolate_legacy(settings: &std::path::Path) {
+        let empty = settings.join("empty-appdata");
+        let _ = fs::create_dir_all(&empty);
+        std::env::set_var("APPDATA", &empty);
+        std::env::set_var("USERPROFILE", &empty);
+    }
+
     /// The operator's first-run choice MUST win over the default.
     ///
     /// This is the bug that shipped: the shell resolved the DEFAULT path, exported it as
@@ -546,11 +644,17 @@ mod data_dir_tests {
 
         let settings = tmp("honours");
         let chosen = settings.join("my-profiles");
+        // The recorded folder must hold data — or carry the ownership marker — because a
+        // recorded path is otherwise indistinguishable from another machine's. Marking it is
+        // exactly what choosing it does, so this is the ordinary state of a chosen folder.
+        fs::create_dir_all(&chosen).unwrap();
+        fs::write(chosen.join(".nulltrace-data-root"), "nulltrace\n").unwrap();
         fs::write(
             settings.join("settings.json"),
             format!(r#"{{"dataDir":{:?}}}"#, chosen.to_string_lossy()),
         )
         .unwrap();
+        isolate_legacy(&settings);
 
         // No env override: the recorded choice is the only signal.
         std::env::remove_var("ANTIDETECT_DATA_DIR");
@@ -564,6 +668,76 @@ mod data_dir_tests {
         assert_eq!(res, chosen);
     }
 
+    /// The USB case: the folder carries `settings.json` recorded on ANOTHER machine, whose
+    /// absolute path does not exist here. Honouring it would point the whole app at a missing
+    /// directory while the folder the operator opened stayed unused; the launch must fall
+    /// through to portable data beside the executable instead.
+    #[test]
+    fn ignores_a_recorded_path_that_is_not_usable_here() {
+        let _lock = ENV_LOCK.lock();
+        let orig_data = std::env::var("ANTIDETECT_DATA_DIR").ok();
+        let orig_portable = std::env::var("PORTABLE_EXECUTABLE_DIR").ok();
+
+        let settings = tmp("moved");
+        let app_dir = settings.join("app");
+        fs::create_dir_all(&app_dir).unwrap();
+        isolate_legacy(&settings);
+
+        // Case 1: the recorded path does not exist on this machine at all.
+        let absent = settings.join("never-existed-elsewhere");
+        fs::write(
+            settings.join("settings.json"),
+            format!(r#"{{"dataDir":{:?}}}"#, absent.to_string_lossy()),
+        )
+        .unwrap();
+        std::env::remove_var("ANTIDETECT_DATA_DIR");
+        std::env::set_var("PORTABLE_EXECUTABLE_DIR", &app_dir);
+        assert_eq!(resolve_data_dir(&settings), app_dir.join("data"));
+
+        // Case 2: the path exists but is empty and unmarked — a stranger's directory, or the
+        // leftover of a copy that never completed. It must not win either.
+        let empty = settings.join("exists-but-empty");
+        fs::create_dir_all(&empty).unwrap();
+        fs::write(
+            settings.join("settings.json"),
+            format!(r#"{{"dataDir":{:?}}}"#, empty.to_string_lossy()),
+        )
+        .unwrap();
+        assert_eq!(resolve_data_dir(&settings), app_dir.join("data"));
+
+        if let Some(v) = orig_data { std::env::set_var("ANTIDETECT_DATA_DIR", v); } else { std::env::remove_var("ANTIDETECT_DATA_DIR"); }
+        if let Some(v) = orig_portable { std::env::set_var("PORTABLE_EXECUTABLE_DIR", v); } else { std::env::remove_var("PORTABLE_EXECUTABLE_DIR"); }
+    }
+
+    /// A recorded path holding real data still wins, marker or not.
+    #[test]
+    fn honours_a_recorded_path_that_holds_real_data() {
+        let _lock = ENV_LOCK.lock();
+        let orig_data = std::env::var("ANTIDETECT_DATA_DIR").ok();
+        let orig_portable = std::env::var("PORTABLE_EXECUTABLE_DIR").ok();
+
+        let settings = tmp("realdata");
+        let real = settings.join("real-data");
+        isolate_legacy(&settings);
+        fs::create_dir_all(&real).unwrap();
+        fs::write(real.join("antidetect.db"), b"db").unwrap();
+        fs::write(
+            settings.join("settings.json"),
+            format!(r#"{{"dataDir":{:?}}}"#, real.to_string_lossy()),
+        )
+        .unwrap();
+
+        std::env::remove_var("ANTIDETECT_DATA_DIR");
+        std::env::set_var("PORTABLE_EXECUTABLE_DIR", settings.join("app"));
+
+        let res = resolve_data_dir(&settings);
+
+        if let Some(v) = orig_data { std::env::set_var("ANTIDETECT_DATA_DIR", v); } else { std::env::remove_var("ANTIDETECT_DATA_DIR"); }
+        if let Some(v) = orig_portable { std::env::set_var("PORTABLE_EXECUTABLE_DIR", v); } else { std::env::remove_var("PORTABLE_EXECUTABLE_DIR"); }
+
+        assert_eq!(res, real);
+    }
+
     /// Portable mode must still resolve beside the executable when nothing was recorded.
     #[test]
     fn falls_back_to_portable_beside_the_executable() {
@@ -572,6 +746,7 @@ mod data_dir_tests {
         let orig_portable = std::env::var("PORTABLE_EXECUTABLE_DIR").ok();
 
         let settings = tmp("portable");
+        isolate_legacy(&settings);
         std::env::remove_var("ANTIDETECT_DATA_DIR");
         std::env::set_var("PORTABLE_EXECUTABLE_DIR", settings.join("app"));
         let resolved = resolve_data_dir(&settings);
@@ -610,6 +785,7 @@ mod data_dir_tests {
     #[test]
     fn unreadable_or_absent_settings_means_no_choice() {
         let settings = tmp("absent");
+        isolate_legacy(&settings);
         assert!(saved_data_dir(&settings).is_none());
 
         fs::write(settings.join("settings.json"), b"{ this is not json").unwrap();
