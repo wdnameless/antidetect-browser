@@ -214,7 +214,6 @@ def main():
     repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     assets_brand = os.path.join(repo_root, 'assets', 'brand')
     resources_dir = os.path.join(repo_root, 'resources')
-    build_dir = os.path.join(repo_root, 'build')
     release_ico_dir = os.path.join(repo_root, 'release', '.icon-ico')
     # The Tauri shell's own icon set. This script never wrote here before, so the files the
     # installer and the .exe actually carry were a manual copy of `assets/brand/*` — and they
@@ -222,7 +221,7 @@ def main():
     # them from the same master removes the copy step that allowed that.
     tauri_icons_dir = os.path.join(repo_root, 'src-tauri', 'icons')
 
-    for d in [assets_brand, resources_dir, build_dir, release_ico_dir, tauri_icons_dir]:
+    for d in [assets_brand, resources_dir, release_ico_dir, tauri_icons_dir]:
         os.makedirs(d, exist_ok=True)
 
     print("Generating NullTrace SVG master...")
@@ -281,7 +280,6 @@ def main():
 
     brand_ico_path = os.path.join(assets_brand, 'nulltrace-icon.ico')
     fav_ico_path = os.path.join(assets_brand, 'favicon.ico')
-    build_ico_path = os.path.join(build_dir, 'icon.ico')
     release_ico_path = os.path.join(release_ico_dir, 'icon.ico')
 
     # Save multi-size ICO
@@ -291,7 +289,7 @@ def main():
     # Copy to build and release locations
     with open(brand_ico_path, 'rb') as src:
         ico_data = src.read()
-    for dest in [build_ico_path, release_ico_path, fav_ico_path]:
+    for dest in [release_ico_path, fav_ico_path]:
         with open(dest, 'wb') as f:
             f.write(ico_data)
         print(f"  -> {dest}")
@@ -308,9 +306,8 @@ def main():
     }
     icns_data = pack_icns(icns_map)
     brand_icns_path = os.path.join(assets_brand, 'nulltrace-icon.icns')
-    build_icns_path = os.path.join(build_dir, 'icon.icns')
 
-    for p in [brand_icns_path, build_icns_path, os.path.join(tauri_icons_dir, 'icon.icns')]:
+    for p in [brand_icns_path, os.path.join(tauri_icons_dir, 'icon.icns')]:
         with open(p, 'wb') as f:
             f.write(icns_data)
         print(f"  -> {p} ({len(icns_data)} bytes)")

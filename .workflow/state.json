@@ -1,40 +1,40 @@
 {
   "version": 1,
   "tier": "T2",
-  "task": "Re-audit NullTrace vs ShardX + Afina competitive parity, and full bug audit of the current codebase",
-  "startedAt": "2026-09-20T06:58:40.415Z",
+  "task": "Licensing and fork protection: key rotation, AGPL-3.0 dual licence, Rust verification, history-rewrite runbook",
+  "startedAt": "2026-09-20T08:43:10.516Z",
   "status": "closed",
   "artifacts": {
     "lane": {
-      "at": "2026-09-20T06:58:40.415Z",
+      "at": "2026-09-20T08:43:10.516Z",
       "path": null,
       "detail": "T2"
     },
-    "recon": {
-      "at": "2026-09-20T07:11:59.194Z",
-      "path": ".workflow/recon-macos.md",
-      "detail": "probe 11/11, acceptance 12/12 on M1, bundle SIGNATURE OK, 3 CI bugs found by running"
-    },
     "manifest": {
-      "at": "2026-09-20T07:11:45.284Z",
-      "path": ".workflow/manifest-macos.md",
-      "detail": "R01-R10 with verbatim operator quotes and the four interview fork answers"
-    },
-    "interfaces": {
-      "at": "2026-09-20T07:12:14.580Z",
-      "path": "openspec/changes/parity-audit-2026-09-20/interfaces.md",
-      "detail": "5 findings mapped to fix entry points with file:line; explicit must-not-do boundaries for B1/B3/B5; acceptance standard = reproduce then re-run"
+      "at": "2026-09-20T08:43:10.948Z",
+      "path": "openspec/changes/licensing-and-fork-protection/manifest.md",
+      "detail": null
     },
     "openspec": {
-      "at": "2026-09-20T07:12:14.462Z",
-      "path": "openspec/changes/parity-audit-2026-09-20/proposal.md",
-      "detail": "specs/audit-integrity/spec.md with 3 requirements and 7 scenarios; validate clean"
+      "at": "2026-09-20T08:43:11.129Z",
+      "path": "openspec/changes/licensing-and-fork-protection/proposal.md",
+      "detail": null
+    },
+    "interfaces": {
+      "at": "2026-09-20T08:43:11.337Z",
+      "path": "openspec/changes/licensing-and-fork-protection/interfaces.md",
+      "detail": "Rust verify_license(token)->LicenseVerdict frozen in section C; Node<->Rust channel is settings_dir/license-verdict.json because sidecar.rs passes only env vars; ownership map section G; fingerprint rule in section C corrected in place after it was proved wrong (raw bytes are line-ending dependent)"
     },
     "oracle": {
-      "at": "2026-09-20T07:16:36.763Z",
-      "path": ".workflow/recon-parity-audit-2026-09-20.md",
-      "detail": "Blind verifier: ACCEPT on all 8 checks, found B6 (IPv6 mangling) which I confirmed by measurement. FOUR of its citations were fabricated (artifact sizes swapped, proxy.ts:51 masking that does not exist, profileManager:756, sidecar.rs:328) - verdict right, evidence invented. Oracle file = .workflow/oracle-parity-audit-2026-09-20.md"
+      "at": "2026-09-20T08:43:11.543Z",
+      "path": ".workflow/oracle-licensing-and-fork-protection.md.verdict",
+      "detail": "ACCEPT from blind oracle, reconciled against re-measurement; verdict committed as fc4d800"
+    },
+    "recon": {
+      "at": "2026-09-20T08:43:16.579Z",
+      "path": ".workflow/recon-licensing-and-fork-protection.md",
+      "detail": "Verified by execution: the committed private key in tests/unit/licenseManager.test.ts matched the pinned build key (bodies_identical true; it signs licences the shipped app accepted); leak spans 202 commits and 24/54 tags; git-filter-repo was absent and the rewrite was rehearsed on a mirror clone; setSecretCipher has zero call sites in src/ so aes: is the only format a packaged build writes; sidecar.rs passes only env vars so the verdict crosses as a file; test baseline 145 files/1174 passed"
     }
   },
-  "closedAt": "2026-09-20T07:17:01.300Z"
+  "closedAt": "2026-09-20T08:43:21.819Z"
 }
