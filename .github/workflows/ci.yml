@@ -72,6 +72,92 @@ jobs:
       - name: Run Python SDK tests
         run: python -m pytest packages/sdk-python/tests -q
 
+  release-macos:
+    name: Release macOS portable (Apple Silicon)
+    # Separate job from `release` rather than an extra matrix row: the Windows job's steps are
+    # Windows-shaped (PowerShell, NSIS, a minisign updater manifest) and mixing platforms would
+    # put `if: runner.os == ...` guards on every one of them. A parallel job keeps the Windows
+    # path exactly as it was — which is what its own tests assert — and gives macOS its own.
+    #
+    # `macos-14` is Apple Silicon (M1). The macOS SDK exists only on macOS, so this is the only
+    # way to produce the artefact at all; Windows cannot cross-compile to it.
+    #
+    # Measured before this job was written (run 35494974446): the pinned kernel image is native
+    # arm64 and its stealth holds on M1, so an Apple Silicon artefact is a working product here
+    # rather than a speculative one.
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [test, sdk]
+    runs-on: macos-14
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      # The sidecar Node runtime, for the arm64 target triple Tauri expects. Without this the
+      # shell has no runtime to spawn and the app starts to an error page.
+      - name: Vendor the Node sidecar (arm64)
+        run: npm run vendor:node
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Build backend, renderer and vendored runtime
+        run: npm run build && npm run copy:prod-deps
+
+      - name: Unit tests
+        run: npm test
+
+      # `--bundles app` and NOT `dmg`: a dmg is a distribution container, and the operator's
+      # chosen form is a folder holding the .app plus its data. `app` produces exactly that
+      # bundle, which the packaging step below places into the portable layout.
+      - name: Build the app bundle
+        run: npx tauri build --bundles app
+
+      - name: Test Tauri Rust shell
+        run: cargo test --manifest-path src-tauri/Cargo.toml
+
+      - name: Verify the bundle is pristine and correctly signed
+        run: |
+          APP=$(find src-tauri/target/release/bundle/macos -maxdepth 1 -name '*.app' | head -1)
+          if [ -z "$APP" ]; then echo "::error::no .app was produced"; exit 1; fi
+          echo "bundle: $APP"
+          # Ad-hoc signed by the build (bundle.macOS.signingIdentity = "-"). A broken signature
+          # here means the app cannot launch on Apple Silicon at all, so it is checked, not assumed.
+          codesign --verify --deep --strict "$APP" && echo "signature verifies"
+
+      - name: Package the portable layout
+        run: node scripts/package-macos-portable.mjs --app src-tauri/target/release/bundle/macos
+
+      - name: Upload the macOS artefact
+        uses: actions/upload-artifact@v4
+        with:
+          name: NullTrace-macos-arm64
+          path: |
+            dist-release/*macos-arm64*
+          if-no-files-found: error
+
+      # No `latest.json` entry for macOS: the portable self-update swaps a launcher file, which is
+      # a Windows mechanism (`build_windows_swap_command`). Publishing updater metadata for a
+      # layout whose updater is not implemented would make the UI promise an update it cannot
+      # perform — worse than reporting, honestly, that updates are not configured for this build.
+      - name: Publish the macOS asset
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist-release/*macos-arm64*
+          fail_on_unmatched_files: false
+
   release:
     name: Release Tauri Desktop Shell (${{ matrix.os }})
     # Build and publish release artefacts when a v* tag is pushed.

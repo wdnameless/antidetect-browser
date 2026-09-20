@@ -130,9 +130,13 @@ if (!wsUrl) {
   check('navigator.webdriver is false with CDP attached', surface?.webdriver === false, String(surface?.webdriver));
   check('spoofed platform is MacIntel', surface?.platform === 'MacIntel', String(surface?.platform));
 
-  // The process must be running natively, not under Rosetta.
-  const ps = spawnSync('ps', ['-o', 'arch=', '-p', String(proc.pid)], { encoding: 'utf8' });
-  check('browser process architecture', true, (ps.stdout || '').trim() || '(unknown)');
+  // Whether the browser itself is translated is what Rosetta would show; BSD `ps` has no `arch`
+  // column (measured: it printed a header), so the authoritative signal is the executable's own
+  // architecture, read below from the path the process is actually running.
+  const liveExe = spawnSync('ps', ['-p', String(proc.pid), '-o', 'comm='], { encoding: 'utf8' }).stdout?.trim();
+  const liveLipo = liveExe ? spawnSync('lipo', ['-archs', liveExe], { encoding: 'utf8' }).stdout?.trim() : '';
+  check('running process is arm64 (no Rosetta)', (liveLipo || '').includes('arm64'),
+    `${liveExe || '(path unavailable)'} -> ${liveLipo || 'unknown'}`);
 }
 
 proc.kill('SIGKILL');

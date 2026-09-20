@@ -124,3 +124,68 @@ jobs:
           name: macos-kernel-acceptance
           path: e2e-output.txt
           if-no-files-found: warn
+
+  build-app:
+    name: Build the macOS app bundle (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-14]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Vendor the Node sidecar (arm64)
+        run: npm run vendor:node
+
+      - name: Build backend and renderer
+        run: npm run build && npm run copy:prod-deps
+
+      # The step that proves the port: this is a full Tauri compile for arm64 plus the bundle
+      # layout, on the platform it targets. Everything else in this workflow verifies pieces;
+      # this one verifies that the application itself builds here.
+      - name: Build the app bundle
+        id: build
+        continue-on-error: true
+        run: npx tauri build --bundles app 2>&1 | tail -40
+
+      - name: Inspect the bundle
+        if: always()
+        run: |
+          set -x
+          ls -la src-tauri/target/release/bundle/macos/ 2>/dev/null || echo "NO BUNDLE DIRECTORY"
+          APP=$(find src-tauri/target/release/bundle/macos -maxdepth 1 -name '*.app' 2>/dev/null | head -1)
+          if [ -z "$APP" ]; then echo "::warning::no .app produced"; exit 0; fi
+          echo "bundle: $APP"
+          lipo -archs "$APP/Contents/MacOS/"* || true
+          codesign --verify --deep --strict "$APP" && echo "SIGNATURE OK" || echo "SIGNATURE FAILED"
+          # The bundled Node sidecar must be there and be arm64, or the shell starts to an error.
+          ls -la "$APP/Contents/Resources/binaries/" 2>/dev/null || echo "no binaries dir"
+          for b in "$APP/Contents/Resources/binaries/"*; do [ -f "$b" ] && lipo -archs "$b"; done 2>/dev/null || true
+          du -sh "$APP"
+
+      - name: Package the portable layout
+        if: steps.build.outcome == 'success'
+        continue-on-error: true
+        run: node scripts/package-macos-portable.mjs --app src-tauri/target/release/bundle/macos
+
+      - name: Upload whatever was produced
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-app-bundle
+          path: |
+            src-tauri/target/release/bundle/macos/
+            dist-release/
+          if-no-files-found: warn
