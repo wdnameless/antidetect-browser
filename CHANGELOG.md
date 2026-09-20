@@ -1,5 +1,52 @@
 # Changelog
 
+## [0.6.21] - 2026-09-20
+
+### Added — a macOS build, published with the release
+
+The operator asked whether the portable build could work on a Mac, and then asked for it in the
+releases so a teammate could test it. It is now built and published:
+
+**`NullTrace-0.6.21-macos-arm64.zip`** contains one folder with `NullTrace.app`, an empty marked
+`data/`, and `README-FIRST.txt`. Run it from that folder: profiles, the browser kernel, extensions
+and the database all live beside the app, so moving the folder moves everything. Nothing is written
+inside the `.app` — that would invalidate its signature and macOS would refuse to launch it.
+
+### Changed — the browser kernel works on Apple Silicon, measured before it was written
+
+The macOS kernel asset was already pinned in `kernelAcquire.ts` and then thrown away: the `dmg`
+branch returned `ERR_UNSUPPORTED_HOST_EXTRACTION`, so the platform it was pinned for had never run.
+Measured on a real M1 before implementing:
+
+| Check | Result |
+|---|---|
+| Kernel architecture | **native `arm64`** (`Mach-O 64-bit executable arm64`) — no Rosetta involved |
+| `navigator.webdriver` under CDP | **false** |
+| `--fingerprint` flags | effective: seed 2023 → Apple M2/24 cores, seed 4242 → M4/16 cores, different canvas hashes |
+| Extraction | `hdiutil attach -nobrowse -readonly -plist`, `cp -R`, quarantine cleared, detached in a `finally` |
+
+### Known limitations on macOS (stated, not hidden)
+
+- **Apple Silicon only.** The pinned image contains `arm64` and nothing else: on an Intel Mac the
+  same image reports `arm64` and fails to launch with `EBADARCH`. Rosetta translates the other way.
+  Intel Macs cannot run this kernel at all.
+- **The form is a folder, not one file.** macOS does not allow a single-file application.
+- **No auto-update.** The launcher-swap mechanism is Windows-specific, so no updater metadata is
+  published for macOS — the app reports honestly that updates are not configured.
+- **Dragging the app to `/Applications` disables portable mode**, deliberately: a normal user cannot
+  write there, so the app falls back to `~/Library/Application Support` and behaves as an ordinary
+  installation instead of failing on its first settings write.
+- **Idle auto-lock and session-lock are Windows-only** (Win32 APIs).
+- First launch needs a one-time `xattr -dr com.apple.quarantine` step, because the project has no
+  Apple Developer account and the build is ad-hoc signed.
+
+### Not verified
+
+Launching the `.app` by double-click on a real Mac with real profiles, and moving it between two
+physical Macs — macOS caches bundle paths, and an ad-hoc signature may need re-signing. Both are
+recorded as risks in `openspec/changes/nulltrace-macos-arm64`. This release exists so a teammate can
+settle the first one on real hardware.
+
 ## [0.6.20] - 2026-09-19
 
 ### Fixed — the moved-folder protection did not cover the shell, so a USB stick could open an empty library
