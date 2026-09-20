@@ -104,7 +104,10 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
   const [memoryGb, setMemoryGb] = useState<number>(16);
   const [osPlatform, setOsPlatform] = useState<'windows' | 'mac' | 'linux' | 'android'>('windows');
   const [profileTimezone, setProfileTimezone] = useState<string>('');
-  const [profileLang, setProfileLang] = useState<string>('en-US');
+  // Empty means "Auto": the language is then derived from the fingerprint seed. The default used
+  // to be 'en-US', which made the Auto option indistinguishable from an explicit en-US choice —
+  // the select renders Auto with an empty value, so a fresh form disagreed with its own dropdown.
+  const [profileLang, setProfileLang] = useState<string>('');
   const [doNotTrack, setDoNotTrack] = useState<'off' | 'on' | 'auto'>('auto');
   const [blockedPorts, setBlockedPorts] = useState<number[]>([]);
   const [portInput, setPortInput] = useState<string>('');
@@ -458,7 +461,7 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
     setMemoryGb(16);
     setOsPlatform('windows');
     setProfileTimezone('');
-    setProfileLang('en-US');
+    setProfileLang('');
     setDoNotTrack('auto');
     setBlockedPorts([]);
     setPortInput('');
@@ -467,6 +470,25 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
     setMediaSpeakerCount(2);
     setMediaWebcamCount(1);
     setNotes('');
+  };
+
+  /**
+   * Persist the profile's browser language.
+   *
+   * The language is not a column on `profiles`: it lives at `fingerprint.config.lang`, and the
+   * launcher turns it into `--lang` and `--accept-lang` (and the stealth layer reports it as
+   * `navigator.language`). So it has to be written through the fingerprint route, which merges
+   * the given keys into the existing config — untouched fields are preserved.
+   *
+   * An empty value means "Auto" and is written as an empty string, which the launcher treats as
+   * "no explicit language" and lets the fingerprint's own seed-derived locale decide. Deleting
+   * the key instead would be equally correct; writing the empty string keeps the shape stable.
+   */
+  const saveProfileLanguage = async (userId: string, lang: string) => {
+    const res = await api.profileDetail(userId);
+    if (res.code !== 0 || !res.data) return;
+    const cfg = ((res.data.fingerprint?.config ?? {}) as Record<string, unknown>) || {};
+    await api.profileUpdateFingerprint(userId, { ...cfg, lang });
   };
 
   const openEditModal = async (p: ProfileListItem) => {
@@ -484,9 +506,10 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
         setProfileTimezone(d.timezone || '');
         // `lang` and `deviceMemory` live in the fingerprint's `config` blob, not on the
         // fingerprint object itself — reading them one level up silently yields undefined
-        // and the form would show a default that disagrees with the profile.
+        // and the form would show a default that disagrees with the profile. An absent `lang`
+        // stays empty so the select renders "Auto" rather than claiming a concrete value.
         const fpCfg = (d.fingerprint?.config ?? {}) as { lang?: string; deviceMemory?: number };
-        setProfileLang(typeof fpCfg.lang === 'string' ? fpCfg.lang : 'en-US');
+        setProfileLang(typeof fpCfg.lang === 'string' ? fpCfg.lang : '');
         setDoNotTrack((d.do_not_track as 'off' | 'on' | 'auto') || 'auto');
         setBlockedPorts(Array.isArray(d.blocked_ports) ? d.blocked_ports.map(Number).filter((n) => !isNaN(n) && n > 0 && n <= 65535) : []);
         setWebrtcPolicy((d.webrtc_policy as 'default' | 'disable_non_proxied_udp' | 'proxy') || 'default');
@@ -611,6 +634,13 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
           webrtc_policy: webrtcPolicy,
         });
         if (res.code === 0) {
+          // The chosen language lives in the fingerprint's config blob, not on the profile row,
+          // so it is written through the fingerprint route. `create` derives a language from the
+          // fingerprint seed; without this the operator's choice was discarded at creation too.
+          const createdId = res.data?.user_id;
+          if (createdId && profileLang) {
+            await saveProfileLanguage(createdId, profileLang);
+          }
           setModalMode(null);
           await loadProfiles();
           await loadGroups();
@@ -635,6 +665,10 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
           webrtc_policy: webrtcPolicy,
         });
         if (res.code === 0) {
+          // Same reason as the create branch: the language is part of the fingerprint config, and
+          // `profileUpdate` does not carry it. Omitting this is exactly the reported defect — the
+          // select showed a value, Save reported success, and the value never left the form.
+          await saveProfileLanguage(profileId, profileLang);
           setModalMode(null);
           await loadProfiles();
           await loadGroups();

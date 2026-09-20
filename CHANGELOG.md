@@ -1,5 +1,38 @@
 # Changelog
 
+## [0.6.14] - 2026-09-19
+
+### Fixed — the browser language could be chosen but never saved
+
+Operator report: «не сохраняется язык браузера».
+
+The Edit Profile modal offers a **Browser language** select, it was populated from the profile's
+real value, and saving reported success — but the value was never written. `profileLang` was read
+from `fingerprint.config.lang` and rendered into the control; the save path sent name, group,
+proxy, colour, timezone, Do Not Track, blocked ports and WebRTC policy, and simply omitted the
+language. Change it, press Save, see success, reopen the modal: the old value is back.
+
+This was not cosmetic. The launcher turns that value into `--lang` and `--accept-lang`, and the
+stealth layer reports it as `navigator.language`, so a silently dropped language changes what
+every site sees. Verified the mechanism directly: with `de-DE` set, the running Chromium's own
+command line carried `--lang=de-DE --accept-lang=de-DE`, and the page reported
+`navigator.language = "de-DE"`.
+
+The language now saves in **both** create and edit — creation discarded it too, so a language
+chosen up front was lost just as quietly.
+
+**"Auto" was also unreachable.** The select renders Auto with an empty value while the form's
+default was `'en-US'`, so a fresh form displayed Auto and held en-US; the profile's own language
+was only distinguishable by touching the control. An absent or Auto language is now empty
+throughout, and the launcher correctly emits no `--lang` for it, letting the fingerprint's
+seed-derived locale decide.
+
+The test added here checks the general rule the defect broke — every value the modal collects must
+reach the save path — rather than naming the language field, since a test naming one field would
+have the same blind spot as the code. It fails on the shipped behaviour (2 of 4) and passes after.
+
+Verified on Windows: vitest 138 files / 1132 passed; typecheck clean.
+
 ## [0.6.13] - 2026-09-19
 
 ### Fixed — groups could be created but never shown, so they looked impossible to create
