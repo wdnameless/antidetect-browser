@@ -253,6 +253,22 @@ export async function buildChromiumArgs(
     }
   }
 
+  // Reopen where the operator left off. This has to be a SWITCH, not a Preference.
+  //
+  // Writing `session.restore_on_startup` into Preferences looked right and did nothing: Chromium
+  // owns that file and rewrites it while it runs, so the value written before a launch was gone
+  // by the time the browser read it — measured, the file came back with `session: {}` and
+  // `exit_type: "Crashed"` during the same run. The switch is checked against the kernel binary
+  // rather than assumed: `--restore-last-session` and `--hide-crash-restore-bubble` are both
+  // present in the shipped `chrome.dll`, and a switch Chromium does not know is accepted and
+  // silently ignored, so probing the binary is the only way to tell the difference.
+  //
+  // `--hide-crash-restore-bubble` matters because a profile exited by force-kill is recorded as
+  // having crashed; without it the restore arrives as a "restore pages?" bubble instead of the
+  // session, which reads as the feature not working.
+  args.push('--restore-last-session');
+  args.push('--hide-crash-restore-bubble');
+
   // Private-engine switch (parity program, add-engine-level-hardening task 4.1):
   // when a stealth-engine build is selected, pass its profile id and dump the
   // full fingerprint payload next to the user-data-dir so the patched C++ core
@@ -285,6 +301,14 @@ export async function buildChromiumArgs(
     const sigFile = path.join(stealthExtDir, 'stealth-manifest.sig.json');
     const signingKey = getStealthSigningKey(DATA_DIR);
     if (!fs.existsSync(stealthExtDir) || !fs.existsSync(sigFile)) {
+      writeStealthExtension(stealthExtDir, cfg.stealth, { signingKey });
+    } else if (stealthLocaleChanged(stealthExtDir, cfg.stealth)) {
+      // The extension was written once and never revisited, so a language chosen afterwards left
+      // the OLD locale in place — measured on a real profile: `navigator.language` reported
+      // en-US while the generated voice pool still said `ja-JP`, from the seed's locale at the
+      // time the extension was first built. The two must describe one machine, so a changed
+      // locale rebuilds the extension.
+      console.info(`[stealth] Rebuilding stealth extension for profile '${cfg.profileId}': its locale no longer matches the profile's language`);
       writeStealthExtension(stealthExtDir, cfg.stealth, { signingKey });
     }
     try {
@@ -382,6 +406,44 @@ export function applyDoNotTrackPref(userDataDir: string, enabled: boolean): bool
   } catch {
     return false;
   }
+}
+
+/**
+ * Whether the stealth extension on disk was built for a different locale than the profile now has.
+ *
+ * The extension embeds a `CFG` object whose `locale` selects the speech-synthesis voice pool. It
+ * is written once and, before this check existed, never rewritten — so changing a profile's
+ * browser language left the old locale in the extension forever, and a profile reporting
+ * `navigator.language = "en-US"` still advertised voices for its seed's original language.
+ *
+ * A missing or unreadable script is reported as "changed" so the caller rebuilds it. That is the
+ * safe direction: a rebuild is cheap and verifiable, while leaving an unreadable artifact in place
+ * would keep a wrong locale alive.
+ */
+export function stealthLocaleChanged(stealthExtDir: string, opts: { locale?: string }): boolean {
+  const scriptPath = path.join(stealthExtDir, 'stealth.js');
+  if (!fs.existsSync(scriptPath)) return true;
+
+  let embedded: string | undefined;
+  try {
+    const source = fs.readFileSync(scriptPath, 'utf8');
+    const match = /const CFG = (\{[\s\S]*?\});/.exec(source);
+    if (match) {
+      const parsed: unknown = JSON.parse(match[1]);
+      // Narrow rather than assert: the file is on disk and could have been written by any
+      // earlier version, so its shape is not guaranteed by anything the compiler can see.
+      if (parsed && typeof parsed === 'object' && 'locale' in parsed) {
+        const value = parsed.locale;
+        if (typeof value === 'string') embedded = value;
+      }
+    }
+  } catch {
+    return true;
+  }
+
+  // An absent locale in either place is a mismatch: the script should always carry one.
+  if (!embedded || !opts.locale) return embedded !== opts.locale;
+  return embedded !== opts.locale;
 }
 
 export async function startProfile(cfg: LaunchConfig): Promise<StartResult> {

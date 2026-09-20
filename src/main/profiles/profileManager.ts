@@ -1554,6 +1554,22 @@ export function resolveLaunchConfig(id: string): LaunchConfig {
   // Stealth layer applies to every profile (headless-trace fixes are universal);
   // device presets above refine it for mobile/desktop consistency.
   const hwVector = deriveHardwareVector(fingerprintSeed);
+
+  /**
+   * The language the operator chose, if any.
+   *
+   * `fingerprint.lang` is the single source for the browser's language: the launcher turns it
+   * into `--lang` and `--accept-lang`, and `navigator.language` follows it. The stealth layer
+   * carries its own `locale`, used for the speech-synthesis voice pool and the font list, and it
+   * was always taken from the fingerprint's seed-derived locale — so a profile whose operator
+   * picked en-US still advertised voices and fonts for the seed's language. Two halves of the
+   * same profile disagreeing about which language the machine speaks is exactly the kind of
+   * inconsistency this layer exists to prevent.
+   */
+  const chosenLang = typeof fingerprint?.lang === 'string' && fingerprint.lang.trim().length > 0
+    ? fingerprint.lang.trim()
+    : undefined;
+
   if (!stealth) {
     stealth = {
       mobile: false,
@@ -1564,11 +1580,14 @@ export function resolveLaunchConfig(id: string): LaunchConfig {
           ? fingerprint.hardwareConcurrency
           : hwVector.cpuCores,
       deviceMemory: hwVector.ramGB,
-      locale: hwVector.locale,
+      locale: chosenLang ?? hwVector.locale,
       fontList: hwVector.fontInventory,
     };
-  } else if (!stealth.fontList) {
-    stealth.fontList = hwVector.fontInventory;
+  } else {
+    if (!stealth.fontList) stealth.fontList = hwVector.fontInventory;
+    // The device branch above may have set a locale; the operator's choice wins over it, because
+    // it is the value the browser actually runs with.
+    if (chosenLang) stealth.locale = chosenLang;
   }
   let proxyServer: string | undefined;
   let proxyAuth: { username: string; password: string } | undefined;

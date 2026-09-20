@@ -1,5 +1,35 @@
 # Changelog
 
+## [0.6.16] - 2026-09-19
+
+### Fixed — the browser language did not change, and a reopened profile started blank
+
+Two reports, and each had a cause that was not the obvious one.
+
+**The language stayed Spanish because two halves of the profile disagreed.** The chosen language
+*is* applied to the browser — verified: with `en-US` selected the page reports
+`navigator.language = "en-US"`. What kept speaking Spanish was the **stealth layer**, which
+carries its own `locale` for the speech-synthesis voice pool and took it from the fingerprint's
+seed rather than from the operator's choice. Measured on the operator's profile: the browser said
+`en-US` while the generated extension embedded `locale: "ja-JP"`.
+
+That alone would not have persisted: the extension is written once and was never rewritten, so a
+language chosen after the first launch left the old locale embedded forever. It is now rebuilt
+whenever the embedded locale differs from the profile's language.
+
+**Reopening a profile started from a blank window.** The fix had to be a launch switch, not a
+preference: writing `session.restore_on_startup` into the profile's `Preferences` looked correct
+and did nothing, because Chromium owns that file and rewrites it while it runs — measured after a
+launch, the file came back with `session: {}` and `exit_type: "Crashed"` seconds after both were
+written. The restore is now requested with `--restore-last-session`, and
+`--hide-crash-restore-bubble` because a force-killed profile is recorded as having crashed, which
+otherwise turns the restore into a "restore pages?" prompt instead of the session. Both switches
+were checked against the shipped kernel binary — the project's rule for every launcher switch,
+since Chromium accepts an unknown flag and silently ignores it.
+
+Verified end to end: a profile with a page open was stopped and restarted, and the page came back
+on its own with `navigator.language = "en-US"` and the stealth locale matching.
+
 ## [0.6.15] - 2026-09-19
 
 ### Fixed — "Installed" appeared for an extension that was never installed
