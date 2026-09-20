@@ -200,6 +200,9 @@ fn read_key_file(path: &Path) -> Option<String> {
 /// Derived from the running executable rather than from an environment variable because nothing
 /// sets one on macOS: on Windows the NSIS launcher exports `PORTABLE_EXECUTABLE_DIR`, and there is
 /// no equivalent launcher here.
+///
+/// LAYOUT ONLY. Whether that directory may actually be used is a separate decision, made by
+/// `export_portable_root_if_bundled` — see `is_writable_directory` for why the distinction matters.
 fn portable_root_from_bundle(exe: &Path) -> Option<PathBuf> {
     let macos_dir = exe.parent()?;
     let contents = macos_dir.parent()?;
@@ -214,18 +217,45 @@ fn portable_root_from_bundle(exe: &Path) -> Option<PathBuf> {
     app_bundle.parent().map(|p| p.to_path_buf())
 }
 
+/// Whether `dir` accepts a new file — established by creating one and removing it.
+///
+/// Deliberately not `metadata().permissions().readonly()`, which reports a MODE BIT rather than
+/// whether this user may write here. `/Applications` is not read-only in that sense, yet a normal
+/// user cannot create files in it — which is exactly the case that matters, because an operator
+/// who drags the bundle there would otherwise get a "portable" root they cannot write to, and the
+/// app would fail on its first settings write with an opaque permission error.
+///
+/// The probe is the same operation the app performs moments later (writing `settings.json` into
+/// this very directory), so it costs nothing that was not about to happen anyway.
+fn is_writable_directory(dir: &Path) -> bool {
+    let probe = dir.join(format!(".nulltrace-write-probe-{}", std::process::id()));
+    match fs::File::create(&probe) {
+        Ok(_) => {
+            let _ = fs::remove_file(&probe);
+            true
+        }
+        Err(_) => false,
+    }
+}
+
 /// Export the portable root so the backend, the webview cache and the data directory agree.
 ///
 /// Mirrors what `src-tauri/windows/portable.nsi` does with `SetEnvironmentVariable` on Windows:
 /// ONE producer sets the variable and every consumer reads it, so the two platforms cannot drift
 /// into two conventions. An already-set value wins — an operator or a test that pinned a location
 /// must not be overridden by a guess derived from the bundle's position.
+///
+/// A bundle whose PARENT cannot be written to is NOT portable: that is the `/Applications` case,
+/// and the honest answer there is the standard per-user location a Mac app uses, not a folder that
+/// will fail on the first write. So the writability of the root decides, and the app still starts.
 pub fn export_portable_root_if_bundled(exe: &Path) {
     if std::env::var("PORTABLE_EXECUTABLE_DIR").map(|d| !d.trim().is_empty()).unwrap_or(false) {
         return;
     }
     if let Some(root) = portable_root_from_bundle(exe) {
-        std::env::set_var("PORTABLE_EXECUTABLE_DIR", &root);
+        if is_writable_directory(&root) {
+            std::env::set_var("PORTABLE_EXECUTABLE_DIR", &root);
+        }
     }
 }
 
@@ -886,12 +916,12 @@ mod bundle_root_tests {
     /// Everything that is NOT that layout must return None, so a dev run from `target/debug`
     /// keeps the ordinary, non-portable path instead of silently claiming that the folder above
     /// it owns its data.
-    ///
-    /// Note the deliberate inclusion: a bundle in `/Applications` IS bundle-shaped and therefore
-    /// resolves — the same rule serves both "an app moved onto a stick" and "an app dragged into
-    /// Applications". What must not resolve is everything below.
     #[test]
     fn refuses_anything_that_is_not_a_bundle() {
+        // `/Applications` IS bundle-shaped, so the LAYOUT resolves. Whether it may be USED is a
+        // separate decision — a normal user cannot write there, and `export_portable_root_if_bundled`
+        // refuses it for that reason (see the tests below). Keeping the two questions apart is the
+        // point: a layout that fits is not the same as a directory that works.
         assert_eq!(
             portable_root_from_bundle(Path::new("/Applications/NullTrace.app/Contents/MacOS/NullTrace")),
             Some(PathBuf::from("/Applications"))
@@ -915,6 +945,87 @@ mod bundle_root_tests {
         );
         // Bare relative path with no ancestors.
         assert_eq!(portable_root_from_bundle(Path::new("NullTrace")), None);
+    }
+
+    /// A directory the current user may write to is accepted.
+    #[test]
+    fn a_writable_directory_is_accepted() {
+        let dir = std::env::temp_dir().join(format!("nulltrace-wr-ok-{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&dir);
+        assert!(super::is_writable_directory(&dir));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A directory that does not exist, that is a FILE, or that cannot be written to is refused.
+    ///
+    /// This is the `/Applications` case in miniature: the layout fits, the user cannot write there,
+    /// and the app must fall back to the per-user location rather than fail on its first write.
+    #[test]
+    fn an_unusable_directory_is_refused() {
+        let missing = std::env::temp_dir().join(format!("nulltrace-wr-missing-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&missing);
+        assert!(!super::is_writable_directory(&missing), "absent directory must be refused");
+
+        // A FILE where a directory is expected: creating a child inside it cannot succeed.
+        let file = std::env::temp_dir().join(format!("nulltrace-wr-file-{}", std::process::id()));
+        std::fs::write(&file, b"x").unwrap();
+        assert!(!super::is_writable_directory(&file), "a regular file must be refused");
+        let _ = std::fs::remove_file(&file);
+    }
+
+    /// The end-to-end decision: a bundle whose parent is unwritable must NOT become the portable root.
+    #[test]
+    fn a_bundle_in_an_unwritable_parent_is_not_portable() {
+        let _lock = super::test_env_lock();
+        let orig = std::env::var("PORTABLE_EXECUTABLE_DIR").ok();
+        std::env::remove_var("PORTABLE_EXECUTABLE_DIR");
+
+        // A real bundle inside a directory that is then made unwritable.
+        let parent = std::env::temp_dir().join(format!("nulltrace-ro-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&parent);
+        let macos = parent.join("NullTrace.app").join("Contents").join("MacOS");
+        std::fs::create_dir_all(&macos).unwrap();
+        let exe = macos.join("NullTrace");
+
+        // Sanity: while writable, the root IS adopted.
+        super::export_portable_root_if_bundled(&exe);
+        assert_eq!(
+            std::env::var("PORTABLE_EXECUTABLE_DIR").ok(),
+            Some(parent.to_string_lossy().to_string()),
+            "a writable parent must be adopted"
+        );
+
+        // Now make it unwritable and try again with a clean environment.
+        std::env::remove_var("PORTABLE_EXECUTABLE_DIR");
+        let mut perms = std::fs::metadata(&parent).unwrap().permissions();
+        perms.set_readonly(true);
+        let made_readonly = std::fs::set_permissions(&parent, perms).is_ok();
+
+        let outcome = if made_readonly {
+            super::export_portable_root_if_bundled(&exe);
+            std::env::var("PORTABLE_EXECUTABLE_DIR").ok()
+        } else {
+            None
+        };
+        // The variable is only read on Unix (below), because the read-only bit does not mean the
+        // same thing on Windows — see the note there.
+        let _ = &outcome;
+
+        // Restore before asserting so a failure still leaves a clean temp directory.
+        let mut perms = std::fs::metadata(&parent).unwrap().permissions();
+        #[allow(clippy::permissions_set_readonly_false)]
+        perms.set_readonly(false);
+        let _ = std::fs::set_permissions(&parent, perms);
+        let _ = std::fs::remove_dir_all(&parent);
+        if let Some(v) = orig { std::env::set_var("PORTABLE_EXECUTABLE_DIR", v); } else { std::env::remove_var("PORTABLE_EXECUTABLE_DIR"); }
+
+        if made_readonly {
+            // On Unix a read-only bit genuinely blocks creation. On Windows it does not (the
+            // read-only attribute means something else), so the branch is asserted only where the
+            // platform can express it — asserting it unconditionally would be a false claim.
+            #[cfg(unix)]
+            assert_eq!(outcome, None, "a read-only parent must not be adopted");
+        }
     }
 
     /// A bundle directly at the filesystem root has no parent to return.
