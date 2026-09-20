@@ -1,14 +1,40 @@
 {
   "version": 1,
   "tier": "T2",
-  "task": "NullTrace macOS arm64 portable build",
-  "startedAt": "2026-09-20T06:42:33.591Z",
-  "status": "open",
+  "task": "Re-audit NullTrace vs ShardX + Afina competitive parity, and full bug audit of the current codebase",
+  "startedAt": "2026-09-20T06:58:40.415Z",
+  "status": "closed",
   "artifacts": {
     "lane": {
-      "at": "2026-09-20T06:42:33.591Z",
+      "at": "2026-09-20T06:58:40.415Z",
       "path": null,
       "detail": "T2"
+    },
+    "recon": {
+      "at": "2026-09-20T07:11:59.194Z",
+      "path": ".workflow/recon-macos.md",
+      "detail": "probe 11/11, acceptance 12/12 on M1, bundle SIGNATURE OK, 3 CI bugs found by running"
+    },
+    "manifest": {
+      "at": "2026-09-20T07:11:45.284Z",
+      "path": ".workflow/manifest-macos.md",
+      "detail": "R01-R10 with verbatim operator quotes and the four interview fork answers"
+    },
+    "interfaces": {
+      "at": "2026-09-20T07:12:14.580Z",
+      "path": "openspec/changes/parity-audit-2026-09-20/interfaces.md",
+      "detail": "5 findings mapped to fix entry points with file:line; explicit must-not-do boundaries for B1/B3/B5; acceptance standard = reproduce then re-run"
+    },
+    "openspec": {
+      "at": "2026-09-20T07:12:14.462Z",
+      "path": "openspec/changes/parity-audit-2026-09-20/proposal.md",
+      "detail": "specs/audit-integrity/spec.md with 3 requirements and 7 scenarios; validate clean"
+    },
+    "oracle": {
+      "at": "2026-09-20T07:16:36.763Z",
+      "path": ".workflow/recon-parity-audit-2026-09-20.md",
+      "detail": "Blind verifier: ACCEPT on all 8 checks, found B6 (IPv6 mangling) which I confirmed by measurement. FOUR of its citations were fabricated (artifact sizes swapped, proxy.ts:51 masking that does not exist, profileManager:756, sidecar.rs:328) - verdict right, evidence invented. Oracle file = .workflow/oracle-parity-audit-2026-09-20.md"
     }
-  }
+  },
+  "closedAt": "2026-09-20T07:17:01.300Z"
 }

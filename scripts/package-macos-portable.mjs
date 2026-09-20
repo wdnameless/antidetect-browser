@@ -42,7 +42,12 @@ const appPath = path.join(bundleDir, appName);
 
 // Stage the layout, then archive the stage — so the archive contains one top-level folder the
 // operator can drag anywhere rather than scattering an .app into their Downloads directory.
-const stage = path.join(ROOT, 'src-tauri', 'target', 'release', `portable-stage-${version}`);
+//
+// The folder is named after the PRODUCT, not after this script: `--keepParent` puts this exact
+// name at the archive root, and the first build shipped `portable-stage-0.6.20` — an internal
+// build-script identifier — to the operator. Measured on the produced artefact before fixing.
+const stageName = `NullTrace-${version}-macos-arm64`;
+const stage = path.join(ROOT, 'src-tauri', 'target', 'release', stageName);
 fs.rmSync(stage, { recursive: true, force: true });
 fs.mkdirSync(stage, { recursive: true });
 
