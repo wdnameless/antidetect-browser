@@ -99,7 +99,12 @@ const archive = path.join(outDir, `NullTrace-${version}-macos-arm64.zip`);
 fs.rmSync(archive, { force: true });
 // `ditto -c -k --sequesterRsrc --keepParent` is the archive tool that preserves a bundle's
 // extended attributes and signature; the plain `zip` command is known to break signed bundles.
-run('ditto', ['-c', '-k', '--sequesterRsrc', '--keepParent', path.basename(stage), archive]);
+//
+// The source is the stage's FULL path with `--keepParent`: ditto resolves it relative to the
+// process's working directory, and passing only the basename made it fail with "Cannot get the
+// real path for source" (measured on the first macOS run). `--keepParent` is what puts the folder
+// name at the archive root, so the operator unpacks one folder rather than a loose `.app`.
+run('ditto', ['-c', '-k', '--sequesterRsrc', '--keepParent', stage, archive]);
 
 const sizeMb = (fs.statSync(archive).size / (1024 * 1024)).toFixed(1);
 console.log(`[package-macos] ${path.basename(archive)} (${sizeMb} MB)`);

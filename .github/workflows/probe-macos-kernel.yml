@@ -168,11 +168,18 @@ jobs:
           APP=$(find src-tauri/target/release/bundle/macos -maxdepth 1 -name '*.app' 2>/dev/null | head -1)
           if [ -z "$APP" ]; then echo "::warning::no .app produced"; exit 0; fi
           echo "bundle: $APP"
-          lipo -archs "$APP/Contents/MacOS/"* || true
+          # `lipo -archs` takes ONE input (measured: passing a glob errored with "only one input
+          # file allowed with -archs"), so each Mach-O is inspected individually.
+          for bin in "$APP/Contents/MacOS/"*; do
+            [ -f "$bin" ] || continue
+            printf '%s -> ' "$(basename "$bin")"; lipo -archs "$bin" 2>&1 || echo "(not a Mach-O)"
+          done
           codesign --verify --deep --strict "$APP" && echo "SIGNATURE OK" || echo "SIGNATURE FAILED"
-          # The bundled Node sidecar must be there and be arm64, or the shell starts to an error.
-          ls -la "$APP/Contents/Resources/binaries/" 2>/dev/null || echo "no binaries dir"
-          for b in "$APP/Contents/Resources/binaries/"*; do [ -f "$b" ] && lipo -archs "$b"; done 2>/dev/null || true
+          # The bundled Node sidecar must be present and be arm64, or the shell starts to an error.
+          # Tauri places externalBin entries in Contents/MacOS next to the shell; check both possible
+          # locations rather than assuming one.
+          ls -la "$APP/Contents/MacOS/" | head -20
+          ls -la "$APP/Contents/Resources/binaries/" 2>/dev/null || echo "no Resources/binaries dir"
           du -sh "$APP"
 
       - name: Package the portable layout
