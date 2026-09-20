@@ -117,6 +117,7 @@ router.get('/api/v1/settings/telegram', (_req: Request, res: Response) => {
         has_token: Boolean(s.token && s.token.trim().length > 0),
         chatIds: s.chatIds,
         enabled: s.enabled,
+        events: s.events,
       },
     });
   } catch (err) {
@@ -138,8 +139,18 @@ router.put('/api/v1/settings/telegram', (req: Request, res: Response) => {
       : current.chatIds;
     const enabled = typeof body.enabled === 'boolean' ? body.enabled : current.enabled;
 
-    saveTelegramSettings({ token, chatIds, enabled });
+    // Merge partial events into existing settings so unspecified keys are preserved
+    const incomingEvents = body.events && typeof body.events === 'object' ? body.events : {};
+    const events: Record<string, boolean> = {
+      ...current.events,
+    };
+    for (const [k, v] of Object.entries(incomingEvents)) {
+      if (typeof v === 'boolean') {
+        events[k] = v;
+      }
+    }
 
+    saveTelegramSettings({ token, chatIds, enabled, events });
     res.json({
       code: 0,
       msg: 'success',
@@ -147,6 +158,7 @@ router.put('/api/v1/settings/telegram', (req: Request, res: Response) => {
         has_token: Boolean(token && token.length > 0),
         chatIds,
         enabled,
+        events,
       },
     });
   } catch (err) {

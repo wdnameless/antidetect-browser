@@ -20,7 +20,9 @@ import {
   notifyProfileStarted,
   notifyProfileStopped,
   notifyTaskGroupFinished,
+  notifyAgentActivity,
 } from './telegram/bot';
+import { onAgentActivity } from './agentActivity';
 import { logger, initLogger, flushLogs } from './util/logger';
 import { McpService } from './mcpService';
 
@@ -345,6 +347,12 @@ const PROFILE_LIST_CAP = 20;
 export function wireTelegramBot(): void {
   const bot = getTelegramBotInstance();
 
+  // Fix defect 1: start polling from the boot path whenever the bot is enabled.
+  // startPolling() is idempotent (returns early if already polling).
+  if (bot.isEnabled()) {
+    bot.startPolling();
+  }
+
   bot.setCommandHandlers({
     start: async (id) => {
       if (!id) return 'Usage: /start <profile id>';
@@ -406,8 +414,14 @@ export function wireTelegramBot(): void {
     const group = typeof groupId === 'string' || typeof groupId === 'number' ? getTaskGroup(String(groupId)) : undefined;
     notifyTaskGroupFinished(groupId, String(finalStatus), group?.name);
   });
+
+  // Agent activity forwarding: only forward events originated by 'agent'
+  onAgentActivity((event) => {
+    if (event.source === 'agent') {
+      notifyAgentActivity(event.summary);
+    }
+  });
 }
-/** Start the MCP server during service start. Returns the reason on failure; never throws. */
 export async function startMcpWithService(): Promise<{ started: boolean; error?: string }> {
   try {
     const service = McpService.getInstance();

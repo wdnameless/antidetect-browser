@@ -1,9 +1,37 @@
 import { getSetting, setSetting } from '../config';
 
+/** Canonical telegram notification event keys */
+export const TELEGRAM_EVENT_KEYS: string[] = [
+  'profile.started',
+  'profile.stopped',
+  'profile.created',
+  'profile.deleted',
+  'taskgroup.finished',
+  'agent.activity',
+];
+
+/**
+ * Default telegram notification event toggles.
+ * Every event defaults to true EXCEPT agent.activity, which defaults to false:
+ * an AI agent can act many times per minute (navigating, typing, clicking, inspecting DOM),
+ * and emitting a Telegram push message on every single tool call floods the operator.
+ * The operator explicitly requested quiet in-app toasts for high-frequency activity and
+ * asked for Telegram notifications to be individually configurable.
+ */
+export const DEFAULT_TELEGRAM_EVENTS: Record<string, boolean> = {
+  'profile.started': true,
+  'profile.stopped': true,
+  'profile.created': true,
+  'profile.deleted': true,
+  'taskgroup.finished': true,
+  'agent.activity': false,
+};
+
 export interface TelegramSettings {
   token: string;
   chatIds: string[];
   enabled: boolean;
+  events: Record<string, boolean>;
 }
 
 export type FetchFn = typeof globalThis.fetch;
@@ -23,8 +51,17 @@ export interface TelegramCommandHandlers {
 
 export class TelegramBot {
   private token: string;
+  /**
+   * Whitelisted chats.
+   *
+   * Dropped by an edit that added `events` beside it while keeping every use of this field, which
+   * left four `this.chatIds` references pointing at nothing and the whole module failing to compile.
+   * It is the destination of every notification and the access-control list for inbound commands,
+   * so it is load-bearing in both directions.
+   */
   private chatIds: Set<string>;
   private enabled: boolean;
+  private events: Record<string, boolean>;
   private offset = 0;
   private isPolling = false;
   private stopRequested = false;
@@ -37,12 +74,21 @@ export class TelegramBot {
     this.token = settings.token;
     this.chatIds = new Set(settings.chatIds.map(String));
     this.enabled = settings.enabled;
+    this.events = { ...DEFAULT_TELEGRAM_EVENTS, ...(settings.events || {}) };
   }
 
   public updateSettings(settings: TelegramSettings): void {
     this.token = settings.token;
     this.chatIds = new Set(settings.chatIds.map(String));
     this.enabled = settings.enabled;
+    this.events = { ...DEFAULT_TELEGRAM_EVENTS, ...(settings.events || {}) };
+  }
+
+  public isEventEnabled(eventKey: string): boolean {
+    if (typeof this.events[eventKey] === 'boolean') {
+      return this.events[eventKey];
+    }
+    return DEFAULT_TELEGRAM_EVENTS[eventKey] ?? true;
   }
 
   public isEnabled(): boolean {
@@ -227,6 +273,23 @@ export class TelegramBot {
   }
 }
 
+/**
+ * Stored events with every key present.
+ *
+ * Back-fills an install that predates per-event settings, and ignores anything stored that is not a
+ * boolean so a corrupted value cannot silently disable a notification. One implementation shared by
+ * the reader and the writer: two copies of this rule would drift, and the writer is the one that
+ * decides whether an omitted key survives a save.
+ */
+function normalizeEvents(raw: unknown): Record<string, boolean> {
+  const stored = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
+  const events: Record<string, boolean> = { ...DEFAULT_TELEGRAM_EVENTS };
+  for (const key of TELEGRAM_EVENT_KEYS) {
+    if (typeof stored[key] === 'boolean') events[key] = stored[key] as boolean;
+  }
+  return events;
+}
+
 export function getTelegramSettings(): TelegramSettings {
   const token = (getSetting('telegram_bot_token') as string) || '';
   const rawChatIds = (getSetting('telegram_chat_ids') as string[]) || [];
@@ -236,18 +299,36 @@ export function getTelegramSettings(): TelegramSettings {
     token,
     chatIds: Array.isArray(rawChatIds) ? rawChatIds : [],
     enabled: Boolean(enabled),
+    events: normalizeEvents(getSetting('telegram_events')),
   };
 }
 
+/**
+ * Persist settings.
+ *
+ * `events` is MERGED over what is already stored, never written through.
+ *
+ * A caller that omits it means "leave the per-event routing alone", not "reset it": the settings
+ * form sends the whole map, but an internal caller (a test, a script, a future partial save) has no
+ * reason to know the key exists, and writing `undefined` there silently discarded the operator's
+ * choices and flipped `agent.activity` back to its off default. Measured by a test that turned the
+ * key on, saved without it, and read it back as off.
+ */
 export function saveTelegramSettings(settings: TelegramSettings): void {
-  setSetting('telegram_bot_token', settings.token);
-  setSetting('telegram_chat_ids', settings.chatIds);
-  setSetting('telegram_bot_enabled', settings.enabled);
+  const merged: TelegramSettings = {
+    ...settings,
+    events: { ...DEFAULT_TELEGRAM_EVENTS, ...normalizeEvents(getSetting('telegram_events')), ...settings.events },
+  };
+
+  setSetting('telegram_bot_token', merged.token);
+  setSetting('telegram_chat_ids', merged.chatIds);
+  setSetting('telegram_bot_enabled', merged.enabled);
+  setSetting('telegram_events', merged.events);
 
   // Update singleton instance if present
   if (globalTelegramBot) {
-    globalTelegramBot.updateSettings(settings);
-    if (!settings.enabled) {
+    globalTelegramBot.updateSettings(merged);
+    if (!merged.enabled) {
       globalTelegramBot.stopPolling();
     } else {
       globalTelegramBot.startPolling();
@@ -280,10 +361,11 @@ export function notifyProfileStopped(profileId: string, profileName?: string): v
   notifyProfileEvent('stopped', profileId, profileName);
 }
 
-export function notifyProfileEvent(action: 'started' | 'stopped', profileId: string, profileName?: string): void {
-  // (body below)
+export function notifyProfileEvent(action: 'started' | 'stopped' | 'created' | 'deleted', profileId: string, profileName?: string): void {
   const bot = getTelegramBotInstance();
   if (!bot.isEnabled()) return;
+  const eventKey = `profile.${action}`;
+  if (!bot.isEventEnabled(eventKey)) return;
   const nameDisplay = profileName ? ` (${profileName})` : '';
   bot.notify(`Profile ${action}: ${profileId}${nameDisplay}`);
 }
@@ -291,6 +373,14 @@ export function notifyProfileEvent(action: 'started' | 'stopped', profileId: str
 export function notifyTaskGroupFinished(groupId: string | number, status: string, groupName?: string): void {
   const bot = getTelegramBotInstance();
   if (!bot.isEnabled()) return;
+  if (!bot.isEventEnabled('taskgroup.finished')) return;
   const nameDisplay = groupName ? ` (${groupName})` : '';
   bot.notify(`Task group finished: ${groupId}${nameDisplay} with status: ${status}`);
+}
+
+export function notifyAgentActivity(summary: string): void {
+  const bot = getTelegramBotInstance();
+  if (!bot.isEnabled()) return;
+  if (!bot.isEventEnabled('agent.activity')) return;
+  bot.notify(`Agent activity: ${summary}`);
 }

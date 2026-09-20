@@ -863,8 +863,14 @@ export function setStatus(id: string, status: string): void {
 type StatusChangeCallback = (profileId: string, status: string) => void;
 const statusChangeCallbacks: StatusChangeCallback[] = [];
 
-export function onProfileStatusChange(cb: StatusChangeCallback): void {
+export function onProfileStatusChange(cb: StatusChangeCallback): () => void {
   statusChangeCallbacks.push(cb);
+  return () => {
+    const idx = statusChangeCallbacks.indexOf(cb);
+    if (idx !== -1) {
+      statusChangeCallbacks.splice(idx, 1);
+    }
+  };
 }
 
 function notifyStatusChange(profileId: string, status: string): void {

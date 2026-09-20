@@ -15,7 +15,6 @@ import {
 } from './sidebarLogic';
 import { Profiles } from './pages/Profiles';
 import { Groups } from './pages/Groups';
-import { Calendar } from './pages/Calendar';
 import { Proxies } from './pages/Proxies';
 import { Devices } from './pages/Devices';
 import { Extensions } from './pages/Extensions';
@@ -25,11 +24,11 @@ import { Teams } from './pages/Teams';
 import { Diagnostics } from './pages/Diagnostics';
 import { Trash } from './pages/Trash';
 import { Scripts } from './pages/Scripts';
-import { Catalog } from './pages/Catalog';
 import { FlowCanvas } from './pages/FlowCanvas';
 import { Email } from './pages/Email';
 import { WorkspaceSwitcher } from './components/WorkspaceSwitcher';
 import { AutomationPanel } from './components/AutomationPanel';
+import { ToastStack } from './components/Toasts';
 import {
   ProfilesIcon,
   FolderIcon,
@@ -44,7 +43,6 @@ import {
   TrashIcon,
   CookieIcon,
   FlowIcon,
-  CalendarIcon,
 } from './icons';
 type Page =
   | 'profiles'
@@ -58,10 +56,8 @@ type Page =
   | 'diagnostics'
   | 'trash'
   | 'scripts'
-  | 'catalog'
   | 'flows'
-  | 'settings'
-  | 'calendar';
+  | 'settings';
 
 export interface SubTab {
   key: Page;
@@ -138,11 +134,6 @@ export const NAV_DESTINATIONS: NavDestination[] = [
     label: 'Library',
     icon: CookieIcon,
     group: 'LIBRARY',
-    subTabs: [
-      { key: 'email', label: 'Email' },
-      { key: 'calendar', label: 'Calendar' },
-      { key: 'catalog', label: 'Catalog' },
-    ],
   },
   // SYSTEM
   {
@@ -646,21 +637,18 @@ export function App() {
             <Trash />
           ) : page === 'scripts' ? (
             <Scripts />
-          ) : page === 'catalog' ? (
-            <Catalog />
           ) : page === 'teams' ? (
             <Teams />
           ) : page === 'cloud' ? (
             <CloudSync />
           ) : page === 'flows' ? (
             <FlowCanvas />
-          ) : page === 'calendar' ? (
-            <Calendar />
           ) : (
             <Settings />
           )}
         </main>
       </div>
+      <ToastStack />
     </div>
   );
 }

@@ -1,5 +1,72 @@
 # Changelog
 
+## [Unreleased]
+
+### Fixed — an agent-opened profile did not appear until something else refreshed the table
+
+Operator: «Агент открывает профиль браузера, но в нашем интерфейсе NullTrace не отображается, что
+браузер открыт. Но отображается, но не всегда.»
+
+The data was never wrong: `listProfiles` reports `liveRunning ? 'running' : r.status`, and the
+launcher registers the run in memory the moment it starts. The defect was the renderer's only
+refresh path — a 5-second poll gated on `document.visibilityState === 'visible' && !busy`. With the
+window in the background, which is the normal case while an agent works, nothing refreshed at all;
+and any of the 17 `setBusy(true)` call sites failing to reach its `setBusy(false)` froze it while the
+window was right in front of the operator. "Not always" was exactly right.
+
+The backend now pushes over SSE (`GET /api/v1/events/stream`), so the table changes when something
+happens rather than up to five seconds later, and no UI flag can suppress it. Measured with the real
+page open and no reload: an agent-initiated `POST /api/v1/browser/start` flipped the row from
+**Closed** to **Running** on its own, and the stream carried
+`{"type":"profile-status","status":"running"}`. A 30-second reconciliation poll remains as a floor
+for a push missed while the machine slept — it is no longer what drives the UI.
+
+Two things this needed and that the first attempt got wrong:
+
+- **The stream must be mounted before the Bearer gate.** `EventSource` cannot set an
+  `Authorization` header, so a route below `authMiddleware` answers 401 to every client that could
+  legitimately use it. Measured: the same request returned 401 without the header and streamed
+  `hello` with one. The route validates the same key itself, from `?key=`, with a timing-safe
+  comparison.
+- **Push has two sources, not one.** The MCP server acts over the backend's HTTP API *and* over CDP
+  directly — `browser.navigate`, `click`, `type`, `screenshot`, `human_type` and `human_click`
+  connect puppeteer straight to the DevTools endpoint and never touch the backend. Observing only
+  the HTTP surface would have missed every page interaction, i.e. most of what an agent does. Both
+  report into `agentActivity.ts`.
+
+### Added — silent, switchable pop-ups when the agent acts
+
+Operator: «когда агент дергает опишку, у нас должно приходить уведомления, что он что-то дергает и
+что-то делает. Эти уведомления можно отключить в настройках… не делая их слишком вызывающими, это
+просто должно быть всплывающие окна без звука, примерно как в телеграме.»
+
+A toast stack in the corner: no sound, no OS notification, no focus stealing, ~5s auto-dismiss that
+pauses on hover, capped at four, dismissible by click. Verified live — the page rendered
+`Browser: screenshot — Took a screenshot of krazelin526` from a real agent action.
+
+It reads `nt.toasts.enabled` per event (`'0'` disables; absent means on), so the Settings switch
+takes effect immediately without a reload. Verified both ways: with the flag cleared a toast
+appeared; with it set to `'0'` the same action produced none. The Telegram settings are unaffected
+by this switch, which the panel says in one line.
+
+### Fixed — Telegram commands never worked after a normal launch, and every notification was all-or-nothing
+
+`wireTelegramBot()` constructed the singleton and bound its handlers but never called
+`startPolling()`. Polling only began inside `saveTelegramSettings`, so `/start`, `/stop`, `/status`
+and `/list` silently did nothing on a fresh launch until the operator re-saved the settings form.
+It now starts from the boot path.
+
+`TelegramSettings` was `{token, chatIds, enabled}` — one master switch for three hardcoded messages,
+so an operator could not keep profile events while dropping task-group chatter. There are now six
+independently switchable kinds: `profile.started`, `profile.stopped`, `profile.created`,
+`profile.deleted`, `taskgroup.finished`, `agent.activity`. All default to on except `agent.activity`,
+which is off because an agent can act many times a minute and the operator asked for those in-app
+instead. An install with no stored `events` back-fills the defaults rather than muting itself.
+
+`saveTelegramSettings` now MERGES the events map instead of writing it through: a caller omitting it
+means "leave routing alone", and writing `undefined` silently discarded the operator's choices.
+Found by a test that enabled `agent.activity`, saved without the map, and read it back as off.
+
 ## [0.6.20] - 2026-09-19
 
 ### Fixed — the moved-folder protection did not cover the shell, so a USB stick could open an empty library

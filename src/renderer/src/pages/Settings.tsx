@@ -16,6 +16,18 @@ function TelegramSettings() {
   const [chatIdsInput, setChatIdsInput] = useState('');
   const [tokenVisible, setTokenVisible] = useState(false);
   const [tokenCopied, setTokenCopied] = useState(false);
+  const [events, setEvents] = useState<Record<string, boolean>>({
+    'profile.started': true,
+    'profile.stopped': true,
+    'profile.created': true,
+    'profile.deleted': true,
+    'taskgroup.finished': true,
+    'agent.activity': false,
+  });
+  const [toastsEnabled, setToastsEnabled] = useState<boolean>(() => {
+    // absent = enabled; string '0' = disabled
+    return localStorage.getItem('nt.toasts.enabled') !== '0';
+  });
   const [busy, setBusy] = useState(false);
   const [saveMsg, setSaveMsg] = useState('');
 
@@ -29,6 +41,12 @@ function TelegramSettings() {
           setHasToken(Boolean(res.data.has_token));
           if (Array.isArray(res.data.chatIds)) {
             setChatIdsInput(res.data.chatIds.join(', '));
+          }
+          if (res.data.events && typeof res.data.events === 'object') {
+            setEvents((prev) => ({
+              ...prev,
+              ...res.data.events,
+            }));
           }
         }
       })
@@ -45,14 +63,19 @@ function TelegramSettings() {
         .map((s) => s.trim())
         .filter(Boolean);
 
-      const body: { enabled: boolean; chatIds: string[]; token?: string } = {
+      const body: {
+        enabled: boolean;
+        chatIds: string[];
+        events: Record<string, boolean>;
+        token?: string;
+      } = {
         enabled,
         chatIds,
+        events,
       };
       if (tokenInput.trim().length > 0) {
         body.token = tokenInput.trim();
       }
-
       const res = await fetch('/api/v1/settings/telegram', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -62,10 +85,10 @@ function TelegramSettings() {
       if (res.code === 0 && res.data) {
         setHasToken(Boolean(res.data.has_token));
         setTokenInput('');
-        setSaveMsg('Settings saved successfully');
+        setSaveMsg(t('Settings saved successfully'));
         setTimeout(() => setSaveMsg(''), 3000);
       } else {
-        setSaveMsg(res.msg || 'Save failed');
+        setSaveMsg(res.msg || t('Save failed'));
       }
     } catch (e) {
       setSaveMsg((e as Error).message);
@@ -82,76 +105,146 @@ function TelegramSettings() {
     });
   };
 
+  const CANONICAL_EVENTS: Array<{ key: string; label: string; hint?: string }> = [
+    { key: 'profile.started', label: t('Profile started') },
+    { key: 'profile.stopped', label: t('Profile stopped') },
+    { key: 'profile.created', label: t('Profile created') },
+    { key: 'profile.deleted', label: t('Profile deleted') },
+    { key: 'taskgroup.finished', label: t('Task group finished') },
+    {
+      key: 'agent.activity',
+      label: t('Agent activity'),
+      hint: t('High frequency (many alerts per minute while an agent is active)'),
+    },
+  ];
+
+  const toggleToastSetting = (nextVal: boolean) => {
+    setToastsEnabled(nextVal);
+    // Contract: absent = enabled, '0' = disabled, '1' = enabled
+    localStorage.setItem('nt.toasts.enabled', nextVal ? '1' : '0');
+  };
+
   return (
-    <div className="panel">
-      <div className="panel-header">{t('Telegram Bot Settings')}</div>
-      <p className="hint">
-        {t('Configure Telegram bot for profile events and automation notifications.')}
-      </p>
+    <>
+      <div className="panel">
+        <div className="panel-header">{t('Telegram Bot Settings')}</div>
+        <p className="hint">
+          {t('Configure Telegram bot for profile events and automation notifications.')}
+        </p>
 
-      <div className="setting-row">
-        <span className="setting-label">{t('Enable Telegram Bot')}</span>
-        <input
-          type="checkbox"
-          checked={enabled}
-          onChange={(e) => setEnabled(e.target.checked)}
-          disabled={busy}
-        />
-      </div>
-
-      <div className="setting-row">
-        <span className="setting-label">{t('Bot Token')}</span>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flex: 1, maxWidth: 400 }}>
+        <div className="setting-row">
+          <span className="setting-label">{t('Enable Telegram Bot')}</span>
           <input
-            type={tokenVisible ? 'text' : 'password'}
-            value={tokenInput}
-            onChange={(e) => setTokenInput(e.target.value)}
-            placeholder={hasToken ? t('Token is set and securely stored.') : t('Enter bot token')}
+            type="checkbox"
+            checked={enabled}
+            onChange={(e) => setEnabled(e.target.checked)}
             disabled={busy}
-            style={{ flex: 1 }}
           />
-          <button
-            type="button"
-            className="btn-icon"
-            onClick={() => setTokenVisible((v) => !v)}
-            title={tokenVisible ? t('Hide') : t('Show')}
-          >
-            {tokenVisible ? '🙈' : '👁'}
+        </div>
+
+        <div className="setting-row">
+          <span className="setting-label">{t('Bot Token')}</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flex: 1, maxWidth: 400 }}>
+            <input
+              type={tokenVisible ? 'text' : 'password'}
+              value={tokenInput}
+              onChange={(e) => setTokenInput(e.target.value)}
+              placeholder={hasToken ? t('Token is set and securely stored.') : t('Enter bot token')}
+              disabled={busy}
+              style={{ flex: 1 }}
+            />
+            <button
+              type="button"
+              className="btn-icon"
+              onClick={() => setTokenVisible((v) => !v)}
+              title={tokenVisible ? t('Hide') : t('Show')}
+            >
+              {tokenVisible ? '🙈' : '👁'}
+            </button>
+            <button
+              type="button"
+              className="btn-icon"
+              onClick={copyToken}
+              disabled={!tokenInput}
+              title={t('Copy')}
+            >
+              {tokenCopied ? <CheckIcon size={13} style={{ color: 'var(--text)' }} /> : <CopyIcon size={13} />}
+            </button>
+          </div>
+        </div>
+        <p className="hint" style={{ marginTop: 2, marginBottom: 12 }}>
+          {hasToken ? t('Token is set and securely stored.') : t('Token not configured.')}
+        </p>
+
+        <div className="setting-row">
+          <span className="setting-label">{t('Chat IDs (comma-separated)')}</span>
+          <input
+            type="text"
+            value={chatIdsInput}
+            onChange={(e) => setChatIdsInput(e.target.value)}
+            placeholder={t('e.g. 12345678, -100123456789')}
+            disabled={busy}
+            style={{ maxWidth: 400, flex: 1 }}
+          />
+        </div>
+
+        {/* Per-event Telegram switches */}
+        <div style={{ marginTop: 'var(--space-4)', borderTop: '1px solid var(--border)', paddingTop: 'var(--space-4)' }}>
+          <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4, color: 'var(--text)' }}>
+            {t('Event Notifications')}
+          </div>
+          <p className="hint" style={{ marginBottom: 12 }}>
+            {t('Choose which events send alerts to Telegram:')}
+          </p>
+          {CANONICAL_EVENTS.map((ev) => (
+            <div key={ev.key} style={{ marginBottom: 10 }}>
+              <div className="setting-row" style={{ padding: '4px 0', borderBottom: 'none' }}>
+                <span className="setting-label">{ev.label}</span>
+                <input
+                  type="checkbox"
+                  checked={events[ev.key] ?? false}
+                  onChange={(e) =>
+                    setEvents((prev) => ({
+                      ...prev,
+                      [ev.key]: e.target.checked,
+                    }))
+                  }
+                  disabled={busy}
+                />
+              </div>
+              {ev.hint && (
+                <p className="hint" style={{ margin: '2px 0 0 0', color: 'var(--text-muted)' }}>
+                  {ev.hint}
+                </p>
+              )}
+            </div>
+          ))}
+        </div>
+
+        <div style={{ marginTop: 16, display: 'flex', alignItems: 'center', gap: 12 }}>
+          <button className="btn primary" onClick={onSave} disabled={busy}>
+            {busy ? t('Saving…') : t('Save Telegram Settings')}
           </button>
-          <button
-            type="button"
-            className="btn-icon"
-            onClick={copyToken}
-            disabled={!tokenInput}
-            title={t('Copy')}
-          >
-            {tokenCopied ? <CheckIcon size={13} style={{ color: 'var(--text)' }} /> : <CopyIcon size={13} />}
-          </button>
+          {saveMsg && <span className="hint" style={{ color: 'var(--text-secondary)' }}>{saveMsg}</span>}
         </div>
       </div>
-      <p className="hint" style={{ marginTop: 2, marginBottom: 12 }}>
-        {hasToken ? t('Token is set and securely stored.') : t('Token not configured.')}
-      </p>
 
-      <div className="setting-row">
-        <span className="setting-label">{t('Chat IDs (comma-separated)')}</span>
-        <input
-          type="text"
-          value={chatIdsInput}
-          onChange={(e) => setChatIdsInput(e.target.value)}
-          placeholder={t('e.g. 12345678, -100123456789')}
-          disabled={busy}
-          style={{ maxWidth: 400, flex: 1 }}
-        />
+      {/* In-App Toast Switch Panel */}
+      <div className="panel" style={{ marginTop: 'var(--space-4)' }}>
+        <div className="panel-header">{t('In-App Notifications')}</div>
+        <div className="setting-row">
+          <span className="setting-label">{t('Show agent activity toasts')}</span>
+          <input
+            type="checkbox"
+            checked={toastsEnabled}
+            onChange={(e) => toggleToastSetting(e.target.checked)}
+          />
+        </div>
+        <p className="hint" style={{ marginTop: 6, marginBottom: 0 }}>
+          {t('Silent popups shown in the corner of the app. Disabling them does not affect Telegram.')}
+        </p>
       </div>
-
-      <div style={{ marginTop: 16, display: 'flex', alignItems: 'center', gap: 12 }}>
-        <button className="btn primary" onClick={onSave} disabled={busy}>
-          {busy ? t('Saving…') : t('Save Telegram Settings')}
-        </button>
-        {saveMsg && <span className="hint" style={{ color: 'var(--text-secondary)' }}>{saveMsg}</span>}
-      </div>
-    </div>
+    </>
   );
 }
 
@@ -625,7 +718,7 @@ export function Settings() {
     { key: 'api', label: t('Automation API') },
     { key: 'data', label: t('Data Folder') },
     { key: 'security', label: t('Security') },
-    { key: 'telegram', label: t('Telegram Notifications') },
+    { key: 'telegram', label: t('Notifications') },
     { key: 'sync', label: t('Sync') },
     { key: 'license', label: t('License') },
     { key: 'updates', label: t('Updates') },

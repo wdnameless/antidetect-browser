@@ -1,4 +1,4 @@
-﻿import { useCallback, useEffect, useState } from 'react';
+﻿import { useCallback, useEffect, useMemo, useState } from 'react';
 import { EmptyState } from '../components/EmptyState';
 import {
   api,
@@ -15,6 +15,9 @@ import {
 } from '../api';
 import { useI18n } from '../i18n';
 import { computeRunningCount } from '../sidebarLogic';
+import { Dropdown } from '../components/Dropdown';
+import { useColumnResize } from '../useColumnResize';
+import { subscribeToEvents } from '../eventsStream';
 import { SyncPanel } from '../components/SyncPanel';
 import { PreflightModal, PreflightBadge } from '../components/PreflightModal';
 import type { PreflightVerdict, PreflightStatus } from '../preflight';
@@ -421,14 +424,43 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
     void loadTags();
   }, [loadProfiles, loadGroups, loadProxies, loadDevices, loadMobilePresets, loadExtensions, loadTags]);
 
-  // Auto-refresh statuses: if the user closes the browser window manually, the
-  // backend watchdog marks the profile "closed" — reflect it without a manual reload.
+  /**
+   * Status refresh.
+   *
+   * The old mechanism was a 5-second poll gated on `document.visibilityState === 'visible' && !busy`,
+   * and that gate is why an agent-opened profile often did not appear: with the window in the
+   * background — the normal case when an agent does the work — nothing refreshed at all, and any
+   * one of the 17 `setBusy(true)` call sites failing to reach its `setBusy(false)` froze it while
+   * the window was right in front of the operator. The report was «отображается, но не всегда».
+   *
+   * The backend now pushes profile status changes over SSE, so the table updates when something
+   * actually happens instead of up to five seconds later, and no UI flag can suppress it. See
+   * `eventsStream.ts` for the connection itself.
+   */
+  useEffect(() => {
+    return subscribeToEvents((event) => {
+      if (event.type !== 'profile-status') return;
+      void loadProfiles();
+    });
+  }, [loadProfiles]);
+
+  /**
+   * A slow reconciliation poll, kept as a floor rather than the mechanism.
+   *
+   * Push can be missed in ways a poll cannot: a stream that dropped while the machine slept, or a
+   * status written by a path that never emitted an event. Thirty seconds is long enough that this
+   * is not what drives the UI, and short enough that a missed push corrects itself without the
+   * operator noticing.
+   *
+   * The `busy` gate is deliberately gone. It was there to avoid clobbering a list mid-mutation, but
+   * a read-only refresh cannot corrupt state, and suppressing it entirely was the bug.
+   */
   useEffect(() => {
     const timer = setInterval(() => {
-      if (document.visibilityState === 'visible' && !busy) void loadProfiles();
-    }, 5000);
+      void loadProfiles();
+    }, 30_000);
     return () => clearInterval(timer);
-  }, [loadProfiles, busy]);
+  }, [loadProfiles]);
 
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text);
@@ -1132,6 +1164,30 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
   // Filtering (search/platform/status) and pagination are server-side now.
   const filteredProfiles = profiles;
 
+  /**
+   * Column widths, dragged by the operator.
+   *
+   * Every column except the last is resizable; Actions takes whatever remains, which is what
+   * keeps the table inside its container at any window size. The shares are fractions rather
+   * than pixels for that same reason — a pixel width saved on a wide window would not fit a
+   * narrow one, and the horizontal scrollbar would come back.
+   *
+   * These shares deliberately sum to ~0.755, NOT to 1: the remainder is the Actions column's
+   * room, and it has to hold four icon buttons plus the kebab. A set summing to 0.85 leaves that
+   * column 148px at a 992px content width — less than the buttons need — and since cells clip
+   * (no scrolling), the buttons would be cut off rather than pushed into a scrollbar.
+   */
+  const columns = useMemo(
+    () => [
+      { key: 'check', defaultFraction: 0.045, minWidth: 44 },
+      { key: 'name', defaultFraction: 0.35, minWidth: 160 },
+      { key: 'proxy', defaultFraction: 0.24, minWidth: 130 },
+      { key: 'status', defaultFraction: 0.12, minWidth: 96 },
+    ],
+    [],
+  );
+  const { containerRef: tableRef, colWidths, beginResize, resetColumn, dragging } = useColumnResize('profiles', columns);
+
   const toggleSelectAll = () => {
     if (selectedIds.size === filteredProfiles.length && filteredProfiles.length > 0) {
       setSelectedIds(new Set());
@@ -1408,93 +1464,58 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
               style={{ fontSize: 'var(--text-xs)', background: 'transparent', border: 'none', outline: 'none' }}
             />
           </div>
-          <select
-            className="select-input"
+          <Dropdown
+            size="sm"
+            ariaLabel={t('All Groups')}
             value={selectedGroupFilter}
-            onChange={(e) => setSelectedGroupFilter(e.target.value)}
-            style={{
-              background: 'transparent',
-              border: 'none',
-              borderRight: '1px solid var(--border)',
-              borderRadius: 0,
-              height: 'var(--control-h-sm)',
-              fontSize: 'var(--text-xs)',
-              padding: '0 10px',
-              color: selectedGroupFilter ? 'var(--text)' : 'var(--text-secondary)',
-            }}
-          >
-            <option value="">{t('All Groups')} ({groups.reduce((acc, g) => acc + g.profile_count, 0)})</option>
-            {groups.map((g) => (
-              <option key={g.id} value={g.id}>
-                {g.name} ({g.profile_count})
-              </option>
-            ))}
-          </select>
+            onChange={setSelectedGroupFilter}
+            placeholder={`${t('All Groups')} (${groups.reduce((acc, g) => acc + g.profile_count, 0)})`}
+            options={[
+              { value: '', label: `${t('All Groups')} (${groups.reduce((acc, g) => acc + g.profile_count, 0)})` },
+              ...groups.map((g) => ({ value: g.id, label: `${g.name} (${g.profile_count})` })),
+            ]}
+          />
 
-          <select
-            className="select-input"
+          <Dropdown
+            size="sm"
+            ariaLabel={t('All Platforms')}
             value={selectedPlatformFilter}
-            onChange={(e) => setSelectedPlatformFilter(e.target.value)}
-            style={{
-              background: 'transparent',
-              border: 'none',
-              borderRight: '1px solid var(--border)',
-              borderRadius: 0,
-              height: 'var(--control-h-sm)',
-              fontSize: 'var(--text-xs)',
-              padding: '0 10px',
-              color: selectedPlatformFilter ? 'var(--text)' : 'var(--text-secondary)',
-            }}
-          >
-            <option value="">{t('All Platforms')}</option>
-            <option value="windows">{t('Windows')}</option>
-            <option value="macos">{t('macOS')}</option>
-            <option value="android">{t('Android')}</option>
-            <option value="ios">{t('iOS')}</option>
-            <option value="linux">{t('Linux')}</option>
-          </select>
+            onChange={setSelectedPlatformFilter}
+            placeholder={t('All Platforms')}
+            options={[
+              { value: '', label: t('All Platforms') },
+              { value: 'windows', label: t('Windows') },
+              { value: 'macos', label: t('macOS') },
+              { value: 'android', label: t('Android') },
+              { value: 'ios', label: t('iOS') },
+              { value: 'linux', label: t('Linux') },
+            ]}
+          />
 
-          <select
-            className="select-input"
+          <Dropdown
+            size="sm"
+            ariaLabel={t('All Statuses')}
             value={selectedStatusFilter}
-            onChange={(e) => setSelectedStatusFilter(e.target.value)}
-            style={{
-              background: 'transparent',
-              border: 'none',
-              borderRight: '1px solid var(--border)',
-              borderRadius: 0,
-              height: 'var(--control-h-sm)',
-              fontSize: 'var(--text-xs)',
-              padding: '0 10px',
-              color: selectedStatusFilter ? 'var(--text)' : 'var(--text-secondary)',
-            }}
-          >
-            <option value="">{t('All Statuses')}</option>
-            <option value="running">{t('Running')}</option>
-            <option value="closed">{t('Closed')}</option>
-          </select>
+            onChange={setSelectedStatusFilter}
+            placeholder={t('All Statuses')}
+            options={[
+              { value: '', label: t('All Statuses') },
+              { value: 'running', label: t('Running') },
+              { value: 'closed', label: t('Closed') },
+            ]}
+          />
 
-          <select
-            className="select-input"
+          <Dropdown
+            size="sm"
+            ariaLabel={t('All Tags')}
             value={selectedTagFilter}
-            onChange={(e) => setSelectedTagFilter(e.target.value)}
-            style={{
-              background: 'transparent',
-              border: 'none',
-              borderRadius: 0,
-              height: 'var(--control-h-sm)',
-              fontSize: 'var(--text-xs)',
-              padding: '0 10px',
-              color: selectedTagFilter ? 'var(--text)' : 'var(--text-secondary)',
-            }}
-          >
-            <option value="">{t('All Tags')}</option>
-            {tags.map((tg) => (
-              <option key={tg.id} value={tg.id}>
-                {tg.name} ({tg.profile_count})
-              </option>
-            ))}
-          </select>
+            onChange={setSelectedTagFilter}
+            placeholder={t('All Tags')}
+            options={[
+              { value: '', label: t('All Tags') },
+              ...tags.map((tg) => ({ value: tg.id, label: `${tg.name} (${tg.profile_count})` })),
+            ]}
+          />
         </div>
       </div>
 
@@ -1511,11 +1532,23 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
       ) : null}
 
       {/* Profiles Table */}
-      <div className="table-container">
-        <table className="table table--wide">
+      <div className="table-container" ref={tableRef}>
+        <table className="table">
+          {/*
+            Widths live here, not on the `<th>` elements: with `table-layout: fixed` a `<col>`
+            is authoritative, while a width on the header cell is only a hint that a long name
+            can override. The Actions column carries no `<col>` — it takes the remainder, so the
+            table is always exactly the container's width and never needs to scroll.
+          */}
+          <colgroup>
+            {colWidths.map((col) => (
+              <col key={col.key} style={{ width: `${col.percent}%` }} />
+            ))}
+            <col />
+          </colgroup>
           <thead>
             <tr>
-              <th style={{ width: 40, textAlign: 'center' }}>
+              <th style={{ textAlign: 'center' }}>
                 <span className="row-dense__check">
                   <input
                     type="checkbox"
@@ -1525,10 +1558,43 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
                   />
                 </span>
               </th>
-              <th style={{ width: '40%' }}>{t('Profile Name')}</th>
-              <th style={{ width: '28%' }}>{t('Proxy')}</th>
-              <th style={{ width: '14%' }}>{t('Status')}</th>
-              <th className="col-actions" style={{ width: '18%', textAlign: 'right' }}>{t('Actions')}</th>
+              <th>
+                {t('Profile Name')}
+                <button
+                  type="button"
+                  className={`col-resize-handle ${dragging === 'name' ? 'is-dragging' : ''}`}
+                  onPointerDown={(e) => beginResize('name', e)}
+                  onDoubleClick={() => resetColumn('name')}
+                  title={t('Drag to resize. Double-click to reset.')}
+                  aria-label={t('Resize column')}
+                  tabIndex={-1}
+                />
+              </th>
+              <th>
+                {t('Proxy')}
+                <button
+                  type="button"
+                  className={`col-resize-handle ${dragging === 'proxy' ? 'is-dragging' : ''}`}
+                  onPointerDown={(e) => beginResize('proxy', e)}
+                  onDoubleClick={() => resetColumn('proxy')}
+                  title={t('Drag to resize. Double-click to reset.')}
+                  aria-label={t('Resize column')}
+                  tabIndex={-1}
+                />
+              </th>
+              <th>
+                {t('Status')}
+                <button
+                  type="button"
+                  className={`col-resize-handle ${dragging === 'status' ? 'is-dragging' : ''}`}
+                  onPointerDown={(e) => beginResize('status', e)}
+                  onDoubleClick={() => resetColumn('status')}
+                  title={t('Drag to resize. Double-click to reset.')}
+                  aria-label={t('Resize column')}
+                  tabIndex={-1}
+                />
+              </th>
+              <th style={{ textAlign: 'right' }}>{t('Actions')}</th>
             </tr>
           </thead>
           <tbody>
@@ -1620,7 +1686,7 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
                       </span>
                     </span>
                   </td>
-                  <td className="col-actions">
+                  <td>
                     <div className="row-dense__actions" style={{ justifyContent: 'flex-end', position: 'relative' }}>
                       {p.status === 'running' ? (
                         <button
