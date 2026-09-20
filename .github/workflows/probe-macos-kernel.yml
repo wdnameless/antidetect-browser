@@ -138,9 +138,14 @@ jobs:
   build-app:
     name: Build the macOS app bundle (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
-    # A green build of this job takes ~6 minutes. Without a bound, a runner that stalls leaves the
-    # job in_progress indefinitely, which is indistinguishable from real work and blocks the queue —
-    # observed on run 35501321560, still running after 15 minutes with every step unstarted.
+    # A bound, because this job compiles Tauri from scratch and had no ceiling. It normally takes
+    # 5-6 minutes (measured: 4.8 min on run 35501321560, 6.0 min on 35501119015), so 20 leaves room
+    # for a slow runner while still failing a genuinely stuck one rather than holding the queue.
+    #
+    # An earlier version of this comment claimed the job had STALLED with every step unstarted. That
+    # was my misreading of an in-progress job: the step list showed no conclusion because the job was
+    # still running, not because it was wedged, and it went on to succeed. Recorded so the bound is
+    # justified by the real numbers rather than by a diagnosis that was wrong.
     timeout-minutes: 20
     strategy:
       fail-fast: false
