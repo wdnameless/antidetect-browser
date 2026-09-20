@@ -195,10 +195,22 @@ export class McpServer {
     // POST /mcp endpoint
     app.post('/mcp', async (req: Request, res: Response) => {
       const authHeader = req.headers.authorization || '';
-      let scope = this.defaultScope;
-      let caller = 'http-agent';
 
-      if (authHeader.startsWith('Bearer ')) {
+      // A request with no bearer token is REJECTED, not given a default scope.
+      //
+      // It used to fall through with `this.defaultScope`, and because the server runs with the
+      // app's own API credentials in its environment, an unauthenticated local caller could
+      // EXECUTE tools — not merely list them. Verified by creating a profile over the loopback
+      // socket with no Authorization header at all: the row appeared in the database. Any local
+      // process could therefore drive the operator's browser profiles.
+      if (!authHeader.startsWith('Bearer ')) {
+        res.status(401).json(createErrorResponse(null, RPC_ERRORS.AUTH_EXPIRED, 'Authentication required'));
+        return;
+      }
+
+      let scope: string;
+      let caller = 'http-agent';
+      {
         const token = authHeader.slice(7).trim();
         const verification = this.tokenManager.verifyToken(token);
         if (!verification.valid || !verification.payload) {

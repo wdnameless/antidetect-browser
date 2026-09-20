@@ -159,6 +159,76 @@ export interface DecapsulatedPacket {
   data: Buffer;
 }
 
+/**
+ * Expand an IPv6 address to its 16 raw bytes.
+ *
+ * The previous implementation stripped colons and hex-decoded the remainder
+ * (`targetHost.replace(/:/g, '')`). That only produces 16 bytes for a FULLY expanded address:
+ * `::1` gave 0 bytes, `fe80::1` gave 2 and `2001:db8::1` gave 4. The caller then fell back to
+ * sixteen zero bytes, so the datagram was addressed to `::` — a valid-looking packet sent to
+ * the wrong place, with no error raised anywhere.
+ *
+ * Handles the compressed form (`::`) and the mixed IPv4-tail form (`::ffff:192.0.2.1`).
+ * Returns null when the input cannot be a valid IPv6 address, so the caller can refuse rather
+ * than invent an address.
+ */
+function ipv6ToBytes(host: string): Buffer | null {
+  const scopeIndex = host.indexOf('%');
+  const addr = scopeIndex >= 0 ? host.slice(0, scopeIndex) : host;
+
+  // A trailing dotted-quad counts as two groups.
+  const lastColon = addr.lastIndexOf(':');
+  const tail = addr.slice(lastColon + 1);
+  const hasV4Tail = net.isIPv4(tail);
+
+  const head = hasV4Tail ? addr.slice(0, lastColon) : addr;
+  const groups = head.length === 0 ? [] : head.split(':');
+
+  // A single `::` splits the address into two halves.
+  const doubleColon = head.indexOf('::');
+  if (doubleColon >= 0) {
+    if (head.indexOf('::', doubleColon + 1) >= 0) return null; // more than one `::`
+  }
+
+  const parseGroups = (parts: string[]): number[] | null => {
+    const out: number[] = [];
+    for (const g of parts) {
+      if (g.length === 0 || g.length > 4 || !/^[0-9a-fA-F]+$/.test(g)) return null;
+      out.push(parseInt(g, 16));
+    }
+    return out;
+  };
+
+  let words: number[];
+  if (doubleColon >= 0) {
+    const left = parseGroups(doubleColon === 0 ? [] : head.slice(0, doubleColon).split(':'));
+    const right = parseGroups(
+      doubleColon + 2 >= head.length ? [] : head.slice(doubleColon + 2).split(':'),
+    );
+    if (!left || !right) return null;
+    const tailWords = hasV4Tail ? 2 : 0;
+    const fill = 8 - left.length - right.length - tailWords;
+    if (fill < 1) return null; // `::` must stand for at least one group
+    words = [...left, ...new Array<number>(fill).fill(0), ...right];
+  } else {
+    const parsed = parseGroups(groups);
+    if (!parsed) return null;
+    words = parsed;
+  }
+
+  if (hasV4Tail) {
+    const octets = tail.split('.').map((p) => parseInt(p, 10));
+    if (octets.length !== 4 || octets.some((o) => Number.isNaN(o) || o < 0 || o > 255)) return null;
+    words.push((octets[0] << 8) | octets[1], (octets[2] << 8) | octets[3]);
+  }
+
+  if (words.length !== 8) return null;
+
+  const buf = Buffer.alloc(16);
+  words.forEach((w, i) => buf.writeUInt16BE(w, i * 2));
+  return buf;
+}
+
 export function encapsulateUdpDatagram(targetHost: string, targetPort: number, data: Buffer): Buffer {
   const isIpv4 = net.isIPv4(targetHost);
   const isIpv6 = net.isIPv6(targetHost);
@@ -175,20 +245,18 @@ export function encapsulateUdpDatagram(targetHost: string, targetPort: number, d
     Buffer.from(parts).copy(header, 4);
     header.writeUInt16BE(targetPort, 8);
   } else if (isIpv6) {
+    const addr = ipv6ToBytes(targetHost);
+    // Refuse rather than substitute `::`. Addressing a datagram to the unspecified address
+    // sends it nowhere while looking successful, which is worse than a clear failure.
+    if (!addr) {
+      throw new Error(`invalid IPv6 address: ${targetHost}`);
+    }
     header = Buffer.alloc(22);
     header[0] = 0x00;
     header[1] = 0x00;
     header[2] = 0x00;
     header[3] = 0x04; // ATYP IPv6
-    // IPv6 hex buffer
-    const buf = Buffer.from(targetHost.replace(/:/g, ''), 'hex');
-    // Normalize or fallback
-    if (buf.length === 16) {
-      buf.copy(header, 4);
-    } else {
-      // Basic 16-byte fallback for tests
-      Buffer.alloc(16).copy(header, 4);
-    }
+    addr.copy(header, 4);
     header.writeUInt16BE(targetPort, 20);
   } else {
     // Domain name

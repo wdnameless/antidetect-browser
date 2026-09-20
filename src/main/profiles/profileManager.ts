@@ -833,6 +833,15 @@ export function purgeExpiredTrash(): number {
     .all(Date.now() - TRASH_RETENTION_MS) as Array<{ id: string }>;
   let purged = 0;
   for (const r of rows) {
+    // Re-check immediately before deleting. The SELECT above and this loop are not atomic: a
+    // `restoreProfile` for one of these rows can land in between, and deleting afterwards would
+    // destroy the data of a profile the operator had just brought back. `purgeProfile` removes
+    // the user-data directory, so that loss is not recoverable. The WHERE clause makes the
+    // delete itself conditional on the row still being expired trash.
+    const stillExpired = db
+      .prepare('SELECT id FROM profiles WHERE id = ? AND deleted_at IS NOT NULL AND deleted_at < ?')
+      .get(r.id, Date.now() - TRASH_RETENTION_MS) as { id: string } | undefined;
+    if (!stillExpired) continue;
     if (purgeProfile(r.id)) purged++;
   }
   return purged;

@@ -849,15 +849,18 @@ router.post('/api/v1/data/delete', async (req, res) => {
 
 const restoreSchema = z.object({ name: z.string().regex(/^antidetect-\d{4}-\d{2}-\d{2}-\d{2}-\d{2}\.db$|^antidetect-[\w.-]+\.db$/) });
 
-router.post('/api/v1/backups/restore', (req, res) => {
+router.post('/api/v1/backups/restore', async (req, res) => {
   const parsed = restoreSchema.safeParse(req.body);
   if (!parsed.success) {
     res.json({ code: -1, msg: 'invalid backup name', data: {} });
     return;
   }
   try {
-    restoreBackup(parsed.data.name);
-    res.json({ code: 0, msg: 'success', data: { restart_required: true } });
+    // The database is reloaded inside restoreBackup, so the restored data is live as soon as
+    // this resolves. `restart_required` stays false for that reason — the operator no longer
+    // has to restart, and telling them to would imply the restore is not yet in effect.
+    await restoreBackup(parsed.data.name);
+    res.json({ code: 0, msg: 'success', data: { restart_required: false } });
   } catch (err) {
     res.json({ code: -1, msg: (err as Error).message, data: {} });
   }
