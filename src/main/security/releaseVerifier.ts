@@ -88,9 +88,16 @@ function copyDirRecursiveWithLockedTracking(
       try {
         fs.copyFileSync(srcPath, destPath);
       } catch (err: unknown) {
-        // EBUSY or EPERM indicates locked file
+        // A file that cannot be written is a LOCKED file, and the error code differs by platform:
+        //   - Windows reports EBUSY (a running process holds the image);
+        //   - macOS reports EPERM when a file is immutable (`chflags uchg`);
+        //   - Linux reports EACCES for a read-only file, because the kernel denies the write by
+        //     permission rather than by lock.
+        // EACCES was missing, so on Linux a locked file was re-thrown as a hard error instead of
+        // being recorded and rolled back — the opposite of the intended behaviour, and invisible
+        // because the test that covers this used `chmod 0444` while running on Windows/macOS only.
         const e = err as { code?: string };
-        if (e.code === 'EBUSY' || e.code === 'EPERM') {
+        if (e.code === 'EBUSY' || e.code === 'EPERM' || e.code === 'EACCES') {
           lockedFiles.push(destPath);
         } else {
           throw err;

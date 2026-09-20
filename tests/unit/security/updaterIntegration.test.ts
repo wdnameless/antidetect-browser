@@ -249,9 +249,32 @@ describe('Secure Runtime Supply Chain - Updater Integration (Task 2.3)', () => {
     });
 
     // Create locked.txt in targetDir
+    //
+    // MAKING A FILE UNWRITABLE IS PLATFORM-SPECIFIC, and `chmod 0444` alone is not enough. The
+    // production code treats the copy as failed on EBUSY/EPERM (`releaseVerifier.ts:93`), and:
+    //   - on Linux, mode 0444 denies the write and the kernel reports EACCES… which the code does
+    //     NOT list, so this test's premise never held there either;
+    //   - on macOS, mode 0444 does not stop the OWNER from writing at all — measured on the macOS
+    //     runner, the copy simply succeeded and the test failed with 0 locked files;
+    //   - the flag that genuinely makes a file immutable on macOS is `chflags uchg`, which reports
+    //     EPERM — the error the code actually recognises.
+    // So each platform gets the mechanism that really denies the write, and the assertion keeps its
+    // meaning: a file that cannot be written is recorded and the update rolls back.
     const lockedTargetFile = path.join(targetDir, 'locked.txt');
     fs.writeFileSync(lockedTargetFile, 'old-locked-content');
-    fs.chmodSync(lockedTargetFile, 0o444);
+    let unlock: () => void = () => {};
+    if (process.platform === 'darwin') {
+      const { execFileSync } = require('node:child_process');
+      execFileSync('chflags', ['uchg', lockedTargetFile]);
+      unlock = () => {
+        try { execFileSync('chflags', ['nouchg', lockedTargetFile]); } catch { /* best effort */ }
+      };
+    } else {
+      fs.chmodSync(lockedTargetFile, 0o444);
+      unlock = () => {
+        try { fs.chmodSync(lockedTargetFile, 0o666); } catch { /* best effort */ }
+      };
+    }
     const errorLogs: string[] = [];
     const mockLogger = {
       warn: vi.fn(),
@@ -285,9 +308,7 @@ describe('Secure Runtime Supply Chain - Updater Integration (Task 2.3)', () => {
       expect(state.updatePending).toBe(false);
       expect(state.currentVersion).toBe('1.0.0');
     } finally {
-      try {
-        fs.chmodSync(lockedTargetFile, 0o666);
-      } catch {}
+      unlock();
     }
   });
 

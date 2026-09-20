@@ -12,6 +12,30 @@ releases so a teammate could test it. It is now built and published:
 and the database all live beside the app, so moving the folder moves everything. Nothing is written
 inside the `.app` — that would invalidate its signature and macOS would refuse to launch it.
 
+### Fixed — three defects the release rehearsal exposed, two of them in the application
+
+The rehearsal was added because `release-macos` runs `npm test` on macOS and no workflow had ever run
+the suite on that platform. It failed immediately — 9 tests in 3 files — which would have failed the
+release on the tag, after the tag existed.
+
+- **`isProcessOurApp` ignored its own injection seam off Windows.** The POSIX branch called
+  `child_process.execFileSync('ps', …)` directly instead of the injectable runner the Windows branch
+  honours. The POSIX path was therefore untestable, and untested: a bug there would have shipped
+  invisibly on macOS and Linux. It now routes through the seam, and the branch has five tests.
+- **A locked file was treated as a hard error on Linux.** The copy handler recognised `EBUSY`
+  (Windows) and `EPERM` (macOS immutable flag) but not `EACCES`, which is what a read-only file
+  reports on Linux — so instead of recording the file and rolling back, the update failed outright.
+- **Tests that asserted Windows behaviour ran on every platform.** `instanceLock` mocked
+  `tasklist`/`wmic` output while the code took the POSIX branch, and the locked-file test used
+  `chmod 0444`, which does not deny the owner's write on macOS. Each now uses the mechanism its
+  platform actually has (`chflags uchg` on macOS) and is gated to the platform whose behaviour it
+  asserts.
+
+Also fixed in the macOS kernel tests: a case had been moved into the wrong `describe` by an earlier
+restructuring, leaving `DMG_ASSET` undefined — invisible on Windows, where the group is skipped, and
+a hard error on macOS. Its `cp` stub now really copies, because `ensureKernel` verifies the
+executable exists and a stub reporting success must produce the effect success implies.
+
 ### Changed — the browser kernel works on Apple Silicon, measured before it was written
 
 The macOS kernel asset was already pinned in `kernelAcquire.ts` and then thrown away: the `dmg`

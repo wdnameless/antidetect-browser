@@ -115,13 +115,24 @@ export function isProcessOurApp(
       // which lets the caller reclaim a recycled pid. Only a failed read is unknown.
       return false;
     } else {
-      // POSIX fallback: check /proc/<pid>/cmdline or ps -p <pid> -o args=
+      // POSIX fallback: the command line via `ps`.
+      //
+      // This goes through `runner` like the Windows branch, and that is a fix rather than a
+      // tidy-up: it used to call `child_process.execFileSync` DIRECTLY, so the injected probe was
+      // bypassed on every non-Windows host. The consequence was not academic — the whole POSIX path
+      // was untestable, so it was untested: the suite could only exercise `isProcessOurApp` on
+      // Windows, and a bug here would have shipped invisibly on macOS and Linux. Routing through
+      // the seam makes the branch reachable from a test on any platform.
+      //
+      // Note also that `runner` is honoured the same way in both branches, so a test that injects
+      // one probe exercises the logic the running platform will actually execute.
       try {
-        const args = child_process.execFileSync('ps', ['-p', String(pid), '-o', 'args='], {
+        const raw = runner('ps', ['-p', String(pid), '-o', 'args='], {
           encoding: 'utf8',
           timeout: 2000,
-          stdio: ['pipe', 'pipe', 'ignore']
-        }).toLowerCase();
+          stdio: ['pipe', 'pipe', 'ignore'],
+        });
+        const args = String(raw).toLowerCase();
         if (!args.trim()) return false;
         // KEEP: POSIX instance-lock process check for antidetect.
         if (args.includes('antidetect')) return true;
