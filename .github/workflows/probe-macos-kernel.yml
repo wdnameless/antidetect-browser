@@ -74,3 +74,53 @@ jobs:
           path: |
             probe-output.txt
           if-no-files-found: warn
+
+  accept:
+    name: Kernel acceptance (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-14]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install dependencies
+        run: npm ci
+
+      # The acceptance script imports the COMPILED module, so it must exist. Building only the
+      # backend keeps this fast: the renderer is irrelevant to the kernel path.
+      - name: Build the backend
+        run: npm run build:main
+
+      # This is the real thing: a real download, a real digest check, a real hdiutil mount and a
+      # real browser launch. No stubs. If this passes, the macOS kernel path works.
+      - name: Run the kernel acceptance script
+        id: accept
+        continue-on-error: true
+        run: node scripts/e2e-macos-kernel.mjs 2>&1 | tee e2e-output.txt
+
+      - name: Report
+        if: always()
+        run: |
+          node -e '
+            const fs = require("fs");
+            const text = fs.readFileSync("e2e-output.txt", "utf8");
+            const m = text.match(/--- E2E_JSON_BEGIN ---\n([\s\S]*?)\n--- E2E_JSON_END ---/);
+            if (!m) { console.log("NO_REPORT"); process.exit(0); }
+            const r = JSON.parse(m[1]);
+            console.log(r.allPassed ? "ALL CHECKS PASSED" : "SOME CHECKS FAILED");
+            for (const c of r.results) console.log(` ${c.ok ? "OK  " : "FAIL"} ${c.name}: ${c.detail ?? ""}`);
+          '
+
+      - name: Upload the report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-kernel-acceptance
+          path: e2e-output.txt
+          if-no-files-found: warn

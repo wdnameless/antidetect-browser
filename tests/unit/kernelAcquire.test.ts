@@ -13,6 +13,23 @@ import {
   getPlatformAsset,
 } from '../../src/main/util/kernelAcquire';
 
+function createMockFetch(buffer: Buffer, status = 200, statusText = 'OK') {
+  return async () => {
+    const stream = new PassThrough();
+    stream.end(buffer);
+    const res = {
+      ok: status >= 200 && status < 300,
+      status,
+      statusText,
+      headers: {
+        get: (header: string) => (header.toLowerCase() === 'content-length' ? String(buffer.length) : null),
+      },
+      body: stream,
+    };
+    return res as unknown as Response;
+  };
+}
+
 describe('kernelAcquire', () => {
   let tmpDir: string;
 
@@ -32,23 +49,6 @@ describe('kernelAcquire', () => {
     const zip = new AdmZip();
     zip.addFile(relativeFilePath, Buffer.from(content, 'utf-8'));
     return zip.toBuffer();
-  }
-
-  function createMockFetch(buffer: Buffer, status = 200, statusText = 'OK') {
-    return async () => {
-      const stream = new PassThrough();
-      stream.end(buffer);
-      const res = {
-        ok: status >= 200 && status < 300,
-        status,
-        statusText,
-        headers: {
-          get: (header: string) => (header.toLowerCase() === 'content-length' ? String(buffer.length) : null),
-        },
-        body: stream,
-      };
-      return res as unknown as Response;
-    };
   }
 
   it('selects correct platform asset per process.platform', () => {
@@ -236,6 +236,214 @@ describe('kernelAcquire', () => {
 
     expect(fetchCalled).toBe(false);
     expect(result.executablePath).toBe(targetExe);
+  });
+});
+
+/**
+ * The macOS branch. The mount/copy/detach dance cannot run here — this is a Windows host with no
+ * `hdiutil` — so the tools are stubbed on PATH and the assertions are about the DECISIONS the code
+ * makes: which mount point it trusts, that it copies by the pinned bundle name rather than the
+ * first `.app` it sees, and that a detach happens even when the copy fails. Those are the parts
+ * that break silently; `hdiutil` itself was verified on a real M1 by the probe workflow.
+ */
+const canStubExecutables = process.platform !== 'win32';
+
+describe('kernelAcquire — macOS dmg branch', () => {
+  let tmpDir: string;
+  let binDir: string;
+  let savedPath: string | undefined;
+  let savedPlatform: PropertyDescriptor | undefined;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'kernel-dmg-'));
+    binDir = path.join(tmpDir, 'fakebin');
+    fs.mkdirSync(binDir, { recursive: true });
+    savedPath = process.env.PATH;
+    process.env.PATH = `${binDir}${path.delimiter}${savedPath ?? ''}`;
+    // `ensureKernel` gates the dmg branch on the HOST being darwin, so the host has to look like
+    // macOS for this branch to be reachable at all on a Windows or Linux CI runner.
+    savedPlatform = Object.getOwnPropertyDescriptor(process, 'platform');
+    Object.defineProperty(process, 'platform', { value: 'darwin', configurable: true });
+  });
+
+  afterEach(() => {
+    if (savedPath === undefined) delete process.env.PATH;
+    else process.env.PATH = savedPath;
+    if (savedPlatform) Object.defineProperty(process, 'platform', savedPlatform);
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  /** A stub tool that records its argv and prints a canned stdout. */
+  function stubTool(name: string, stdout: string, exitCode = 0): string {
+    const log = path.join(tmpDir, `${name}-calls.log`);
+    const script = path.join(binDir, `${name}-impl.js`);
+    const body = `
+      const fs = require('fs');
+      fs.appendFileSync(${JSON.stringify(log)}, JSON.stringify(process.argv.slice(2)) + '\\n');
+      process.stdout.write(${JSON.stringify(stdout)});
+      process.exit(${exitCode});
+    `;
+    fs.writeFileSync(script, body, 'utf8');
+
+    // An EXTENSIONLESS executable shim, because `spawnSync` resolves a bare name through
+    // PATHEXT only in a shell: a `hdiutil.cmd` is invisible to a direct spawn (measured here —
+    // "spawnSync hdiutil ENOENT"). And `extractDmg` deliberately does not use `shell: true`,
+    // since passing image paths through a shell is exactly the quoting hazard it avoids.
+    //
+    // On POSIX this is a `#!/bin/sh` script; on Windows an executable with no extension cannot
+    // be created by a plain write, so the shim is skipped and the suite reports what it could
+    // not exercise rather than failing on a platform artefact. The macOS path itself is
+    // verified on a real M1 by `.github/workflows/probe-macos-kernel.yml`.
+    const shimPath = path.join(binDir, name);
+    if (process.platform === 'win32') {
+      fs.writeFileSync(path.join(binDir, `${name}.cmd`), `@echo off\r\nnode "${script}" %*\r\n`, 'utf8');
+      return log; // Windows cannot exec an extensionless file: see the note above.
+    }
+    fs.writeFileSync(shimPath, `#!/bin/sh\nexec node "${script}" "$@"\n`, 'utf8');
+    fs.chmodSync(shimPath, 0o755);
+    return log;
+  }
+
+  function readCalls(log: string): string[][] {
+    if (!fs.existsSync(log)) return [];
+    return fs.readFileSync(log, 'utf8').trim().split('\n').filter(Boolean).map((l) => JSON.parse(l));
+  }
+
+  const DMG_ASSET = {
+    ...PINNED_PLATFORM_ASSETS.darwin,
+    sha256: '',
+    size: 0,
+  };
+
+  it.skipIf(!canStubExecutables)('mounts, copies the pinned bundle, clears quarantine and detaches', async () => {
+    const dmg = Buffer.from('pretend disk image');
+    const asset = { ...DMG_ASSET, sha256: crypto.createHash('sha256').update(dmg).digest('hex'), size: dmg.length };
+
+    // The mount point is NOT the conventional one — this is the stale-mount case the code must
+    // survive by parsing hdiutil's plist instead of assuming /Volumes/Chromium.
+    const mount = path.join(tmpDir, 'Volumes', 'Chromium 1');
+    fs.mkdirSync(path.join(mount, 'Chromium.app'), { recursive: true });
+
+    const hdiutilLog = stubTool(
+      'hdiutil',
+      `<key>mount-point</key>\n<string>${mount}</string>\n`,
+      0
+    );
+    const cpLog = stubTool('cp', '', 0);
+    const xattrLog = stubTool('xattr', '', 0);
+
+    const result = await ensureKernel({
+      platform: 'darwin',
+      targetDir: tmpDir,
+      expectedDigests: { darwin: asset },
+      fetchFn: createMockFetch(dmg) as unknown as typeof fetch,
+    });
+
+    // It resolved the executable from the pinned subpath inside the copied bundle.
+    expect(result.executablePath).toBe(path.join(tmpDir, 'Chromium.app', 'Contents', 'MacOS', 'Chromium'));
+
+    const hdiutilCalls = readCalls(hdiutilLog);
+    expect(hdiutilCalls[0].slice(0, 4)).toEqual(['attach', '-nobrowse', '-readonly', '-plist']);
+    // Detached the PARSED mount point, not an assumed one — and detached at all.
+    const detach = hdiutilCalls.find((c) => c[0] === 'detach');
+    expect(detach).toBeDefined();
+    expect(detach?.includes(mount)).toBe(true);
+    expect(detach).toContain('-force');
+
+    const cpCalls = readCalls(cpLog);
+    expect(cpCalls[0][0]).toBe('-R');
+    expect(cpCalls[0][1]).toBe(path.join(mount, 'Chromium.app'));
+
+    const xattrCalls = readCalls(xattrLog);
+    expect(xattrCalls[0]).toEqual(['-dr', 'com.apple.quarantine', path.join(tmpDir, 'Chromium.app')]);
+  });
+
+  it.skipIf(!canStubExecutables)('detaches the image even when the copy fails', async () => {
+    const dmg = Buffer.from('pretend disk image');
+    const asset = { ...DMG_ASSET, sha256: crypto.createHash('sha256').update(dmg).digest('hex'), size: dmg.length };
+
+    const mount = path.join(tmpDir, 'Volumes', 'Chromium');
+    fs.mkdirSync(path.join(mount, 'Chromium.app'), { recursive: true });
+
+    const hdiutilLog = stubTool('hdiutil', `<key>mount-point</key>\n<string>${mount}</string>\n`, 0);
+    stubTool('cp', 'disk full', 1);
+    stubTool('xattr', '', 0);
+
+    await expect(
+      ensureKernel({
+        platform: 'darwin',
+        targetDir: tmpDir,
+        expectedDigests: { darwin: asset },
+        fetchFn: createMockFetch(dmg) as unknown as typeof fetch,
+      })
+    ).rejects.toThrow(/Failed to copy the kernel bundle/);
+
+    // A leaked mount would make the NEXT acquisition land on "/Volumes/Chromium 1".
+    const detach = readCalls(hdiutilLog).find((c) => c[0] === 'detach');
+    expect(detach).toBeDefined();
+  });
+
+  it.skipIf(!canStubExecutables)('refuses when the image does not contain the pinned bundle', async () => {
+    const dmg = Buffer.from('pretend disk image');
+    const asset = { ...DMG_ASSET, sha256: crypto.createHash('sha256').update(dmg).digest('hex'), size: dmg.length };
+
+    // Mount point exists but holds a DIFFERENT bundle — the code must not silently copy that.
+    const mount = path.join(tmpDir, 'Volumes', 'Something');
+    fs.mkdirSync(path.join(mount, 'Other.app'), { recursive: true });
+
+    stubTool('hdiutil', `<key>mount-point</key>\n<string>${mount}</string>\n`, 0);
+    stubTool('cp', '', 0);
+    stubTool('xattr', '', 0);
+
+    await expect(
+      ensureKernel({
+        platform: 'darwin',
+        targetDir: tmpDir,
+        expectedDigests: { darwin: asset },
+        fetchFn: createMockFetch(dmg) as unknown as typeof fetch,
+      })
+    ).rejects.toThrow(/does not contain the expected bundle/);
+    expect(fs.existsSync(path.join(tmpDir, 'Other.app'))).toBe(false);
+  });
+
+  it.skipIf(!canStubExecutables)('reports a mount failure instead of proceeding to copy', async () => {
+    const dmg = Buffer.from('pretend disk image');
+    const asset = { ...DMG_ASSET, sha256: crypto.createHash('sha256').update(dmg).digest('hex'), size: dmg.length };
+
+    stubTool('hdiutil', 'no mountable file systems', 1);
+    const cpLog = stubTool('cp', '', 0);
+
+    await expect(
+      ensureKernel({
+        platform: 'darwin',
+        targetDir: tmpDir,
+        expectedDigests: { darwin: asset },
+        fetchFn: createMockFetch(dmg) as unknown as typeof fetch,
+      })
+    ).rejects.toThrow(/Failed to mount kernel disk image/);
+
+    // Nothing was copied out of an image that never mounted.
+    expect(readCalls(cpLog)).toEqual([]);
+  });
+
+  it('still refuses a tampered payload before any tool runs', async () => {
+    const dmg = Buffer.from('pretend disk image');
+    const asset = { ...DMG_ASSET, sha256: 'f'.repeat(64), size: dmg.length };
+
+    const hdiutilLog = stubTool('hdiutil', '', 0);
+    stubTool('cp', '', 0);
+
+    await expect(
+      ensureKernel({
+        platform: 'darwin',
+        targetDir: tmpDir,
+        expectedDigests: { darwin: asset },
+        fetchFn: createMockFetch(dmg) as unknown as typeof fetch,
+      })
+    ).rejects.toThrow(KernelAcquireError);
+
+    // Verification is the whole point of this path: a bad digest must not reach hdiutil at all.
+    expect(readCalls(hdiutilLog)).toEqual([]);
   });
 });
 

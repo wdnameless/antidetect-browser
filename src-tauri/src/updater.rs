@@ -1259,6 +1259,10 @@ mod tests {
 
     #[test]
     fn test_portable_mode_detection() {
+        // This test mutates PORTABLE_EXECUTABLE_DIR without holding the shared lock — which is
+        // what made the suite fail roughly one run in three: it would clear the variable while
+        // `data_dir_tests` was mid-assertion. Every test touching these variables takes the lock.
+        let _lock = crate::test_env_lock();
         std::env::remove_var("PORTABLE_EXECUTABLE_DIR");
         assert!(!is_portable_mode());
         std::env::set_var("PORTABLE_EXECUTABLE_DIR", "D:\\portable");
@@ -1276,8 +1280,7 @@ mod tests {
     }
     #[test]
     fn test_update_channel_target_reflects_portable_mode() {
-        static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
-        let _lock = ENV_LOCK.lock().unwrap();
+        let _lock = crate::test_env_lock();
         let orig = std::env::var("PORTABLE_EXECUTABLE_DIR").ok();
 
         // Portable mode active
@@ -1297,8 +1300,7 @@ mod tests {
 
     #[test]
     fn test_resolve_portable_target_exe_prefers_existing_launcher() {
-        static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
-        let _lock = ENV_LOCK.lock().unwrap();
+        let _lock = crate::test_env_lock();
         let orig = std::env::var("PORTABLE_EXECUTABLE_FILE").ok();
         // Create a temporary file to act as the launcher in std::env::temp_dir()
         let temp_dir = std::env::temp_dir().join(format!("nulltrace_test_{}", std::process::id()));

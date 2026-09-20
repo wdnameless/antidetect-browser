@@ -5,6 +5,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as crypto from 'crypto';
+import { spawnSync } from 'child_process';
 import fetch from 'node-fetch';
 import AdmZip from 'adm-zip';
 import { CHROMIUM_DIR } from '../config';
@@ -73,6 +74,73 @@ export function getPlatformAsset(
 
 export function getKernelDirectory(overrideDir?: string): string {
   return overrideDir ?? path.join(CHROMIUM_DIR, 'fingerprint-chromium');
+}
+
+/**
+ * Mount a macOS kernel disk image, copy the application bundle out of it, and detach.
+ *
+ * Measured on an M1 runner against the pinned image, which is what the code below assumes:
+ *   - the image mounts read-only and contains exactly one `.app` plus an `Applications` symlink;
+ *   - the bundle carries the upstream ad-hoc signature (`org.chromium.Chromium`, Mach-O arm64);
+ *   - it arrives with `com.apple.quarantine` set, and macOS refuses to launch a quarantined
+ *     download — so the attribute is cleared, exactly as the README documents for our own app;
+ *   - the executable lives at `Contents/MacOS/<name>`, matching the pinned `executableSubpath`.
+ *
+ * `hdiutil` output is parsed rather than assumed because the mount point is NOT fixed: with a
+ * stale mount present the same image lands on `/Volumes/Chromium 1`.
+ */
+function extractDmg(dmgPath: string, kernelDir: string, assetInfo: KernelAssetInfo): void {
+  const run = (cmd: string, args: string[]): { status: number | null; stdout: string; stderr: string } => {
+    const r = spawnSync(cmd, args, { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+    return { status: r.status, stdout: r.stdout ?? '', stderr: r.stderr ?? '' };
+  };
+
+  const attach = run('hdiutil', ['attach', '-nobrowse', '-readonly', '-plist', dmgPath]);
+  if (attach.status !== 0) {
+    throw new KernelAcquireError(
+      `Failed to mount kernel disk image: ${attach.stderr.trim() || `hdiutil exited ${attach.status}`}`,
+      'ERR_EXTRACTION_FAILED'
+    );
+  }
+  const mountPoint = (attach.stdout.match(/<key>mount-point<\/key>\s*<string>([^<]+)<\/string>/) || [])[1];
+  if (!mountPoint) {
+    throw new KernelAcquireError('hdiutil reported success but no mount point', 'ERR_EXTRACTION_FAILED');
+  }
+
+  try {
+    // The bundle name comes from the pinned `executableSubpath` rather than from listing the
+    // image: the subpath is what `ensureKernel` later resolves the executable against, so taking
+    // the name from anywhere else could copy one bundle and then look for another.
+    const appName = assetInfo.executableSubpath.split(path.sep)[0];
+    const srcApp = path.join(mountPoint, appName);
+    if (!fs.existsSync(srcApp)) {
+      throw new KernelAcquireError(
+        `The image does not contain the expected bundle ${appName}`,
+        'ERR_EXTRACTION_FAILED'
+      );
+    }
+
+    const destApp = path.join(kernelDir, appName);
+    fs.rmSync(destApp, { recursive: true, force: true });
+
+    // `cp -R` and not a recursive JavaScript copy: the bundle contains symlinks (its frameworks),
+    // and `fs.cpSync`'s default would either follow or flatten them, producing a bundle macOS
+    // refuses to load.
+    const copy = run('cp', ['-R', srcApp, destApp]);
+    if (copy.status !== 0) {
+      throw new KernelAcquireError(
+        `Failed to copy the kernel bundle out of the image: ${copy.stderr.trim() || `cp exited ${copy.status}`}`,
+        'ERR_EXTRACTION_FAILED'
+      );
+    }
+
+    // A downloaded bundle is quarantined; without this macOS refuses the launch inside it.
+    run('xattr', ['-dr', 'com.apple.quarantine', destApp]);
+  } finally {
+    // In a finally so a failure above cannot leave the image mounted — a leaked mount would make
+    // the NEXT acquisition land on `/Volumes/Chromium 1` and confuse anything that assumed a path.
+    run('hdiutil', ['detach', mountPoint, '-force']);
+  }
 }
 
 /**
@@ -194,16 +262,17 @@ export async function ensureKernel(opts: EnsureKernelOptions = {}): Promise<{ ex
         );
       }
     } else if (assetInfo.archiveType === 'dmg') {
-      // macOS dmg requires hdiutil which only runs on darwin
-      if (platform === 'darwin' && process.platform === 'darwin') {
-        // native mount handling would go here on Darwin
-        throw new KernelAcquireError('macOS DMG extraction requires manual mount or hdiutil workflow', 'ERR_UNSUPPORTED_HOST_EXTRACTION');
-      } else {
+      // macOS ships the kernel as a disk image, not a zip, so this branch has its own shape:
+      // mount, copy the bundle out, detach. Every step was measured on Apple Silicon (M1) before
+      // being written — `scripts/probe-macos-kernel.mjs` mounted this exact pinned image and
+      // recorded what it produced.
+      if (platform !== 'darwin' || process.platform !== 'darwin') {
         throw new KernelAcquireError(
           `macOS DMG extraction is not supported on host OS ${process.platform}`,
           'ERR_UNSUPPORTED_HOST_EXTRACTION'
         );
       }
+      extractDmg(tmpDownloadPath, kernelDir, assetInfo);
     } else {
       throw new KernelAcquireError(`Unsupported archive type: ${assetInfo.archiveType}`, 'ERR_UNSUPPORTED_ARCHIVE');
     }

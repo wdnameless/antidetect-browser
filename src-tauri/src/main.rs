@@ -189,6 +189,46 @@ fn read_key_file(path: &Path) -> Option<String> {
     std::fs::read_to_string(path).ok().map(|s| s.trim().to_string())
 }
 
+/// The root of a movable folder, for a macOS application bundle.
+///
+/// macOS cannot ship a single-file executable: the artefact is a `.app` directory, and the binary
+/// inside it lives at `<root>/<Name>.app/Contents/MacOS/<Name>`. The portable root is therefore
+/// three ancestors up — the directory the operator actually copies. Returning `None` for anything
+/// that is not that exact shape keeps a non-portable launch (an app in `/Applications`, a dev run
+/// from `target/debug`) on the normal, non-portable path.
+///
+/// Derived from the running executable rather than from an environment variable because nothing
+/// sets one on macOS: on Windows the NSIS launcher exports `PORTABLE_EXECUTABLE_DIR`, and there is
+/// no equivalent launcher here.
+fn portable_root_from_bundle(exe: &Path) -> Option<PathBuf> {
+    let macos_dir = exe.parent()?;
+    let contents = macos_dir.parent()?;
+    let app_bundle = contents.parent()?;
+
+    let is_bundle_layout = macos_dir.file_name()?.to_str() == Some("MacOS")
+        && contents.file_name()?.to_str() == Some("Contents")
+        && app_bundle.extension()?.to_str() == Some("app");
+    if !is_bundle_layout {
+        return None;
+    }
+    app_bundle.parent().map(|p| p.to_path_buf())
+}
+
+/// Export the portable root so the backend, the webview cache and the data directory agree.
+///
+/// Mirrors what `src-tauri/windows/portable.nsi` does with `SetEnvironmentVariable` on Windows:
+/// ONE producer sets the variable and every consumer reads it, so the two platforms cannot drift
+/// into two conventions. An already-set value wins — an operator or a test that pinned a location
+/// must not be overridden by a guess derived from the bundle's position.
+pub fn export_portable_root_if_bundled(exe: &Path) {
+    if std::env::var("PORTABLE_EXECUTABLE_DIR").map(|d| !d.trim().is_empty()).unwrap_or(false) {
+        return;
+    }
+    if let Some(root) = portable_root_from_bundle(exe) {
+        std::env::set_var("PORTABLE_EXECUTABLE_DIR", &root);
+    }
+}
+
 #[tauri::command]
 async fn get_api_key(state: State<'_, AppState>) -> Result<Option<String>, String> {
     // The backend writes api_key to DATA_DIR/api_key (src/main/config.ts getApiKey()).
@@ -411,6 +451,14 @@ pub(crate) fn perform_graceful_teardown(
 const TEARDOWN_WAIT: Duration = Duration::from_secs(20);
 
 fn main() {
+    // Before anything reads a path: on macOS the portable root is derived from where this
+    // executable sits, and every consumer below (settings dir, data dir, webview cache) keys off
+    // `PORTABLE_EXECUTABLE_DIR`. Without this the app would resolve to the system locations and
+    // the moved-folder behaviour the operator asked for would not exist on this platform.
+    if let Ok(exe) = std::env::current_exe() {
+        export_portable_root_if_bundled(&exe);
+    }
+
     let settings_dir = default_settings_dir();
     // Did the location arrive from OUTSIDE (operator, CI, a script) rather than from us?
     // The backend asks the operator where data should live on first run, but must not ask
@@ -603,6 +651,19 @@ fn main() {
     });
 }
 
+/// The ONE lock guarding process-wide environment mutation in tests.
+///
+/// `std::env::set_var` is process-global, so two test modules that each declare their own mutex
+/// still race: `data_dir_tests` removing `PORTABLE_EXECUTABLE_DIR` while
+/// `updater::tests::test_update_channel_target_reflects_portable_mode` sets it. Measured — the
+/// suite passed or failed on which order the threads happened to interleave, roughly one run in
+/// three failing. Every test that touches these variables must take this lock, not its own.
+#[cfg(test)]
+pub(crate) fn test_env_lock() -> parking_lot::MutexGuard<'static, ()> {
+    static LOCK: parking_lot::Mutex<()> = parking_lot::Mutex::new(());
+    LOCK.lock()
+}
+
 #[cfg(test)]
 mod data_dir_tests {
     use super::{default_settings_dir, resolve_data_dir, saved_data_dir};
@@ -615,7 +676,6 @@ mod data_dir_tests {
         fs::create_dir_all(&dir).unwrap();
         dir
     }
-
     /// Point the pre-move settings location at an empty directory.
     ///
     /// `saved_data_dir` falls back to `%APPDATA%\antidetect-browser\settings.json` so a
@@ -634,11 +694,9 @@ mod data_dir_tests {
     /// This is the bug that shipped: the shell resolved the DEFAULT path, exported it as
     /// ANTIDETECT_DATA_DIR, and the backend (which prefers the env var) wrote there — the
     /// chosen folder stayed empty while profiles piled up in the profile directory.
-    static ENV_LOCK: parking_lot::Mutex<()> = parking_lot::Mutex::new(());
-
     #[test]
     fn honours_the_directory_recorded_in_settings() {
-        let _lock = ENV_LOCK.lock();
+        let _lock = super::test_env_lock();
         let orig_data = std::env::var("ANTIDETECT_DATA_DIR").ok();
         let orig_portable = std::env::var("PORTABLE_EXECUTABLE_DIR").ok();
 
@@ -674,7 +732,7 @@ mod data_dir_tests {
     /// through to portable data beside the executable instead.
     #[test]
     fn ignores_a_recorded_path_that_is_not_usable_here() {
-        let _lock = ENV_LOCK.lock();
+        let _lock = super::test_env_lock();
         let orig_data = std::env::var("ANTIDETECT_DATA_DIR").ok();
         let orig_portable = std::env::var("PORTABLE_EXECUTABLE_DIR").ok();
 
@@ -712,7 +770,7 @@ mod data_dir_tests {
     /// A recorded path holding real data still wins, marker or not.
     #[test]
     fn honours_a_recorded_path_that_holds_real_data() {
-        let _lock = ENV_LOCK.lock();
+        let _lock = super::test_env_lock();
         let orig_data = std::env::var("ANTIDETECT_DATA_DIR").ok();
         let orig_portable = std::env::var("PORTABLE_EXECUTABLE_DIR").ok();
 
@@ -741,7 +799,7 @@ mod data_dir_tests {
     /// Portable mode must still resolve beside the executable when nothing was recorded.
     #[test]
     fn falls_back_to_portable_beside_the_executable() {
-        let _lock = ENV_LOCK.lock();
+        let _lock = super::test_env_lock();
         let orig_data = std::env::var("ANTIDETECT_DATA_DIR").ok();
         let orig_portable = std::env::var("PORTABLE_EXECUTABLE_DIR").ok();
 
@@ -759,7 +817,7 @@ mod data_dir_tests {
 
     #[test]
     fn default_settings_dir_resolves_portable_when_env_is_set() {
-        let _lock = ENV_LOCK.lock();
+        let _lock = super::test_env_lock();
         let orig_settings = std::env::var("ANTIDETECT_SETTINGS_DIR").ok();
         let orig_portable = std::env::var("PORTABLE_EXECUTABLE_DIR").ok();
 
@@ -784,6 +842,7 @@ mod data_dir_tests {
     /// Returning None keeps startup alive and lets the prompt re-ask, rather than aborting.
     #[test]
     fn unreadable_or_absent_settings_means_no_choice() {
+        let _lock = super::test_env_lock();
         let settings = tmp("absent");
         isolate_legacy(&settings);
         assert!(saved_data_dir(&settings).is_none());
@@ -798,9 +857,74 @@ mod data_dir_tests {
     /// An empty dataDir must not be treated as a recorded choice.
     #[test]
     fn empty_recorded_dir_is_not_a_choice() {
+        let _lock = super::test_env_lock();
         let settings = tmp("empty");
+        // Isolated for the same reason as its siblings: `saved_data_dir` consults the pre-move
+        // location, and on a developer's machine that file EXISTS and records a real dataDir.
+        // Without this the assertion depends on the host — measured as an intermittent failure.
+        isolate_legacy(&settings);
         fs::write(settings.join("settings.json"), br#"{"dataDir":""}"#).unwrap();
         assert!(saved_data_dir(&settings).is_none());
+    }
+}
+
+#[cfg(test)]
+mod bundle_root_tests {
+    use super::portable_root_from_bundle;
+    use std::path::{Path, PathBuf};
+
+    /// The shape macOS actually ships: the portable root is the directory holding the `.app`.
+    #[test]
+    fn derives_the_root_from_inside_a_bundle() {
+        let exe = Path::new("/Volumes/STICK/NullTrace/NullTrace.app/Contents/MacOS/NullTrace");
+        assert_eq!(
+            portable_root_from_bundle(exe),
+            Some(PathBuf::from("/Volumes/STICK/NullTrace"))
+        );
+    }
+
+    /// Everything that is NOT that layout must return None, so a dev run from `target/debug`
+    /// keeps the ordinary, non-portable path instead of silently claiming that the folder above
+    /// it owns its data.
+    ///
+    /// Note the deliberate inclusion: a bundle in `/Applications` IS bundle-shaped and therefore
+    /// resolves — the same rule serves both "an app moved onto a stick" and "an app dragged into
+    /// Applications". What must not resolve is everything below.
+    #[test]
+    fn refuses_anything_that_is_not_a_bundle() {
+        assert_eq!(
+            portable_root_from_bundle(Path::new("/Applications/NullTrace.app/Contents/MacOS/NullTrace")),
+            Some(PathBuf::from("/Applications"))
+        );
+        // A plain executable in a directory.
+        assert_eq!(portable_root_from_bundle(Path::new("/usr/local/bin/node")), None);
+        // Inside an app bundle but not at Contents/MacOS (a helper, a framework).
+        assert_eq!(
+            portable_root_from_bundle(Path::new("/Applications/X.app/Contents/Frameworks/X")),
+            None
+        );
+        // Contents/MacOS but no .app above it.
+        assert_eq!(
+            portable_root_from_bundle(Path::new("/tmp/Contents/MacOS/thing")),
+            None
+        );
+        // A debug build: the directory above `target/debug` is not a portable root.
+        assert_eq!(
+            portable_root_from_bundle(Path::new("/repo/src-tauri/target/debug/nulltrace-tauri-shell")),
+            None
+        );
+        // Bare relative path with no ancestors.
+        assert_eq!(portable_root_from_bundle(Path::new("NullTrace")), None);
+    }
+
+    /// A bundle directly at the filesystem root has no parent to return.
+    #[test]
+    fn a_bundle_at_the_root_has_no_root_above_it() {
+        // "/A.app/Contents/MacOS/A" -> parent of "/A.app" is "/", which is a real directory, so
+        // this resolves to "/" rather than None. Asserted explicitly because the alternative
+        // (panicking, or returning a bogus path) would be worse than the honest answer.
+        let derived = portable_root_from_bundle(Path::new("/A.app/Contents/MacOS/A"));
+        assert_eq!(derived, Some(PathBuf::from("/")));
     }
 }
 

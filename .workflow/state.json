@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "tier": "T2",
+  "task": "NullTrace macOS arm64 portable build",
+  "startedAt": "2026-09-20T06:42:33.591Z",
+  "status": "open",
+  "artifacts": {
+    "lane": {
+      "at": "2026-09-20T06:42:33.591Z",
+      "path": null,
+      "detail": "T2"
+    }
+  }
+}
