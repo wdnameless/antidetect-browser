@@ -20,10 +20,16 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # macos-14 = Apple Silicon (M1). macos-13 = Intel, run as the native-x86_64 control:
-        # the pinned asset is an x86_64 image, so Intel is the one host where it needs no
-        # translation — comparing the two is what separates "works" from "works only emulated".
-        os: [macos-14, macos-13]
+        # `macos-14-arm64` is Apple Silicon — the target platform, and the only one whose result
+        # decides whether the port works.
+        #
+        # `macos-15-intel` is the native-x86_64 CONTROL. The pinned asset is named plainly
+        # `..._macos.dmg`, and this control is what would distinguish "the kernel is arm64" from
+        # "the kernel is x86_64 and only appeared to work because the runner translated it". The
+        # result on the arm64 runner already settles it (`lipo -archs` reads the binary itself,
+        # which translation cannot fake), so the control is confirmatory — but it must use a label
+        # that EXISTS: `macos-13` was retired, and a queued-forever job is worse than no job.
+        os: [macos-14-arm64, macos-15-intel]
     steps:
       - uses: actions/checkout@v4
 
@@ -81,7 +87,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-14]
+        os: [macos-14-arm64]
     steps:
       - uses: actions/checkout@v4
 
@@ -131,7 +137,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-14]
+        os: [macos-14-arm64]
     steps:
       - uses: actions/checkout@v4
 
