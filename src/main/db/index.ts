@@ -36,6 +36,13 @@ let db: Database | null = null;
 let instanceRef: SqlJsDatabase | null = null;
 let persistTimer: ReturnType<typeof setTimeout> | null = null;
 let exitHookInstalled = false;
+/**
+ * Whether `Database.close()` should write the in-memory image to disk first.
+ *
+ * True for an ordinary shutdown. False when the FILE is newer than memory — which is the case
+ * right after a backup restore, where persisting would undo the restore that just happened.
+ */
+let closeDbPersist = true;
 
 async function getSqlModule(): Promise<Awaited<ReturnType<typeof initSqlJs>>> {
   if (!sqlModule) sqlModule = await initSqlJs();
@@ -105,7 +112,10 @@ function maybeBackup(instance: SqlJsDatabase): void {
 
     // make sure the on-disk copy is current before cloning it
     persistNow(instance);
-    const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
+    // Second-resolution stamps collide when a backup is taken twice inside the same second —
+    // which a restore does, because reloading the database runs this function again. The
+    // collision overwrote the very backup being restored. Milliseconds make the name unique.
+    const stamp = new Date().toISOString().slice(0, 23).replace(/[:T]/g, '-');
     fs.copyFileSync(DB_PATH, path.join(BACKUP_DIR, `antidetect-${stamp}.db`));
     fs.writeFileSync(stampFile, String(Date.now()), 'utf8');
 
@@ -258,13 +268,21 @@ export async function initDb(): Promise<void> {
       schedulePersist(instance);
     },
     close(): void {
-      persistNow(instance);
+      // Persisting here is correct for a normal shutdown — the in-memory database is the
+      // source of truth and the file must catch up. It is WRONG for a reload that follows a
+      // restore: there the file is newer than memory, and this call would write the pre-restore
+      // state back over the file that was just restored. `closeDb({ persist: false })` is how a
+      // caller says "the file is ahead of memory, do not overwrite it".
+      if (closeDbPersist) {
+        persistNow(instance);
+      }
       instance.close();
       instanceRef = null;
     },
   };
 
   migrate(db);
+  closeDbPersist = true;
 }
 
 export function getDb(): Database {
@@ -272,9 +290,28 @@ export function getDb(): Database {
   return db;
 }
 
-export function closeDb(): void {
+/**
+ * Drop the live database handle.
+ *
+ * `persist` defaults to true (normal shutdown: memory is the source of truth). Pass
+ * `{ persist: false }` when the FILE is ahead of memory — after a restore — otherwise this
+ * writes the pre-restore state back over the restored file and silently undoes it.
+ */
+export function closeDb(options?: { persist?: boolean }): void {
+  // Cancel any pending debounced flush BEFORE dropping the handle. `schedulePersist` captures
+  // its instance in a closure, so a timer armed before the close would fire afterwards and
+  // persist the OLD database over the file — another way a restore gets undone.
+  if (persistTimer) {
+    clearTimeout(persistTimer);
+    persistTimer = null;
+  }
+  closeDbPersist = options?.persist !== false;
   if (db) {
     db.close();
     db = null;
   }
+  // `instanceRef` must be dropped too: it is what the exit hook persists, and leaving it
+  // pointing at a closed instance would let a later flush write stale bytes over the file.
+  instanceRef = null;
+  closeDbPersist = true;
 }

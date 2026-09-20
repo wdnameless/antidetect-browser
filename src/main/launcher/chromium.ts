@@ -607,6 +607,14 @@ export async function startProfile(cfg: LaunchConfig): Promise<StartResult> {
 
   if (!child.pid) {
     if (tunnel) void tunnel.close();
+    // The user-data directory was created before the spawn, and the normal-exit cleanup only
+    // runs for a child that started. Without this, every failed launch of a TEMPORARY profile
+    // left an empty directory behind. Non-temporary profiles are deliberately left alone: their
+    // directory is the profile and is reused on the next launch.
+    if (cfg.temporary || isTemporaryProfile(cfg.profileId)) {
+      void cleanTemporaryDirectory(cfg.userDataDir).catch(() => {});
+      unregisterTemporaryProfile(cfg.profileId);
+    }
     throw new Error(`failed to spawn chromium (${executable})`);
   }
 

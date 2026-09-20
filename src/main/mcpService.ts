@@ -1,4 +1,5 @@
 import { spawn, ChildProcess } from 'node:child_process';
+import { randomBytes } from 'node:crypto';
 import * as fs from 'node:fs';
 import * as net from 'node:net';
 import * as path from 'node:path';
@@ -8,6 +9,8 @@ import { getMcpScope } from './api/routes/settings';
 // `@antidetect/sdk`, which is not bundled with the sidecar backend, and pulling it in made the
 // packaged app crash at startup with `Cannot find module '@antidetect/sdk'`.
 import { TOOL_DEFINITIONS } from '../../mcp/src/toolManifest';
+// Token minting for the HTTP transport. Auth-only module: no SDK, no tool runtime.
+import { SessionTokenManager } from '../../mcp/src/auth';
 
 export interface McpStatusResponse {
   running: boolean;
@@ -73,6 +76,25 @@ export class McpService {
   private child: ChildProcess | null = null;
   private httpPort: number | null = null;
   private startedAt: string | null = null;
+  /**
+   * Signing secret for MCP session tokens, generated once per app run.
+   *
+   * The server defaults to a hardcoded secret when this is absent, which would let anyone
+   * forge a token with any scope. Keeping it in-process means tokens die with the app.
+   */
+  private readonly signingSecret: string = randomBytes(32).toString('hex');
+  /**
+   * Issue an MCP session token signed with this run's secret.
+   *
+   * The HTTP transport requires a bearer token; this is where a legitimate caller gets one.
+   * The signing secret lives only in this process, so a token cannot be forged from the
+   * published default and cannot outlive the app.
+   */
+  public issueSessionToken(scope?: string): string {
+    const manager = new SessionTokenManager(this.signingSecret);
+    return manager.generateToken('app-operator', scope ?? getMcpScope());
+  }
+
   /** Last startup failure, kept so the UI can explain a toggle that did not work. */
   private lastError: string | null = null;
 
@@ -194,6 +216,11 @@ export class McpService {
       // unreachable no matter what the operator wanted — the setting had no way to reach it.
       // `getMcpScope()` resolves env-override-then-stored-setting.
       ANTIDETECT_MCP_SCOPE: getMcpScope(),
+      // A per-run signing secret. Without it the server fell back to the hardcoded
+      // `'antidetect-mcp-default-secret'`, which is published in this source tree — so anyone
+      // could MINT a valid token, choose their own scope, and reach the gated tools the scope
+      // system exists to protect. Regenerated each run, so tokens never outlive the process.
+      ANTIDETECT_MCP_SECRET: this.signingSecret,
     };
 
     // The MCP entry lives in `mcp/dist/...` while its runtime dependencies live in a

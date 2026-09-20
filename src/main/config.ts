@@ -51,10 +51,41 @@ function legacySettingsFile(): string | null {
   return candidates.find((p) => fs.existsSync(p)) ?? null;
 }
 
-export function readSettings(): Record<string, unknown> {
+/**
+ * Move a settings file that cannot be parsed aside, so the next `writeSettings` does not
+ * erase the only copy of the operator's choices.
+ *
+ * Without this, a truncated write (a crash mid-save, a power cut) meant the file was silently
+ * replaced by defaults on the next save, taking the chosen data directory, ports and paths
+ * with it — and leaving nothing to recover them from. The backup is best-effort: if it fails,
+ * losing settings is still better than refusing to start.
+ */
+function quarantineSettings(file: string, raw: string): void {
   try {
-    return JSON.parse(fs.readFileSync(settingsFile(), 'utf8')) as Record<string, unknown>;
+    const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
+    const dest = `${file}.corrupt-${stamp}`;
+    fs.writeFileSync(dest, raw, 'utf8');
+    console.error(`[config] settings file unreadable — kept a copy at ${dest}`);
   } catch {
+    // nothing sensible to do; the caller still falls back to defaults
+  }
+}
+
+export function readSettings(): Record<string, unknown> {
+  const primary = settingsFile();
+  try {
+    return JSON.parse(fs.readFileSync(primary, 'utf8')) as Record<string, unknown>;
+  } catch {
+    // Only quarantine when the file EXISTS and is unreadable. A missing file is a first run,
+    // not damage, and writing a .corrupt copy for it would just be noise.
+    if (fs.existsSync(primary)) {
+      try {
+        quarantineSettings(primary, fs.readFileSync(primary, 'utf8'));
+      } catch {
+        // unreadable even as bytes — nothing to preserve
+      }
+    }
+
     // Fall back to the pre-move location, and MIGRATE it: once the portable file exists the
     // legacy one is never read again, which is what keeps a copied folder self-contained.
     const legacy = legacySettingsFile();
@@ -64,7 +95,12 @@ export function readSettings(): Record<string, unknown> {
         writeSettings(parsed);
         return parsed;
       } catch {
-        // A corrupt legacy file means "no choice recorded", same as a corrupt portable one.
+        // A corrupt legacy file is preserved for the same reason as the primary one.
+        try {
+          quarantineSettings(legacy, fs.readFileSync(legacy, 'utf8'));
+        } catch {
+          // nothing to preserve
+        }
       }
     }
     return {};
