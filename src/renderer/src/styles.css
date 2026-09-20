@@ -714,7 +714,16 @@ pre {
 }
 
 .automation-action-btn {
-  flex: 1;
+  /* Both buttons take an equal share and are forced to the same height. `flex: 1` alone was not
+     enough: the labels differ in length, so the longer one wrapped to two lines and the row
+     ended with two differently-sized buttons — the operator's «сделай такого же размера как
+     остальные». `min-width: 0` lets the flex basis shrink instead of being dictated by the
+     longest word, and the fixed line-height keeps both labels on one line. */
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 22px;
+  line-height: 1;
+  white-space: nowrap;
   display: flex;
   align-items: center;
   justify-content: center;

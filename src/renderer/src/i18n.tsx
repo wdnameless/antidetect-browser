@@ -719,7 +719,7 @@ const RU: Record<string, string> = {
   'Drag to resize. Double-click to reset.': 'Потяните, чтобы изменить ширину. Двойной щелчок — сброс.',
   'Resize column': 'Изменить ширину столбца',
   'MCP config': 'Конфиг MCP',
-  'Documentation': 'Документация',
+  'Docs': 'Документация',
   'Copy API address': 'Копировать адрес API',
   'Start the MCP server': 'Запустить сервер MCP',
   'Stop the MCP server': 'Остановить сервер MCP',

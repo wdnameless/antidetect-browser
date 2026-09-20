@@ -259,7 +259,7 @@ export function AutomationPanel() {
         </button>
       </div>
 
-      <div className="automation-actions-row" style={{ flexWrap: 'wrap' }}>
+      <div className="automation-actions-row">
         <button
           type="button"
           className="automation-action-btn"
@@ -285,7 +285,7 @@ export function AutomationPanel() {
             }
           }}
         >
-          {t('Documentation')}
+          {t('Docs')}
         </button>
       </div>
 
