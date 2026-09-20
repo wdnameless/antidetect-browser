@@ -1,0 +1,76 @@
+name: Probe macOS kernel
+
+# Answers one question with measurements instead of assumption: can the pinned
+# fingerprint-chromium kernel run on Apple Silicon at all, and does it behave?
+#
+# Why a workflow rather than a local script: the probe must run on a REAL arm64 Mac. The only
+# one available to this project is GitHub's `macos-14` runner, which is M1. Windows cannot
+# produce a macOS build, and nothing about the kernel's behaviour under Rosetta can be
+# measured from a Windows host.
+#
+# Manual dispatch only. It downloads a 134 MB image and launches a browser, so it must not run
+# on every push.
+on:
+  workflow_dispatch:
+
+jobs:
+  probe:
+    name: Kernel probe (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # macos-14 = Apple Silicon (M1). macos-13 = Intel, run as the native-x86_64 control:
+        # the pinned asset is an x86_64 image, so Intel is the one host where it needs no
+        # translation — comparing the two is what separates "works" from "works only emulated".
+        os: [macos-14, macos-13]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Host facts
+        run: |
+          uname -a
+          sysctl -n machdep.cpu.brand_string || true
+          sysctl -n sysctl.proc_translated || echo "proc_translated unavailable"
+
+      - name: Run the kernel probe
+        id: probe
+        continue-on-error: true
+        run: node scripts/probe-macos-kernel.mjs 2>&1 | tee probe-output.txt
+
+      - name: Extract the report
+        if: always()
+        run: |
+          node -e '
+            const fs = require("fs");
+            const text = fs.readFileSync("probe-output.txt", "utf8");
+            const m = text.match(/--- PROBE_JSON_BEGIN ---\n([\s\S]*?)\n--- PROBE_JSON_END ---/);
+            if (!m) { console.log("NO_REPORT_FOUND"); process.exit(0); }
+            const r = JSON.parse(m[1]);
+            console.log("=== SUMMARY ===");
+            console.log("host        :", JSON.stringify(r.host));
+            console.log("arch        :", JSON.stringify(r.checks?.architecture));
+            console.log("runs natively:", r.checks?.runs_natively);
+            console.log("signature   :", (r.checks?.signature?.info || "").split("\n")[0]);
+            console.log("launched    :", r.checks?.launch?.launched);
+            console.log("proc arch   :", r.checks?.launch?.processArch);
+            console.log("surface     :", JSON.stringify(r.checks?.launch?.surface));
+            console.log("flags work  :", r.checks?.fingerprint_flags_effective);
+            console.log("webdriver   :", r.checks?.webdriver_false, "(false = stealth intact)");
+            if (r.fatal) console.log("FATAL       :", r.fatal);
+            console.log("=== STEPS ===");
+            for (const s of r.steps || []) console.log(` ${s.ok ? "OK  " : "FAIL"} ${s.name}: ${s.detail ?? ""}`);
+          '
+
+      - name: Upload the full report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-kernel-probe-${{ matrix.os }}
+          path: |
+            probe-output.txt
+          if-no-files-found: warn
