@@ -304,6 +304,32 @@ describe('kernelAcquire — macOS dmg branch', () => {
     return log;
   }
 
+  /**
+   * A `cp` stub that REALLY copies.
+   *
+   * The stub used to record its arguments and exit 0 while creating nothing — invisible on Windows,
+   * where the whole group is skipped, and wrong everywhere else: `ensureKernel` verifies the
+   * executable exists after extraction, so the fixture failed a check the production code was right
+   * to make. A stub that reports success must produce the effect success implies.
+   */
+  function copyStub(): string {
+    const log = path.join(tmpDir, 'cp-calls.log');
+    const script = path.join(binDir, 'cp-impl.js');
+    const body = `
+      const fs = require('fs');
+      fs.appendFileSync(${JSON.stringify(log)}, JSON.stringify(process.argv.slice(2)) + '\n');
+      const args = process.argv.slice(2);
+      const src = args[args.length - 2];
+      const dest = args[args.length - 1];
+      fs.cpSync(src, dest, { recursive: true });
+    `;
+    fs.writeFileSync(script, body, 'utf8');
+    const shim = path.join(binDir, 'cp');
+    fs.writeFileSync(shim, `#!/bin/sh\nexec node "${script}" "$@"\n`, 'utf8');
+    fs.chmodSync(shim, 0o755);
+    return log;
+  }
+
   function readCalls(log: string): string[][] {
     if (!fs.existsSync(log)) return [];
     return fs.readFileSync(log, 'utf8').trim().split('\n').filter(Boolean).map((l) => JSON.parse(l));
@@ -329,7 +355,7 @@ describe('kernelAcquire — macOS dmg branch', () => {
       `<key>mount-point</key>\n<string>${mount}</string>\n`,
       0
     );
-    const cpLog = stubTool('cp', '', 0);
+    const cpLog = copyStub();
     const xattrLog = stubTool('xattr', '', 0);
 
     const result = await ensureKernel({
@@ -446,6 +472,37 @@ describe('kernelAcquire — macOS dmg branch', () => {
     expect(readCalls(hdiutilLog)).toEqual([]);
   });
 
+  it.skipIf(!canStubExecutables)('refuses to merge into a bundle left behind by an interrupted run', async () => {
+    const dmg = Buffer.from('pretend disk image');
+    const asset = { ...DMG_ASSET, sha256: crypto.createHash('sha256').update(dmg).digest('hex'), size: dmg.length };
+
+    const mount = path.join(tmpDir, 'Volumes', 'Chromium');
+    fs.mkdirSync(path.join(mount, 'Chromium.app'), { recursive: true });
+    // A half-copied bundle from a previous attempt, holding a file the new one will not have.
+    const stale = path.join(tmpDir, 'Chromium.app');
+    fs.mkdirSync(path.join(stale, 'Contents', 'MacOS'), { recursive: true });
+    fs.writeFileSync(path.join(stale, 'Contents', 'MacOS', 'leftover-from-old-run'), 'stale');
+
+    stubTool('hdiutil', `<key>mount-point</key>\n<string>${mount}</string>\n`, 0);
+    copyStub();
+    stubTool('xattr', '', 0);
+
+    // The removal is verified, so a surviving tree is an error rather than a silent merge. This
+    // stub platform can remove directories, so the call SUCCEEDS here — which is the correct
+    // happy path. The refusal branch is what the macOS acceptance script would exercise if a
+    // directory could not be removed; asserted here only to the extent this platform allows.
+    const result = await ensureKernel({
+      platform: 'darwin',
+      targetDir: tmpDir,
+      expectedDigests: { darwin: asset },
+      fetchFn: createMockFetch(dmg) as unknown as typeof fetch,
+    });
+
+    // The previous tree was replaced, not merged into: the leftover is gone.
+    expect(fs.existsSync(path.join(stale, 'Contents', 'MacOS', 'leftover-from-old-run'))).toBe(false);
+    expect(result.executablePath).toBe(path.join(tmpDir, 'Chromium.app', 'Contents', 'MacOS', 'Chromium'));
+  });
+
 });
 
 describe('kernel version report matches where the kernel actually lives', () => {
@@ -468,37 +525,6 @@ describe('kernel version report matches where the kernel actually lives', () => 
     // resourcesPath is set in Electron, absent under plain vitest — so in this
     // environment the list is exactly the data dir, and it must not be empty.
     expect(dirs.every((d) => typeof d === 'string' && d.length > 0)).toBe(true);
-  });
-
-  it.skipIf(!canStubExecutables)('refuses to merge into a bundle left behind by an interrupted run', async () => {
-    const dmg = Buffer.from('pretend disk image');
-    const asset = { ...DMG_ASSET, sha256: crypto.createHash('sha256').update(dmg).digest('hex'), size: dmg.length };
-
-    const mount = path.join(tmpDir, 'Volumes', 'Chromium');
-    fs.mkdirSync(path.join(mount, 'Chromium.app'), { recursive: true });
-    // A half-copied bundle from a previous attempt, holding a file the new one will not have.
-    const stale = path.join(tmpDir, 'Chromium.app');
-    fs.mkdirSync(path.join(stale, 'Contents', 'MacOS'), { recursive: true });
-    fs.writeFileSync(path.join(stale, 'Contents', 'MacOS', 'leftover-from-old-run'), 'stale');
-
-    stubTool('hdiutil', `<key>mount-point</key>\n<string>${mount}</string>\n`, 0);
-    stubTool('cp', '', 0);
-    stubTool('xattr', '', 0);
-
-    // The removal is verified, so a surviving tree is an error rather than a silent merge. This
-    // stub platform can remove directories, so the call SUCCEEDS here — which is the correct
-    // happy path. The refusal branch is what the macOS acceptance script would exercise if a
-    // directory could not be removed; asserted here only to the extent this platform allows.
-    const result = await ensureKernel({
-      platform: 'darwin',
-      targetDir: tmpDir,
-      expectedDigests: { darwin: asset },
-      fetchFn: createMockFetch(dmg) as unknown as typeof fetch,
-    });
-
-    // The previous tree was replaced, not merged into: the leftover is gone.
-    expect(fs.existsSync(path.join(stale, 'Contents', 'MacOS', 'leftover-from-old-run'))).toBe(false);
-    expect(result.executablePath).toBe(path.join(tmpDir, 'Chromium.app', 'Contents', 'MacOS', 'Chromium'));
   });
 });
 
