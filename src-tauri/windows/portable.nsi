@@ -117,6 +117,25 @@ Section "Main"
   FileWrite $0 "${VERSION}"
   FileClose $0
 
+  ; Remove runtime folders from earlier versions. Each holds a full copy of the payload
+  ; (~150 MB), and the version is in the path precisely so an update can leave the old one behind
+  ; — without this the folder grows by that much per update, which defeats a portable folder.
+  ;
+  ; This sits INSIDE the extraction branch, before the label below: placing it after the label
+  ; would make it run on every launch, including the common case where nothing was extracted.
+  FindFirst $1 $2 "$EXEDIR\runtime\*.*"
+  RuntimeCleanupLoop:
+    StrCmp $2 "" RuntimeCleanupDone
+    StrCmp $2 "${VERSION}" RuntimeCleanupNext
+    StrCmp $2 "." RuntimeCleanupNext
+    StrCmp $2 ".." RuntimeCleanupNext
+    RMDir /r "$EXEDIR\runtime\$2"
+    RuntimeCleanupNext:
+    FindNext $1 $2
+    Goto RuntimeCleanupLoop
+  RuntimeCleanupDone:
+  FindClose $1
+
   ExtractionDone:
 
   ; Relocatable data: config.ts resolves DATA_DIR from this variable.

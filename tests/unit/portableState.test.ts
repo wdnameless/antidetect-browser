@@ -156,6 +156,34 @@ describe('portable state resolution and data root contract', () => {
     expect(config.resolveDataDir()).toBe(dataDirWithProfiles);
   });
 
+  it('d2) a folder chosen through the first-run prompt is still honoured on the NEXT launch', async () => {
+    const portableExeDir = path.join(tmpDir, 'portable-app');
+    fs.mkdirSync(portableExeDir, { recursive: true });
+
+    delete process.env.ANTIDETECT_DATA_DIR;
+    delete process.env.ANTIDETECT_SETTINGS_DIR;
+    process.env.APPDATA = path.join(tmpDir, 'empty-appdata');
+    process.env.PORTABLE_EXECUTABLE_DIR = portableExeDir;
+
+    const chosen = path.join(tmpDir, 'chosen-but-still-empty');
+    let config = await import('../../src/main/config');
+    expect(config.setFirstRunDataChoice({ dir: chosen })).toEqual({ ok: true });
+
+    // The NEXT launch decides whether that recorded path is usable. At this moment the folder
+    // holds no database and no profiles — only the marker written when the choice was made —
+    // so without the marker the choice was silently discarded and the data went to
+    // <portableExeDir>/data instead. That is the regression this pins.
+    vi.resetModules();
+    config = await import('../../src/main/config');
+    expect(config.resolveDataDir()).toBe(chosen);
+
+    // A directory that merely exists must still be rejected: a USB stick carries the OLD
+    // machine's absolute path, and honouring it would open an empty library.
+    const strangers = path.join(tmpDir, 'strangers-folder');
+    fs.mkdirSync(strangers, { recursive: true });
+    expect(config.dataDirHoldsData(strangers)).toBe(false);
+  });
+
   it('e) ANTIDETECT_DATA_DIR still beats everything', async () => {
     const portableExeDir = path.join(tmpDir, 'portable-app');
     fs.mkdirSync(portableExeDir, { recursive: true });

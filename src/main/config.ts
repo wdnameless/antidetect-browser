@@ -100,6 +100,16 @@ export function portableBaseDir(): string | null {
 }
 
 /**
+ * Marker file written into a data directory this installation has adopted.
+ *
+ * Its only job is to say "this folder belongs to NullTrace": the resolver uses it to keep a
+ * recorded path without demanding that real data already exists there, which is the state a
+ * freshly chosen folder is in. It is NOT a substitute for the database — a folder with data and
+ * no marker is still honoured.
+ */
+const DATA_ROOT_MARKER = '.nulltrace-data-root';
+
+/**
  * Resolve the data directory from the current environment and settings.
  *
  * Exported so the resolution order can be exercised directly: `DATA_DIR` is a module-level
@@ -123,17 +133,41 @@ export function resolveDataDir(): string {
   //    present without any data, belongs to another machine — that is the moved-folder case.
   const saved = settings.dataDir;
   if (typeof saved === 'string' && saved.length > 0 && dataDirHoldsData(saved)) {
+    markDataRoot(saved);
     return saved;
   }
 
   // 3) Portable mode: data beside the executable so the folder can be moved whole.
   //    Honours an explicit 'system' choice, which falls through to the default below.
   if (isPortableMode() && settings.dataMode !== 'system') {
-    return path.join(portableBaseDir() as string, 'data');
+    const portableData = path.join(portableBaseDir() as string, 'data');
+    markDataRoot(portableData);
+    return portableData;
   }
 
   // 4) Default: <settingsBase>/data (writable, stable across updates).
-  return path.join(settingsBase(), 'data');
+  const fallback = path.join(settingsBase(), 'data');
+  markDataRoot(fallback);
+  return fallback;
+}
+
+/**
+ * Claim a directory as this installation's data root, so the resolver keeps honouring it before
+ * any real data exists there (a folder the operator has just chosen, or one a move is about to
+ * fill).
+ *
+ * Must be called WHEN THE CHOICE IS MADE, not when it is next read: the next launch asks
+ * `dataDirHoldsData` before the folder has a database, so a marker written later would arrive
+ * after the decision that needed it. Best-effort by design — a folder that cannot be marked is
+ * still usable, and failing here must not take a settings write down with it.
+ */
+export function markDataRoot(dir: string): void {
+  try {
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, DATA_ROOT_MARKER), 'nulltrace\n', 'utf8');
+  } catch {
+    // Not fatal: the folder still works, it just relies on real data to be recognised.
+  }
 }
 
 /**
@@ -149,6 +183,13 @@ export function dataDirHoldsData(candidateDir: string): boolean {
   try {
     if (!fs.existsSync(candidateDir)) return false;
     if (fs.existsSync(path.join(candidateDir, 'antidetect.db'))) return true;
+    // A folder this installation has already adopted. Without this, choosing a NEW empty folder
+    // in the first-run prompt was honoured on that launch and silently discarded on the next
+    // one: `config.ts` creates the database, `profiles/` and `chromium/` eagerly, so a freshly
+    // adopted folder looks identical to a stranger's directory for one launch — long enough for
+    // the data to move somewhere else. Measured: the recorded path was ignored and the app
+    // resolved to `<launch folder>\data` instead.
+    if (fs.existsSync(path.join(candidateDir, DATA_ROOT_MARKER))) return true;
     return hasProfileData(path.join(candidateDir, 'profiles'));
   } catch {
     return false;
@@ -231,8 +272,13 @@ export function defaultDataDir(): string {
  */
 export function setFirstRunDataChoice(choice: { dir?: string | null; mode?: 'portable' | 'system' }): { ok: boolean; error?: string } {
   if (choice.dir && choice.dir.trim().length > 0) {
+    const chosen = path.resolve(choice.dir.trim());
+    // Claim it BEFORE recording it: the next launch decides whether the recorded path is
+    // usable, and at that moment a freshly chosen folder contains only a database created
+    // during import — which is not by itself proof that the folder is ours.
+    markDataRoot(chosen);
     const s = readSettings();
-    s.dataDir = path.resolve(choice.dir.trim());
+    s.dataDir = chosen;
     return tryWriteSettings(s);
   }
   if (choice.mode === 'portable' || choice.mode === 'system') {
@@ -409,6 +455,9 @@ export function getDataDir(): string {
  * (the backend resolves DATA_DIR at import time). Returns the new path.
  */
 export function setDataDir(dir: string): string {
+  // Claim the destination as well as recording it: Settings lets the operator name a folder that
+  // does not exist yet, and the next launch would otherwise treat it as another machine's.
+  markDataRoot(dir);
   const s = readSettings();
   s.dataDir = dir;
   writeSettings(s);

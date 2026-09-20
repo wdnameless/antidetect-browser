@@ -1,5 +1,34 @@
 # Changelog
 
+## [0.6.19] - 2026-09-19
+
+### Fixed — a chosen data folder was honoured once and then silently abandoned
+
+Setting the data folder in the first-run prompt worked for that launch and was ignored on the
+next one, which resolved to `<launch folder>\data` instead. Measured directly: a folder the
+operator had just chosen resolved back to the default.
+
+The resolver refuses a recorded path that exists without real data, because a USB stick carries
+the OLD machine's absolute path and honouring it would open an empty library. A folder chosen
+moments ago is in exactly that state — it has no database and no profiles yet — so the rule that
+protects a moved folder also discarded a fresh choice before the folder could fill up.
+
+A data folder is now claimed when the choice is made (`.nulltrace-data-root`, written by
+`markDataRoot`), and the resolver keeps a recorded path that carries that marker. A directory
+that merely exists is still refused, so the moved-folder protection is unchanged. Covered by a
+test that chose a folder, reloads the module, and asserts the next launch still resolves to it.
+
+### Fixed — the portable folder grew with every update
+
+`runtime/<version>` exists so an old extraction cannot be mistaken for the current one, but
+nothing removed the old ones: each holds a full copy of the payload (~150 MB), so the folder
+grew by that much per update. The launcher now prunes every `runtime/<version>` except the one it
+just extracted — inside the extraction branch, so a normal launch (where nothing is unpacked)
+does not walk the directory.
+
+Verified by planting a `runtime/0.6.17` beside the build, removing `runtime/0.6.18`, launching,
+and confirming the folder then held only `0.6.18`.
+
 ## [0.6.18] - 2026-09-19
 
 ### Changed — the application is now genuinely one folder
