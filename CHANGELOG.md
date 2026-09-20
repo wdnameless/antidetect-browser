@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.6.16] - 2026-09-19
+## [0.6.17] - 2026-09-19
 
 ### Fixed — the browser language did not change, and a reopened profile started blank
 
@@ -29,6 +29,14 @@ since Chromium accepts an unknown flag and silently ignores it.
 
 Verified end to end: a profile with a page open was stopped and restarted, and the page came back
 on its own with `navigator.language = "en-US"` and the stealth locale matching.
+
+## [0.6.16] - 2026-09-19 — not published
+
+Tagged to ship the language and session-restore fixes, but its CI run failed on a test whose
+premise was accidental: a case hard-coded `de-DE` and asserted the fingerprint's seed produced
+something else, which held locally and not in CI, where the seed is random. The tag was never
+released. The test now derives its expectation from the seed instead of assuming one, and the
+fixes ship as 0.6.17.
 
 ## [0.6.15] - 2026-09-19
 

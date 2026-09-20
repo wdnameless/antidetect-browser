@@ -53,18 +53,20 @@ describe('the chosen browser language reaches the stealth layer', () => {
   });
 
   it('follows the language even when it differs from the seed-derived locale', () => {
-    // A seed-derived locale is one of a handful of values; pick the language by choosing a
-    // profile whose config we then overwrite, which is exactly what the UI does.
+    // Deterministic by construction: read what the seed produced, then choose a language that is
+    // definitely NOT it. An earlier version hard-coded 'de-DE' and asserted the seed disagreed —
+    // which passed locally and failed in CI, where the seed is random and happened to give de-DE.
+    // A test whose premise is a coin flip tells you nothing when it is green.
     const id = createProfile({ name: 'Lang Override' });
-    const before = resolveLaunchConfig(id).stealth?.locale;
-    setLanguage(id, 'de-DE');
+    const seedLocale = resolveLaunchConfig(id).stealth?.locale;
+    expect(seedLocale, 'the seed must produce a locale').toBeTruthy();
+
+    const chosen = seedLocale === 'de-DE' ? 'ja-JP' : 'de-DE';
+    setLanguage(id, chosen);
     const after = resolveLaunchConfig(id);
 
-    expect(after.fingerprint.lang).toBe('de-DE');
-    expect(after.stealth?.locale).toBe('de-DE');
-    // Guards against the test passing by accident: the seed-derived value must have been
-    // something else, or this case proves nothing about overriding it.
-    expect(before, 'pick a seed whose locale differs from de-DE for this case to be meaningful').not.toBe('de-DE');
+    expect(after.fingerprint.lang).toBe(chosen);
+    expect(after.stealth?.locale, 'the chosen language must override the seed-derived locale').toBe(chosen);
   });
 
   it('leaves the seed-derived locale alone when no language is chosen', () => {
