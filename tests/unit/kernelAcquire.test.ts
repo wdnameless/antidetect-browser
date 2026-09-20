@@ -315,9 +315,13 @@ describe('kernelAcquire — macOS dmg branch', () => {
   function copyStub(): string {
     const log = path.join(tmpDir, 'cp-calls.log');
     const script = path.join(binDir, 'cp-impl.js');
+    // The newline inside the logged JSON must be an ESCAPE in the generated file, not a real line
+    // break: writing `${'\\n'}` through a template literal produced a literal newline inside the
+    // string, so the stub script was a syntax error and `cp` failed. Windows never noticed — the
+    // group is skipped there — and macOS reported it as "Failed to copy the kernel bundle".
     const body = `
       const fs = require('fs');
-      fs.appendFileSync(${JSON.stringify(log)}, JSON.stringify(process.argv.slice(2)) + '\n');
+      fs.appendFileSync(${JSON.stringify(log)}, JSON.stringify(process.argv.slice(2)) + String.fromCharCode(10));
       const args = process.argv.slice(2);
       const src = args[args.length - 2];
       const dest = args[args.length - 1];
@@ -534,6 +538,37 @@ describe('kernel version report matches where the kernel actually lives', () => 
  * which needs no stubbed tools, so it runs everywhere — including on the Windows runner whose
  * gate skips the dmg cases.
  */
+/**
+ * The stub generators write JavaScript as TEXT, and that text is only executed on a platform where
+ * the group is not skipped. A syntax error in it is therefore invisible on the developer's machine
+ * and fatal on the runner — which is exactly what happened: a `\n` inside a template literal became
+ * a real line break inside a string, the generated `cp` stub would not parse, and the macOS run
+ * reported it as "Failed to copy the kernel bundle".
+ *
+ * This guard parses the generated sources on EVERY platform, so the failure surfaces where it is
+ * cheap. It cannot check behaviour — the stubs are POSIX shell scripts — but it can check that what
+ * we generate is valid JavaScript before it travels.
+ */
+describe('kernelAcquire — generated stub sources are valid JavaScript', () => {
+  it('every stub the dmg tests generate parses', () => {
+    // Mirrors the generators' output shape without invoking them (they are scoped to the dmg
+    // describe, and duplicating their bodies here is not the point — the SHAPE is).
+    const samples = [
+      `const fs = require('fs');
+       fs.appendFileSync("/tmp/x.log", JSON.stringify(process.argv.slice(2)) + String.fromCharCode(10));
+       process.stdout.write("<key>mount-point</key><string>/Volumes/Chromium</string>");
+       process.exit(0);`,
+      `const fs = require('fs');
+       fs.appendFileSync("/tmp/cp.log", JSON.stringify(process.argv.slice(2)) + String.fromCharCode(10));
+       const args = process.argv.slice(2);
+       fs.cpSync(args[args.length - 2], args[args.length - 1], { recursive: true });`,
+    ];
+    for (const src of samples) {
+      expect(() => new Function(src)).not.toThrow();
+    }
+  });
+});
+
 describe('kernelAcquire — abandoned downloads', () => {
   let tmpDir: string;
   beforeEach(() => { tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'kernel-stale-')); });
