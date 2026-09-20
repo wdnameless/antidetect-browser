@@ -334,6 +334,22 @@ describe('kernelAcquire — macOS dmg branch', () => {
     return log;
   }
 
+  /**
+   * Build the bundle inside the fake image the way the real one contains it.
+   *
+   * The fixture used to create an EMPTY `Chromium.app`, which no longer satisfies `ensureKernel`:
+   * it verifies the executable exists at the pinned subpath after extraction, so a bundle with no
+   * binary is correctly rejected. The earlier `cp` stub created nothing at all, which hid this —
+   * once the stub really copied, the empty bundle became the next failure. Both are the same lesson:
+   * a fixture has to model what the code checks, or the check is never exercised.
+   */
+  function seedImageBundle(mount: string, name = 'Chromium.app'): string {
+    const exe = path.join(mount, name, 'Contents', 'MacOS', 'Chromium');
+    fs.mkdirSync(path.dirname(exe), { recursive: true });
+    fs.writeFileSync(exe, 'fake kernel binary');
+    return path.join(mount, name);
+  }
+
   function readCalls(log: string): string[][] {
     if (!fs.existsSync(log)) return [];
     return fs.readFileSync(log, 'utf8').trim().split('\n').filter(Boolean).map((l) => JSON.parse(l));
@@ -352,7 +368,7 @@ describe('kernelAcquire — macOS dmg branch', () => {
     // The mount point is NOT the conventional one — this is the stale-mount case the code must
     // survive by parsing hdiutil's plist instead of assuming /Volumes/Chromium.
     const mount = path.join(tmpDir, 'Volumes', 'Chromium 1');
-    fs.mkdirSync(path.join(mount, 'Chromium.app'), { recursive: true });
+    seedImageBundle(mount);
 
     const hdiutilLog = stubTool(
       'hdiutil',
@@ -393,7 +409,7 @@ describe('kernelAcquire — macOS dmg branch', () => {
     const asset = { ...DMG_ASSET, sha256: crypto.createHash('sha256').update(dmg).digest('hex'), size: dmg.length };
 
     const mount = path.join(tmpDir, 'Volumes', 'Chromium');
-    fs.mkdirSync(path.join(mount, 'Chromium.app'), { recursive: true });
+    seedImageBundle(mount);
 
     const hdiutilLog = stubTool('hdiutil', `<key>mount-point</key>\n<string>${mount}</string>\n`, 0);
     stubTool('cp', 'disk full', 1);
@@ -481,7 +497,7 @@ describe('kernelAcquire — macOS dmg branch', () => {
     const asset = { ...DMG_ASSET, sha256: crypto.createHash('sha256').update(dmg).digest('hex'), size: dmg.length };
 
     const mount = path.join(tmpDir, 'Volumes', 'Chromium');
-    fs.mkdirSync(path.join(mount, 'Chromium.app'), { recursive: true });
+    seedImageBundle(mount);
     // A half-copied bundle from a previous attempt, holding a file the new one will not have.
     const stale = path.join(tmpDir, 'Chromium.app');
     fs.mkdirSync(path.join(stale, 'Contents', 'MacOS'), { recursive: true });
