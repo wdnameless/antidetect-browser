@@ -66,6 +66,76 @@ instead. An install with no stored `events` back-fills the defaults rather than 
 `saveTelegramSettings` now MERGES the events map instead of writing it through: a caller omitting it
 means "leave routing alone", and writing `undefined` silently discarded the operator's choices.
 Found by a test that enabled `agent.activity`, saved without the map, and read it back as off.
+## [0.6.21] - 2026-09-20
+
+### Added — a macOS build, published with the release
+
+The operator asked whether the portable build could work on a Mac, and then asked for it in the
+releases so a teammate could test it. It is now built and published:
+
+**`NullTrace-0.6.21-macos-arm64.zip`** contains one folder with `NullTrace.app`, an empty marked
+`data/`, and `README-FIRST.txt`. Run it from that folder: profiles, the browser kernel, extensions
+and the database all live beside the app, so moving the folder moves everything. Nothing is written
+inside the `.app` — that would invalidate its signature and macOS would refuse to launch it.
+
+### Fixed — three defects the release rehearsal exposed, two of them in the application
+
+The rehearsal was added because `release-macos` runs `npm test` on macOS and no workflow had ever run
+the suite on that platform. It failed immediately — 9 tests in 3 files — which would have failed the
+release on the tag, after the tag existed.
+
+- **`isProcessOurApp` ignored its own injection seam off Windows.** The POSIX branch called
+  `child_process.execFileSync('ps', …)` directly instead of the injectable runner the Windows branch
+  honours. The POSIX path was therefore untestable, and untested: a bug there would have shipped
+  invisibly on macOS and Linux. It now routes through the seam, and the branch has five tests.
+- **A locked file was treated as a hard error on Linux.** The copy handler recognised `EBUSY`
+  (Windows) and `EPERM` (macOS immutable flag) but not `EACCES`, which is what a read-only file
+  reports on Linux — so instead of recording the file and rolling back, the update failed outright.
+- **Tests that asserted Windows behaviour ran on every platform.** `instanceLock` mocked
+  `tasklist`/`wmic` output while the code took the POSIX branch, and the locked-file test used
+  `chmod 0444`, which does not deny the owner's write on macOS. Each now uses the mechanism its
+  platform actually has (`chflags uchg` on macOS) and is gated to the platform whose behaviour it
+  asserts.
+
+Also fixed in the macOS kernel tests: a case had been moved into the wrong `describe` by an earlier
+restructuring, leaving `DMG_ASSET` undefined — invisible on Windows, where the group is skipped, and
+a hard error on macOS. Its `cp` stub now really copies, because `ensureKernel` verifies the
+executable exists and a stub reporting success must produce the effect success implies.
+
+### Changed — the browser kernel works on Apple Silicon, measured before it was written
+
+The macOS kernel asset was already pinned in `kernelAcquire.ts` and then thrown away: the `dmg`
+branch returned `ERR_UNSUPPORTED_HOST_EXTRACTION`, so the platform it was pinned for had never run.
+Measured on a real M1 before implementing:
+
+| Check | Result |
+|---|---|
+| Kernel architecture | **native `arm64`** (`Mach-O 64-bit executable arm64`) — no Rosetta involved |
+| `navigator.webdriver` under CDP | **false** |
+| `--fingerprint` flags | effective: seed 2023 → Apple M2/24 cores, seed 4242 → M4/16 cores, different canvas hashes |
+| Extraction | `hdiutil attach -nobrowse -readonly -plist`, `cp -R`, quarantine cleared, detached in a `finally` |
+
+### Known limitations on macOS (stated, not hidden)
+
+- **Apple Silicon only.** The pinned image contains `arm64` and nothing else: on an Intel Mac the
+  same image reports `arm64` and fails to launch with `EBADARCH`. Rosetta translates the other way.
+  Intel Macs cannot run this kernel at all.
+- **The form is a folder, not one file.** macOS does not allow a single-file application.
+- **No auto-update.** The launcher-swap mechanism is Windows-specific, so no updater metadata is
+  published for macOS — the app reports honestly that updates are not configured.
+- **Dragging the app to `/Applications` disables portable mode**, deliberately: a normal user cannot
+  write there, so the app falls back to `~/Library/Application Support` and behaves as an ordinary
+  installation instead of failing on its first settings write.
+- **Idle auto-lock and session-lock are Windows-only** (Win32 APIs).
+- First launch needs a one-time `xattr -dr com.apple.quarantine` step, because the project has no
+  Apple Developer account and the build is ad-hoc signed.
+
+### Not verified
+
+Launching the `.app` by double-click on a real Mac with real profiles, and moving it between two
+physical Macs — macOS caches bundle paths, and an ad-hoc signature may need re-signing. Both are
+recorded as risks in `openspec/changes/nulltrace-macos-arm64`. This release exists so a teammate can
+settle the first one on real hardware.
 
 ## [0.6.20] - 2026-09-19
 

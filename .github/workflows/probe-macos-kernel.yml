@@ -138,6 +138,15 @@ jobs:
   build-app:
     name: Build the macOS app bundle (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
+    # A bound, because this job compiles Tauri from scratch and had no ceiling. It normally takes
+    # 5-6 minutes (measured: 4.8 min on run 35501321560, 6.0 min on 35501119015), so 20 leaves room
+    # for a slow runner while still failing a genuinely stuck one rather than holding the queue.
+    #
+    # An earlier version of this comment claimed the job had STALLED with every step unstarted. That
+    # was my misreading of an in-progress job: the step list showed no conclusion because the job was
+    # still running, not because it was wedged, and it went on to succeed. Recorded so the bound is
+    # justified by the real numbers rather than by a diagnosis that was wrong.
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
@@ -226,4 +235,63 @@ jobs:
           path: |
             src-tauri/target/release/bundle/macos/
             dist-release/
+          if-no-files-found: warn
+
+  release-dry-run:
+    name: Release rehearsal (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-14]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Vendor the Node sidecar (arm64)
+        run: npm run vendor:node
+
+      - name: Build the SDK
+        run: npm run build:sdk
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Build backend, renderer and vendored runtime
+        run: npm run build && npm run copy:prod-deps
+
+      # THE step that has never run on macOS, and the one a release depends on. The
+      # `release-macos` job runs it before building the bundle, so a failure here would fail the
+      # release on the tag - after the tag exists. Rehearsed here so a version number is not the
+      # first thing to discover it.
+      - name: Unit tests (never executed on macOS before this)
+        id: tests
+        continue-on-error: true
+        run: |
+          npm test > macos-unit-tests.log 2>&1
+          echo "=== failures, if any ==="
+          grep -E "FAIL |Test Files .*failed|Tests .*failed" macos-unit-tests.log | head -20 || echo "(none)"
+          echo "=== totals ==="
+          grep -E "Test Files|Tests " macos-unit-tests.log | tail -4
+          if grep -qE "Test Files .*failed|Tests .*failed" macos-unit-tests.log; then
+            echo "::error::npm test FAILS on macOS - the release job runs this before building the bundle"
+            exit 1
+          fi
+
+      - name: Upload the macOS test log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-unit-tests
+          path: macos-unit-tests.log
           if-no-files-found: warn

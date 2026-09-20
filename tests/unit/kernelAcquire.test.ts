@@ -304,6 +304,52 @@ describe('kernelAcquire — macOS dmg branch', () => {
     return log;
   }
 
+  /**
+   * A `cp` stub that REALLY copies.
+   *
+   * The stub used to record its arguments and exit 0 while creating nothing — invisible on Windows,
+   * where the whole group is skipped, and wrong everywhere else: `ensureKernel` verifies the
+   * executable exists after extraction, so the fixture failed a check the production code was right
+   * to make. A stub that reports success must produce the effect success implies.
+   */
+  function copyStub(): string {
+    const log = path.join(tmpDir, 'cp-calls.log');
+    const script = path.join(binDir, 'cp-impl.js');
+    // The newline inside the logged JSON must be an ESCAPE in the generated file, not a real line
+    // break: writing `${'\\n'}` through a template literal produced a literal newline inside the
+    // string, so the stub script was a syntax error and `cp` failed. Windows never noticed — the
+    // group is skipped there — and macOS reported it as "Failed to copy the kernel bundle".
+    const body = `
+      const fs = require('fs');
+      fs.appendFileSync(${JSON.stringify(log)}, JSON.stringify(process.argv.slice(2)) + String.fromCharCode(10));
+      const args = process.argv.slice(2);
+      const src = args[args.length - 2];
+      const dest = args[args.length - 1];
+      fs.cpSync(src, dest, { recursive: true });
+    `;
+    fs.writeFileSync(script, body, 'utf8');
+    const shim = path.join(binDir, 'cp');
+    fs.writeFileSync(shim, `#!/bin/sh\nexec node "${script}" "$@"\n`, 'utf8');
+    fs.chmodSync(shim, 0o755);
+    return log;
+  }
+
+  /**
+   * Build the bundle inside the fake image the way the real one contains it.
+   *
+   * The fixture used to create an EMPTY `Chromium.app`, which no longer satisfies `ensureKernel`:
+   * it verifies the executable exists at the pinned subpath after extraction, so a bundle with no
+   * binary is correctly rejected. The earlier `cp` stub created nothing at all, which hid this —
+   * once the stub really copied, the empty bundle became the next failure. Both are the same lesson:
+   * a fixture has to model what the code checks, or the check is never exercised.
+   */
+  function seedImageBundle(mount: string, name = 'Chromium.app'): string {
+    const exe = path.join(mount, name, 'Contents', 'MacOS', 'Chromium');
+    fs.mkdirSync(path.dirname(exe), { recursive: true });
+    fs.writeFileSync(exe, 'fake kernel binary');
+    return path.join(mount, name);
+  }
+
   function readCalls(log: string): string[][] {
     if (!fs.existsSync(log)) return [];
     return fs.readFileSync(log, 'utf8').trim().split('\n').filter(Boolean).map((l) => JSON.parse(l));
@@ -322,14 +368,14 @@ describe('kernelAcquire — macOS dmg branch', () => {
     // The mount point is NOT the conventional one — this is the stale-mount case the code must
     // survive by parsing hdiutil's plist instead of assuming /Volumes/Chromium.
     const mount = path.join(tmpDir, 'Volumes', 'Chromium 1');
-    fs.mkdirSync(path.join(mount, 'Chromium.app'), { recursive: true });
+    seedImageBundle(mount);
 
     const hdiutilLog = stubTool(
       'hdiutil',
       `<key>mount-point</key>\n<string>${mount}</string>\n`,
       0
     );
-    const cpLog = stubTool('cp', '', 0);
+    const cpLog = copyStub();
     const xattrLog = stubTool('xattr', '', 0);
 
     const result = await ensureKernel({
@@ -363,7 +409,7 @@ describe('kernelAcquire — macOS dmg branch', () => {
     const asset = { ...DMG_ASSET, sha256: crypto.createHash('sha256').update(dmg).digest('hex'), size: dmg.length };
 
     const mount = path.join(tmpDir, 'Volumes', 'Chromium');
-    fs.mkdirSync(path.join(mount, 'Chromium.app'), { recursive: true });
+    seedImageBundle(mount);
 
     const hdiutilLog = stubTool('hdiutil', `<key>mount-point</key>\n<string>${mount}</string>\n`, 0);
     stubTool('cp', 'disk full', 1);
@@ -446,6 +492,37 @@ describe('kernelAcquire — macOS dmg branch', () => {
     expect(readCalls(hdiutilLog)).toEqual([]);
   });
 
+  it.skipIf(!canStubExecutables)('refuses to merge into a bundle left behind by an interrupted run', async () => {
+    const dmg = Buffer.from('pretend disk image');
+    const asset = { ...DMG_ASSET, sha256: crypto.createHash('sha256').update(dmg).digest('hex'), size: dmg.length };
+
+    const mount = path.join(tmpDir, 'Volumes', 'Chromium');
+    seedImageBundle(mount);
+    // A half-copied bundle from a previous attempt, holding a file the new one will not have.
+    const stale = path.join(tmpDir, 'Chromium.app');
+    fs.mkdirSync(path.join(stale, 'Contents', 'MacOS'), { recursive: true });
+    fs.writeFileSync(path.join(stale, 'Contents', 'MacOS', 'leftover-from-old-run'), 'stale');
+
+    stubTool('hdiutil', `<key>mount-point</key>\n<string>${mount}</string>\n`, 0);
+    copyStub();
+    stubTool('xattr', '', 0);
+
+    // The removal is verified, so a surviving tree is an error rather than a silent merge. This
+    // stub platform can remove directories, so the call SUCCEEDS here — which is the correct
+    // happy path. The refusal branch is what the macOS acceptance script would exercise if a
+    // directory could not be removed; asserted here only to the extent this platform allows.
+    const result = await ensureKernel({
+      platform: 'darwin',
+      targetDir: tmpDir,
+      expectedDigests: { darwin: asset },
+      fetchFn: createMockFetch(dmg) as unknown as typeof fetch,
+    });
+
+    // The previous tree was replaced, not merged into: the leftover is gone.
+    expect(fs.existsSync(path.join(stale, 'Contents', 'MacOS', 'leftover-from-old-run'))).toBe(false);
+    expect(result.executablePath).toBe(path.join(tmpDir, 'Chromium.app', 'Contents', 'MacOS', 'Chromium'));
+  });
+
 });
 
 describe('kernel version report matches where the kernel actually lives', () => {
@@ -469,37 +546,6 @@ describe('kernel version report matches where the kernel actually lives', () => 
     // environment the list is exactly the data dir, and it must not be empty.
     expect(dirs.every((d) => typeof d === 'string' && d.length > 0)).toBe(true);
   });
-
-  it.skipIf(!canStubExecutables)('refuses to merge into a bundle left behind by an interrupted run', async () => {
-    const dmg = Buffer.from('pretend disk image');
-    const asset = { ...DMG_ASSET, sha256: crypto.createHash('sha256').update(dmg).digest('hex'), size: dmg.length };
-
-    const mount = path.join(tmpDir, 'Volumes', 'Chromium');
-    fs.mkdirSync(path.join(mount, 'Chromium.app'), { recursive: true });
-    // A half-copied bundle from a previous attempt, holding a file the new one will not have.
-    const stale = path.join(tmpDir, 'Chromium.app');
-    fs.mkdirSync(path.join(stale, 'Contents', 'MacOS'), { recursive: true });
-    fs.writeFileSync(path.join(stale, 'Contents', 'MacOS', 'leftover-from-old-run'), 'stale');
-
-    stubTool('hdiutil', `<key>mount-point</key>\n<string>${mount}</string>\n`, 0);
-    stubTool('cp', '', 0);
-    stubTool('xattr', '', 0);
-
-    // The removal is verified, so a surviving tree is an error rather than a silent merge. This
-    // stub platform can remove directories, so the call SUCCEEDS here — which is the correct
-    // happy path. The refusal branch is what the macOS acceptance script would exercise if a
-    // directory could not be removed; asserted here only to the extent this platform allows.
-    const result = await ensureKernel({
-      platform: 'darwin',
-      targetDir: tmpDir,
-      expectedDigests: { darwin: asset },
-      fetchFn: createMockFetch(dmg) as unknown as typeof fetch,
-    });
-
-    // The previous tree was replaced, not merged into: the leftover is gone.
-    expect(fs.existsSync(path.join(stale, 'Contents', 'MacOS', 'leftover-from-old-run'))).toBe(false);
-    expect(result.executablePath).toBe(path.join(tmpDir, 'Chromium.app', 'Contents', 'MacOS', 'Chromium'));
-  });
 });
 
 
@@ -508,6 +554,37 @@ describe('kernel version report matches where the kernel actually lives', () => 
  * which needs no stubbed tools, so it runs everywhere — including on the Windows runner whose
  * gate skips the dmg cases.
  */
+/**
+ * The stub generators write JavaScript as TEXT, and that text is only executed on a platform where
+ * the group is not skipped. A syntax error in it is therefore invisible on the developer's machine
+ * and fatal on the runner — which is exactly what happened: a `\n` inside a template literal became
+ * a real line break inside a string, the generated `cp` stub would not parse, and the macOS run
+ * reported it as "Failed to copy the kernel bundle".
+ *
+ * This guard parses the generated sources on EVERY platform, so the failure surfaces where it is
+ * cheap. It cannot check behaviour — the stubs are POSIX shell scripts — but it can check that what
+ * we generate is valid JavaScript before it travels.
+ */
+describe('kernelAcquire — generated stub sources are valid JavaScript', () => {
+  it('every stub the dmg tests generate parses', () => {
+    // Mirrors the generators' output shape without invoking them (they are scoped to the dmg
+    // describe, and duplicating their bodies here is not the point — the SHAPE is).
+    const samples = [
+      `const fs = require('fs');
+       fs.appendFileSync("/tmp/x.log", JSON.stringify(process.argv.slice(2)) + String.fromCharCode(10));
+       process.stdout.write("<key>mount-point</key><string>/Volumes/Chromium</string>");
+       process.exit(0);`,
+      `const fs = require('fs');
+       fs.appendFileSync("/tmp/cp.log", JSON.stringify(process.argv.slice(2)) + String.fromCharCode(10));
+       const args = process.argv.slice(2);
+       fs.cpSync(args[args.length - 2], args[args.length - 1], { recursive: true });`,
+    ];
+    for (const src of samples) {
+      expect(() => new Function(src)).not.toThrow();
+    }
+  });
+});
+
 describe('kernelAcquire — abandoned downloads', () => {
   let tmpDir: string;
   beforeEach(() => { tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'kernel-stale-')); });

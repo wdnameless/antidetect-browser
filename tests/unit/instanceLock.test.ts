@@ -8,6 +8,15 @@ import {
   LOCK_FILE,
 } from '../../src/main/index';
 
+/**
+ * `isProcessOurApp` dispatches on the HOST platform: Windows reads `tasklist`/`wmic`/PowerShell, and
+ * POSIX reads `ps`. Each branch is only reachable on its own platform, so the Windows cases below
+ * assert Windows behaviour and MUST be skipped elsewhere — before this gate they ran on macOS and
+ * Linux too, mocking `tasklist` output for a branch the code never takes, and failed (measured: 7
+ * failures on the macOS runner).
+ */
+const isWindows = process.platform === 'win32';
+
 describe('instanceLock', () => {
   const originalKill = process.kill;
 
@@ -36,7 +45,53 @@ describe('instanceLock', () => {
     }
   });
 
-  describe('isProcessOurApp', () => {
+  /**
+   * The POSIX branch, exercised through the same injected probe the Windows cases use.
+   *
+   * These tests exist because the branch was NOT testable before: it called `execFileSync` directly
+   * instead of the injectable runner, so on any platform the seam was bypassed and the only way to
+   * reach this code was to have a real `ps` answer for a real pid. A seam that one branch ignores is
+   * not a seam — it is a place where bugs hide, and this file is where they were hiding.
+   */
+  describe.skipIf(isWindows)('isProcessOurApp (POSIX probe)', () => {
+    function fakePs(answer: string | Error) {
+      return vi.fn((file: string, args: string[]) => {
+        if (file !== 'ps') throw new Error(`unexpected probe: ${file}`);
+        if (!args.includes('-o') || !args.includes('args=')) {
+          throw new Error(`unexpected ps args: ${args.join(' ')}`);
+        }
+        if (answer instanceof Error) throw answer;
+        return answer;
+      });
+    }
+
+    it('recognises our backend from the ps command line', () => {
+      setProcessInspectorExec(fakePs('/usr/bin/node /Applications/NullTrace.app/Contents/Resources/dist/src/main/index.js') as never);
+      expect(isProcessOurApp(4242)).toBe(true);
+    });
+
+    it('recognises it through the path that carries the product name', () => {
+      setProcessInspectorExec(fakePs('/opt/nulltrace/antidetect service') as never);
+      expect(isProcessOurApp(4242)).toBe(true);
+    });
+
+    it('reports a different process as not-ours', () => {
+      setProcessInspectorExec(fakePs('/usr/bin/python3 -m http.server') as never);
+      expect(isProcessOurApp(4242)).toBe(false);
+    });
+
+    it('treats an empty command line as not-ours (the pid is gone)', () => {
+      setProcessInspectorExec(fakePs('   \n') as never);
+      expect(isProcessOurApp(4242)).toBe(false);
+    });
+
+    it('reports an unknown result when the probe fails outright', () => {
+      setProcessInspectorExec(fakePs(new Error('ps: no such process')) as never);
+      expect(isProcessOurApp(999999)).toBeUndefined();
+    });
+  });
+
+  describe.skipIf(!isWindows)('isProcessOurApp (Windows probes)', () => {
     /**
      * A fake `execFileSync` that answers per COMMAND, the way the real system does.
      * The probe now consults `tasklist` first (because `wmic` is absent from
@@ -173,7 +228,7 @@ describe('instanceLock', () => {
       expect(fs.readFileSync(LOCK_FILE, 'utf8').trim()).toBe(String(process.pid));
     });
 
-    it('valid active lock pointing to our app image -> throws "Another instance is already running"', () => {
+    it.skipIf(!isWindows)('valid active lock pointing to our app image -> throws "Another instance is already running"', () => {
       const activePid = 77777;
       fs.writeFileSync(LOCK_FILE, String(activePid), 'utf8');
 
