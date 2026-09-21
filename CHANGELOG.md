@@ -1,5 +1,70 @@
 # Changelog
 
+## [Unreleased]
+
+### Fixed — the preflight check was unusable: the modal crashed on render, and its styles had no owner
+
+Operator: «точечный preflight чек не работает» — screenshot of the modal showing a title and
+"Overall Result: Pending", then nothing.
+
+The blank window was not an empty modal. **The whole React tree unmounted.** There is no error
+boundary in the renderer, so the first render throw took the application with it.
+
+The throw was a type contract that never matched the wire. The backend serialises a verdict with
+`checks` as an **object** keyed by check name plus `checkList` as the array of the same data
+(`PreflightVerdict` in `src/main/preflight/types.ts`, pinned by
+`tests/unit/preflight/preflightRoutes.test.ts`). The renderer declared `checks` as an array and
+called `verdict.checks.map(...)`. Reproduced against a real verdict from the running service:
+
+```
+checks.map    -> TypeError: raw.checks.map is not a function
+checks.length -> undefined (an object has no length)
+```
+
+Three fields were wrong the same way, so even the parts that did render were empty: the per-check
+text is `detail` (declared `message`) and the remediation key is `reasonCode` (declared `reason`).
+`Diagnostics.tsx` read `verdict.checks` as an array too, in both `coherenceScore` and
+`coherenceIssues` — it would have crashed the same way on a page that had a verdict.
+
+Fixing that exposed a second, independent defect: **22 of the modal's 37 class names had no CSS at
+all.** The stylesheet was written for a different component — `.preflight-check-card`,
+`.preflight-check-row`, `.preflight-check-msg`, `.preflight-check-duration` — while the JSX renders
+`.preflight-check-item`, `-main`, `-left`, `-right`, `-summary`, `-latency`. None of the styled
+names existed in the markup, so every row laid out as unstyled inline text. The orphaned rules are
+deleted and the classes the component actually uses are defined.
+
+Also fixed while verifying: every check printed a bare `"ms"`, because several checks return early
+and carry no `durationMs`; the label is now conditional.
+
+Verified on the shipped bundle served by a live backend, through the real button in the Actions
+column: modal opens, **8 check rows render**, expanding one shows its Reason Code and remediation,
+no uncaught errors, tree still mounted — in both themes.
+
+### Fixed — deleting a group silently destroyed the group of profiles sitting in the trash
+
+`deleteGroup` ran `UPDATE profiles SET group_id = NULL WHERE group_id = ?` with no
+`deleted_at IS NULL` guard, while `listGroups` counts only live profiles. So a group the operator
+saw as **empty** (`profile_count: 0`, trashed rows excluded from the count) still reached into the
+trash and detached profiles on delete.
+
+Measured on a live service: assign a profile to a group, trash it, delete the group, restore it —
+`group_id` came back `null`. The count and the delete disagreed about who belonged to the group.
+
+Delete now detaches only live profiles, matching the count. `restoreProfile` additionally clears a
+reference to a group that no longer exists, so a restore cannot land the operator on a profile
+whose group tag renders as the bare word "Unknown".
+
+Verified both branches on a live service after the fix:
+
+| Case | Before | After |
+|---|---|---|
+| Group still exists when the profile is restored | assignment lost | **kept** |
+| Group deleted while the profile was trashed | dangling id | **cleared → "Ungrouped"** |
+
+Group saving itself was checked end to end and was already correct: create-with-group,
+edit/re-assign, clear to ungrouped, bulk move, duplicate-with-group, and filtering by group all
+persist and read back properly.
+
 ## [0.6.23] - 2026-09-21
 
 ### Fixed — «Download MCP» asked for a TYPED path instead of opening a folder picker

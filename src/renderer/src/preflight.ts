@@ -2,19 +2,54 @@ import React from 'react';
 
 export type PreflightStatus = 'pass' | 'warn' | 'fail';
 
+/**
+ * One diagnostic check, exactly as the backend serialises it.
+ *
+ * `reasonCode` and `detail` are the wire field names (`CheckVerdict` in
+ * `src/main/preflight/types.ts`). They were declared here as `reason` and `message`, which do not
+ * exist on the response — so the remediation lookup and the per-check summary both read
+ * `undefined`, and the modal silently showed neither.
+ */
 export interface PreflightCheckVerdict {
   name: string;
   status: PreflightStatus;
-  durationMs: number;
-  reason?: string;
-  message?: string;
+  reasonCode?: string;
+  detail: string;
+  durationMs?: number;
 }
 
+/**
+ * The preflight verdict as it actually arrives over HTTP.
+ *
+ * `checks` is an OBJECT keyed by check name and `checkList` is the same data as an array. This
+ * type used to declare `checks` as an array, and the modal called `verdict.checks.map(...)` — a
+ * TypeError on the first render, which unmounted the whole React tree (there is no error boundary)
+ * and left the operator with a blank window: «точечный preflight чек не работает». The contract is
+ * pinned by the backend's own tests (`tests/unit/preflight/preflightRoutes.test.ts` builds
+ * `checks: {}` + `checkList: []`), so the array view lives in `checkList` — never in `checks`.
+ */
 export interface PreflightVerdict {
   profileId: string;
   overall: PreflightStatus;
-  checks: PreflightCheckVerdict[];
+  passed?: boolean;
+  checks: Record<string, PreflightCheckVerdict>;
+  checkList: PreflightCheckVerdict[];
   timestamp: number;
+}
+
+/**
+ * The checks as an array, which is the only shape callers can iterate.
+ *
+ * `checkList` is authoritative because the backend builds it from the same map it serialises as
+ * `checks`, and it carries each check's `name`. `Object.values` is the fallback for a verdict that
+ * only has the map. Both consumers (`PreflightModal`, `Diagnostics`) go through here so the
+ * object-vs-array mistake cannot be made a third time.
+ */
+export function checksOf(verdict: PreflightVerdict): PreflightCheckVerdict[] {
+  if (Array.isArray(verdict.checkList) && verdict.checkList.length > 0) return verdict.checkList;
+  // The map's KEY is the check name; the value carries no `name` of its own, so it must be
+  // applied after the spread rather than before it.
+  return Object.entries(verdict.checks ?? {}).map(([name, check]) => ({ ...check, name }));
 }
 
 export const PREFLIGHT_REASON_REMEDIATION: Record<string, { summary: string; hint: string }> = {

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api, type ProfileListItem, type DiagnosticsReport } from '../api';
-import type { PreflightVerdict } from '../preflight';
+import { checksOf, type PreflightVerdict } from '../preflight';
 import { useI18n } from '../i18n';
 import { ProxiesIcon, RefreshIcon } from '../icons';
 
@@ -64,7 +64,9 @@ function buildCards(r: DiagnosticsReport): CardSpec[] {
  * did not fail, with warns penalized at 40%.
  */
 function coherenceScore(verdict: PreflightVerdict): number {
-  const checks = verdict.checks;
+  // An array view is required: `verdict.checks` is an object keyed by check name. Reading it as an
+  // array here was the same defect that blanked the preflight modal.
+  const checks = checksOf(verdict);
   if (checks.length === 0) return 100;
   const failed = checks.filter((c) => c.status === 'fail').length;
   const warned = checks.filter((c) => c.status === 'warn').length;
@@ -74,8 +76,9 @@ function coherenceScore(verdict: PreflightVerdict): number {
 
 /** Extracts human-readable coherence issues from the coherence check message. */
 function coherenceIssues(verdict: PreflightVerdict): string[] {
-  const check = verdict.checks.find((c) => c.name === 'coherence');
-  const message = check?.message;
+  const check = checksOf(verdict).find((c) => c.name === 'coherence');
+  // The backend's human-readable text is `detail`; `message` does not exist on the wire.
+  const message = check?.detail;
   if (!message) return [];
   const match = message.match(/Coherence issues \(\d+\): (.*)$/s);
   if (match && match[1]) {

@@ -1977,94 +1977,245 @@ tr.row-dense:focus-within .row-dense__actions {
   overflow-y: auto;
 }
 
-.preflight-checks-header {
-  display: flex;
-  justify-content: space-between;
-  font-size: 12px;
-  color: var(--text-muted);
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  padding: 0 4px 4px 4px;
-  border-bottom: 1px solid var(--border);
-}
-
-.preflight-check-card {
+/*
+ * The preflight check list.
+ *
+ * These rules replace a block that styled a DIFFERENT component: it defined
+ * `.preflight-check-card`, `.preflight-check-row`, `.preflight-check-msg`, `.preflight-check-duration`,
+ * `.preflight-check-status-indicator` and `.preflight-check-badge-wrap`, while the modal renders
+ * `.preflight-check-item`, `-main`, `-left`, `-right`, `-summary` and `-latency`. None of the styled
+ * names existed in the JSX, so every row laid out as unstyled inline text and the modal read as a
+ * column of run-together words. The class names below are the ones the component actually uses.
+ *
+ * The row layout is a two-column flex: identity on the left, status on the right.
+ */
+.preflight-check-item {
   background: var(--surface-2);
-  border: none;
   border-radius: var(--radius-md);
-  padding: 12px;
+  border-left: 3px solid var(--border);
+  padding: 10px 12px;
   display: flex;
   flex-direction: column;
   gap: 8px;
-  cursor: pointer;
-  transition: background 0.12s ease;
-}
-.preflight-check-card:hover {
-  border-color: var(--border-focus);
-}
-.preflight-check-card.warn {
-  border-left: 3px solid var(--warn);
-}
-.preflight-check-card.fail {
-  border-left: 3px solid var(--text-muted);
-}
-.preflight-check-card.pass {
-  border-left: 3px solid var(--ok);
 }
 
-.preflight-check-row {
+.preflight-check-item.pass { border-left-color: var(--ok); }
+.preflight-check-item.warn { border-left-color: var(--warn); }
+.preflight-check-item.fail { border-left-color: var(--danger); }
+
+.preflight-check-main {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 12px;
 }
+
+.preflight-check-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.preflight-check-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+/* The status dot. Colour is the only per-state change; shape stays constant so the
+   rows read as one column. */
+.preflight-status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: var(--text-muted);
+}
+.preflight-status-dot.pass { background: var(--ok); }
+.preflight-status-dot.warn { background: var(--warn); }
+.preflight-status-dot.fail { background: var(--danger); }
 
 .preflight-check-info {
   display: flex;
-  align-items: center;
-  gap: 8px;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
 }
 
-.preflight-check-status-indicator {
+/* Remaining classes the modal renders: the per-check summary line, its latency readout, the
+   status tag, the disclosure chevron, and the modal-level alert/loading/meta blocks. Without
+   these the markup was structurally correct but visually flat. */
+.preflight-check-summary {
   font-size: 12px;
-  font-weight: bold;
-}
-.preflight-check-card.pass .preflight-check-status-indicator {
-  color: var(--ok);
-}
-.preflight-check-card.warn .preflight-check-status-indicator {
-  color: var(--warn);
-}
-.preflight-check-card.fail .preflight-check-status-indicator {
-  color: var(--text-muted);
+  color: var(--text-secondary);
+  line-height: 1.35;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-.preflight-check-name {
-  font-size: 13.5px;
-  color: var(--text);
-}
-
-.preflight-check-duration {
-  font-size: 11.5px;
-  color: var(--text-muted);
+.preflight-check-latency {
+  font-size: 11px;
   font-family: var(--font-mono);
+  color: var(--text-muted);
 }
 
-.preflight-check-badge-wrap {
+.preflight-tag {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  padding: 2px 7px;
+  border-radius: var(--radius-sm);
+  background: var(--control-bg);
+  color: var(--text-secondary);
+}
+.preflight-tag.pass { color: var(--ok); }
+.preflight-tag.warn { color: var(--warn); }
+.preflight-tag.fail { color: var(--danger); }
+
+.preflight-chevron {
+  font-size: 9px;
+  color: var(--text-muted);
+}
+
+.preflight-detail-row {
   display: flex;
   align-items: center;
   gap: 8px;
+  font-size: 12px;
 }
 
-.preflight-accordion-arrow {
-  font-size: 10px;
+.preflight-detail-label {
   color: var(--text-muted);
 }
 
-.preflight-check-msg {
+.preflight-code {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  background: var(--control-bg-hover);
+  color: var(--text);
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+}
+
+.preflight-check-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.preflight-label {
+  font-size: 11px;
+}
+
+.preflight-remediation-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.preflight-remediation-desc {
   font-size: 12.5px;
   color: var(--text-secondary);
   line-height: 1.4;
+}
+
+.preflight-section-title {
+  font-size: 11.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-muted);
+  margin: 0;
+}
+
+.preflight-checks-table {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.preflight-meta {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.preflight-error-tag {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--danger);
+}
+
+.preflight-alert {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  font-size: 12.5px;
+}
+.preflight-alert.error {
+  background: var(--danger-bg);
+  color: var(--danger);
+}
+.preflight-alert-icon {
+  font-weight: 700;
+}
+.preflight-alert-msg {
+  flex: 1;
+}
+
+.preflight-loading-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 24px 12px;
+  color: var(--text-secondary);
+  font-size: 12.5px;
+  text-align: center;
+}
+
+.preflight-spinner {
+  width: 18px;
+  height: 18px;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: preflight-spin 0.8s linear infinite;
+}
+
+@keyframes preflight-spin {
+  to { transform: rotate(360deg); }
+}
+
+.preflight-badge-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 8px;
+  background: var(--control-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font-size: 11px;
+  cursor: pointer;
+}
+.preflight-badge-btn:hover {
+  background: var(--control-bg-hover);
+  color: var(--text);
+}
+
+.preflight-badge-count {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--warn);
+}
+
+.preflight-settings-hint {
+  font-size: 11.5px;
+  color: var(--text-muted);
 }
 
 .preflight-check-details {

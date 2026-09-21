@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { PreflightStatus, PreflightVerdict, getRemediation } from '../preflight';
+import { PreflightStatus, PreflightVerdict, checksOf, getRemediation } from '../preflight';
 import { Modal } from './Modal';
 import { RefreshIcon, ShieldCheckIcon } from '../icons';
 
@@ -51,7 +51,11 @@ export function PreflightBadge({ status, verdict, onClick, onRun, title }: Prefl
     icon = '!';
   }
 
-  const issuesCount = verdict ? verdict.checks.filter(c => c.status === 'fail' || c.status === 'warn').length : 0;
+  // `checkList`, not `checks`: the latter is an object keyed by check name, so `.filter` on it
+  // threw a TypeError and blanked the UI. See the note on `PreflightVerdict`.
+  const issuesCount = verdict
+    ? (verdict.checkList ?? []).filter((c) => c.status === 'fail' || c.status === 'warn').length
+    : 0;
 
   return (
     <button
@@ -100,6 +104,10 @@ export function PreflightModal({
 
   if (!isOpen) return null;
 
+  // The array view of the checks. `checks` on the wire is an object keyed by check name, so any
+  // `.map`/`.filter`/`.length` over it throws; `checkList` is the array the backend also sends.
+  const checks = verdict ? checksOf(verdict) : [];
+
   return (
     <Modal
       onClose={onClose}
@@ -143,12 +151,12 @@ export function PreflightModal({
 
         {verdict && !loading && (
           <div className="preflight-checks-list">
-            <h4 className="preflight-section-title">Diagnostic Checks ({verdict.checks.length})</h4>
+            <h4 className="preflight-section-title">Diagnostic Checks ({checks.length})</h4>
             <div className="preflight-checks-table">
-              {verdict.checks.map((check) => {
-                const remediation = check.reason ? getRemediation(check.reason) : null;
+              {checks.map((check) => {
+                const remediation = check.reasonCode ? getRemediation(check.reasonCode) : null;
                 const isExpanded = expandedCheck === check.name;
-                const hasDetails = Boolean(remediation || check.message);
+                const hasDetails = Boolean(remediation || check.detail);
 
                 return (
                   <div
@@ -164,14 +172,20 @@ export function PreflightModal({
                         <span className={`preflight-status-dot ${check.status}`} />
                         <div className="preflight-check-info">
                           <span className="preflight-check-name">{check.name}</span>
-                          {check.message && (
-                            <span className="preflight-check-summary">{check.message}</span>
+                          {check.detail && (
+                            <span className="preflight-check-summary">{check.detail}</span>
                           )}
                         </div>
                       </div>
 
                       <div className="preflight-check-right">
-                        <span className="preflight-check-latency">{check.durationMs}ms</span>
+                        {/* Only when the backend measured it. Several checks return early
+                            (proxy-not-configured, tz-not-configured) and carry no `durationMs`,
+                            so an unconditional render printed a bare "ms" beside every one of
+                            them — exactly what the operator's screenshot showed. */}
+                        {typeof check.durationMs === 'number' && (
+                          <span className="preflight-check-latency">{check.durationMs}ms</span>
+                        )}
                         <span className={`preflight-tag ${check.status}`}>
                           {check.status.toUpperCase()}
                         </span>
@@ -183,10 +197,10 @@ export function PreflightModal({
 
                     {isExpanded && hasDetails && (
                       <div className="preflight-check-details">
-                        {check.reason && (
+                        {check.reasonCode && (
                           <div className="preflight-detail-row">
                             <span className="preflight-detail-label">Reason Code:</span>
-                            <code className="preflight-code">{check.reason}</code>
+                            <code className="preflight-code">{check.reasonCode}</code>
                           </div>
                         )}
 

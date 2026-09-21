@@ -794,7 +794,23 @@ export function listTrash(): TrashItem[] {
 }
 
 export function restoreProfile(id: string): boolean {
-  const res = getDb()
+  const db = getDb();
+  // Drop a group reference that no longer resolves before restoring.
+  //
+  // `deleteGroup` now only detaches LIVE profiles, so a trashed profile keeps its `group_id` while
+  // it is in the trash — and if that group is deleted in the meantime, restoring leaves a dangling
+  // id. `listGroups` counts by join, so the row would appear in no group while the UI's
+  // `getGroupName` rendered the bare word "Unknown". Clearing it makes restore land the profile in
+  // "Ungrouped", which is a state the operator can actually act on.
+  db.prepare(
+    `UPDATE profiles
+        SET group_id = NULL
+      WHERE id = ?
+        AND group_id IS NOT NULL
+        AND group_id NOT IN (SELECT id FROM groups)`
+  ).run(id);
+
+  const res = db
     .prepare('UPDATE profiles SET deleted_at = NULL, updated_at = ? WHERE id = ? AND deleted_at IS NOT NULL')
     .run(Date.now(), id);
   return res.changes > 0;
@@ -1295,7 +1311,14 @@ export function updateGroup(id: string, name?: string, bookmarks?: string | null
 
 export function deleteGroup(id: string): boolean {
   const db = getDb();
-  db.prepare('UPDATE profiles SET group_id = NULL WHERE group_id = ?').run(id);
+  // Only LIVE profiles are detached, which is the same population `listGroups` counts.
+  //
+  // Without `deleted_at IS NULL` this also cleared trashed profiles, so deleting a group the
+  // operator saw as empty (count 0, because trashed rows are excluded from the count) silently
+  // destroyed the group assignment of profiles sitting in the trash — measured: assign a profile
+  // to a group, trash it, delete the group, restore it, and `group_id` came back `null`. The two
+  // queries have to agree on who belongs to a group, or the count lies about what a delete removes.
+  db.prepare('UPDATE profiles SET group_id = NULL WHERE group_id = ? AND deleted_at IS NULL').run(id);
   const res = db.prepare('DELETE FROM groups WHERE id = ?').run(id);
   return res.changes > 0;
 }
