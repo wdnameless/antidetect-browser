@@ -44,6 +44,8 @@ export interface CreateProfileInput {
   launch_args?: string[];
   /** Profile badge color (3/6-digit hex; null clears). */
   color?: string | null;
+  /** Free-form per-profile operator note. */
+  notes?: string;
   /**
    * Do Not Track: `'off'` sends nothing, `'on'` sends DNT: 1. A string rather than a
    * boolean because the form also offers `'auto'`, which means "let the fingerprint
@@ -79,6 +81,8 @@ export interface ProfileRow {
   launch_args: string | null;
   /** Profile badge color (canonical 6-digit hex or null). */
   color: string | null;
+  /** Free-form per-profile operator note (null when unset). */
+  notes: string | null;
   /** Do Not Track mode (`off` | `on` | `auto`); null = not set. */
   do_not_track: string | null;
   /** Ports to block, stored as a JSON array string. */
@@ -215,6 +219,7 @@ export interface ProfileDetails {
   timezone: string | null;
   launch_args: string[];
   color: string | null;
+  notes: string | null;
   do_not_track: string | null;
   blocked_ports: number[];
   webrtc_policy: string | null;
@@ -274,6 +279,16 @@ export function normalizeDoNotTrack(input: string | null | undefined): string | 
   if (input === 'off' || input === 'on' || input === 'auto') return input;
   if (input === null || input === undefined) return null;
   throw new Error(`invalid do-not-track mode: '${String(input)}'`);
+}
+
+/**
+ * Normalizes a free-form profile note: trims leading/trailing whitespace,
+ * mapping empty/whitespace-only input to null.
+ */
+export function normalizeProfileNotes(input: string | null | undefined): string | null {
+  if (typeof input !== 'string') return null;
+  const trimmed = input.trim();
+  return trimmed.length > 0 ? trimmed : null;
 }
 
 /**
@@ -433,16 +448,17 @@ export function createProfile(input: CreateProfileInput): string {
   if (input.color !== undefined && input.color !== null && !badgeColor) {
     throw new Error(`invalid profile color: '${input.color}'`);
   }
+  const notes = normalizeProfileNotes(input.notes);
   const dnt = normalizeDoNotTrack(input.do_not_track);
   const ports = normalizeBlockedPorts(input.blocked_ports);
   const webrtc = normalizeWebrtcPolicy(input.webrtc_policy);
   db.prepare(
     `INSERT INTO profiles (
        id, name, group_id, proxy_id, fingerprint_id, device_id,
-       browser_type, user_agent, timezone, geolocation, start_urls, mobile_model_id, launch_args, color,
+       browser_type, user_agent, timezone, geolocation, start_urls, mobile_model_id, launch_args, color, notes,
        do_not_track, blocked_ports, webrtc_policy, status,
        created_at, updated_at
-     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'closed', ?, ?)`
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'closed', ?, ?)`
   ).run(
     profileId,
     input.name ?? null,
@@ -458,6 +474,7 @@ export function createProfile(input: CreateProfileInput): string {
     input.mobile_model_id ?? null,
     validatedArgs.length ? JSON.stringify(validatedArgs) : null,
     badgeColor,
+    notes,
     dnt,
     ports.length ? JSON.stringify(ports) : null,
     webrtc,
@@ -748,6 +765,7 @@ export function getProfileDetails(id: string): ProfileDetails | null {
     timezone: p.timezone,
     launch_args: parseLaunchArgsColumn(p.launch_args),
     color: p.color ?? null,
+    notes: p.notes ?? null,
     do_not_track: p.do_not_track ?? null,
     blocked_ports: parseBlockedPortsColumn(p.blocked_ports),
     webrtc_policy: p.webrtc_policy ?? null,
@@ -1161,6 +1179,7 @@ export function updateProfile(
     mobile_model_id?: string | null;
     launch_args?: string[] | null;
     color?: string | null;
+    notes?: string | null;
     do_not_track?: 'off' | 'on' | 'auto' | null;
     blocked_ports?: number[] | null;
     webrtc_policy?: 'default' | 'disable_non_proxied_udp' | 'proxy' | null;
@@ -1240,6 +1259,10 @@ export function updateProfile(
     }
     sets.push('color = ?');
     params.push(badge);
+  }
+  if (updates.notes !== undefined) {
+    sets.push('notes = ?');
+    params.push(normalizeProfileNotes(updates.notes));
   }
   if (updates.do_not_track !== undefined) {
     sets.push('do_not_track = ?');

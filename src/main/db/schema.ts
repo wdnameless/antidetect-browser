@@ -237,6 +237,9 @@ export function migrate(db: Database): void {
   ensureColumn(db, 'profiles', 'blocked_ports', 'TEXT');
   // WebRTC IP handling policy: 'default' | 'disable_non_proxied_udp' | 'proxy'.
   ensureColumn(db, 'profiles', 'webrtc_policy', 'TEXT');
+  // Free-form per-profile operator note. The Edit modal historically exposed a NOTES
+  // textarea that was never persisted; this column backs the per-profile Note surface.
+  ensureColumn(db, 'profiles', 'notes', 'TEXT');
   migrateProxyHealth(db);
   migratePreservedBrowserData(db);
   migrateTaskGroups(db);

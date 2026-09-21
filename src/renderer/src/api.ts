@@ -40,6 +40,7 @@ export interface ProfileDetails {
   timezone: string | null;
   /** Profile badge colour (canonical hex or null). Returned by the detail endpoint. */
   color?: string | null;
+  notes?: string | null;
   launch_args?: string[];
   do_not_track?: 'off' | 'on' | 'auto' | null;
   blocked_ports?: number[] | null;
@@ -530,6 +531,7 @@ export const api = {
     user_agent?: string;
     timezone?: string;
     color?: string | null;
+    notes?: string;
     do_not_track?: 'off' | 'on' | 'auto' | null;
     blocked_ports?: number[];
     webrtc_policy?: 'default' | 'disable_non_proxied_udp' | 'proxy' | null;
@@ -544,6 +546,7 @@ export const api = {
     request<Record<string, never>>(`/api/v1/browser/stop?user_id=${encodeURIComponent(id)}`),
   profileUpdate: (body: {
     color?: string | null;
+    notes?: string | null;
     user_id: string;
     name?: string;
     group_id?: string | null;

@@ -8,7 +8,6 @@ import {
   type ProxyItem,
   type DeviceItem,
   type ProxyTestResult,
-  type VaultEntry,
   type TagItem,
   type ProfileTagBinding,
   type SyncSessionInfo,
@@ -20,6 +19,8 @@ import { useColumnResize } from '../useColumnResize';
 import { subscribeToEvents } from '../eventsStream';
 import { SyncPanel } from '../components/SyncPanel';
 import { PreflightModal, PreflightBadge } from '../components/PreflightModal';
+import { Modal } from '../components/Modal';
+import { ProfileVault } from '../components/ProfileVault';
 import type { PreflightVerdict, PreflightStatus } from '../preflight';
 import {
   PlayIcon,
@@ -39,7 +40,7 @@ import {
   RefreshIcon,
   DevicesIcon,
   ProfilesIcon,
-  KeyIcon,
+  NoteIcon,
   UsersIcon,
   ShieldCheckIcon,
 } from '../icons';
@@ -80,14 +81,11 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
   const [bulkTargetGroup, setBulkTargetGroup] = useState<string>('');
   const [error, setError] = useState('');
 
-  // Modal tab: 'general' | 'proxy' | 'fingerprint' | 'vault'
-  const [modalTab, setModalTab] = useState<'general' | 'proxy' | 'fingerprint' | 'vault'>('general');
-
-  // Vault tab state (Sprint 2.1)
-  const [vaultEntries, setVaultEntries] = useState<VaultEntry[]>([]);
-  const [vaultForm, setVaultForm] = useState<{ id: string | null; label: string; login: string; password: string; totp: string; notes: string }>({ id: null, label: '', login: '', password: '', totp: '', notes: '' });
-  const [revealed, setRevealed] = useState<Record<string, string>>({});
-  const [copiedValue, setCopiedValue] = useState<string | null>(null);
+  // Note modal state
+  const [noteModalProfile, setNoteModalProfile] = useState<ProfileListItem | null>(null);
+  const [noteText, setNoteText] = useState<string>('');
+  const [noteBusy, setNoteBusy] = useState(false);
+  const [noteError, setNoteError] = useState<string>('');
 
   // Action Syncer (Sprint 3)
   const [syncSession, setSyncSession] = useState<SyncSessionInfo | null>(null);
@@ -118,7 +116,6 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
   const [mediaMicCount, setMediaMicCount] = useState<number>(1);
   const [mediaSpeakerCount, setMediaSpeakerCount] = useState<number>(2);
   const [mediaWebcamCount, setMediaWebcamCount] = useState<number>(1);
-  const [notes, setNotes] = useState<string>('');
 
   // Proxy state in modal: mode = 'none' | 'saved' | 'custom'
   const [proxyMode, setProxyMode] = useState<'none' | 'saved' | 'custom'>('none');
@@ -470,7 +467,6 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
 
   const openCreateModal = () => {
     setModalMode('create');
-    setModalTab('general');
     setProfileId('');
     setName('');
     setGroupId('');
@@ -499,7 +495,6 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
     setMediaMicCount(1);
     setMediaSpeakerCount(2);
     setMediaWebcamCount(1);
-    setNotes('');
   };
 
   /**
@@ -523,7 +518,6 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
 
   const openEditModal = async (p: ProfileListItem) => {
     setModalMode('edit');
-    setModalTab('general');
     setProfileId(p.user_id);
     setName(p.name || '');
     setGroupId(p.group_id || '');
@@ -553,7 +547,6 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
           else setOsPlatform('windows');
         }
         setPortInput('');
-        setNotes('');
         setName(d.name || '');
         setGroupId(d.group_id || '');
         setDeviceId(d.device_id || '');
@@ -847,96 +840,52 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
     }
   };
 
-  // ---- Vault (Sprint 2.1) ----
-  const loadVault = useCallback(async (pid: string) => {
+  // ---- Profile Note Modal ----
+  const openNoteModal = useCallback(async (p: ProfileListItem) => {
+    setNoteModalProfile(p);
+    setNoteText('');
+    setNoteError('');
+    setNoteBusy(true);
     try {
-      const res = await api.vaultList(pid);
-      if (res.code === 0) setVaultEntries(res.data.list);
-    } catch { /* ignore */ }
+      const res = await api.profileDetail(p.user_id);
+      if (res.code === 0 && res.data) {
+        setNoteText(res.data.notes || '');
+      } else if (res.msg) {
+        setNoteError(res.msg);
+      }
+    } catch (err) {
+      setNoteError((err as Error).message);
+    } finally {
+      setNoteBusy(false);
+    }
   }, []);
 
-  const openVaultTab = (pid: string) => {
-    setVaultForm({ id: null, label: '', login: '', password: '', totp: '', notes: '' });
-    setRevealed({});
-    void loadVault(pid);
-  };
+  const closeNoteModal = useCallback(() => {
+    setNoteModalProfile(null);
+    setNoteText('');
+    setNoteError('');
+  }, []);
 
-  const saveVaultEntry = async () => {
-    if (!profileId) return;
-    setBusy(true);
-    setError('');
+  const saveNoteModal = async () => {
+    if (!noteModalProfile) return;
+    setNoteBusy(true);
+    setNoteError('');
     try {
-      const body = {
-        label: vaultForm.label.trim() || undefined,
-        login: vaultForm.login.trim() || undefined,
-        password: vaultForm.password || undefined,
-        totp_secret: vaultForm.totp.trim() || undefined,
-        notes: vaultForm.notes.trim() || undefined,
-      };
-      const res = vaultForm.id
-        ? await api.vaultUpdate(profileId, vaultForm.id, body)
-        : await api.vaultCreate(profileId, body);
+      const res = await api.profileUpdate({
+        user_id: noteModalProfile.user_id,
+        notes: noteText,
+      });
       if (res.code === 0) {
-        setVaultForm({ id: null, label: '', login: '', password: '', totp: '', notes: '' });
-        await loadVault(profileId);
+        closeNoteModal();
       } else {
-        setError(res.msg);
+        setNoteError(res.msg || 'Failed to save note');
       }
     } catch (err) {
-      setError((err as Error).message);
+      setNoteError((err as Error).message);
     } finally {
-      setBusy(false);
+      setNoteBusy(false);
     }
   };
-
-  const editVaultEntry = (e: VaultEntry) => {
-    setVaultForm({ id: e.id, label: e.label || '', login: e.login || '', password: '', totp: '', notes: e.notes || '' });
-  };
-
-  const deleteVaultEntry = async (entryId: string) => {
-    if (!profileId) return;
-    setBusy(true);
-    setError('');
-    try {
-      const res = await api.vaultDelete(profileId, entryId);
-      if (res.code === 0) await loadVault(profileId);
-      else setError(res.msg);
-    } catch (err) {
-      setError((err as Error).message);
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const revealVaultField = async (entry: VaultEntry, field: 'password' | 'totp_secret') => {
-    if (!profileId) return;
-    const key = `${entry.id}:${field}`;
-    if (revealed[key]) {
-      // toggle off
-      setRevealed((r) => { const n = { ...r }; delete n[key]; return n; });
-      return;
-    }
-    try {
-      const res = await api.vaultReveal(profileId, entry.id, field);
-      if (res.code === 0) {
-        setRevealed((r) => ({ ...r, [key]: res.data.value }));
-        setTimeout(() => {
-          setRevealed((r) => { const n = { ...r }; delete n[key]; return n; });
-        }, 15000);
-      } else {
-        setError(res.msg);
-      }
-    } catch (err) {
-      setError((err as Error).message);
-    }
-  };
-
-  const copyVaultValue = (text: string) => {
-    void navigator.clipboard.writeText(text);
-    setCopiedValue(text);
-    setTimeout(() => setCopiedValue(null), 1500);
-  };
-
   // ---- Tag management (Sprint 2.3) ----
   const saveTag = async () => {
     if (!tagForm.name.trim()) return;
@@ -1729,6 +1678,16 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
                         <EditIcon size={14} />
                       </button>
 
+                      <button
+                        type="button"
+                        className="btn-icon"
+                        onClick={() => void openNoteModal(p)}
+                        disabled={busy}
+                        title={t('Note')}
+                      >
+                        <NoteIcon size={14} />
+                      </button>
+
                       {/* Kebab Action Menu */}
                       <div style={{ position: 'relative' }}>
                         <button
@@ -2455,15 +2414,6 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
                     <div className="pf-derived-row"><span>{t('Webcam')}</span><code>{t('Auto (per-seed)')}</code></div>
                   </div>
 
-                  <div className="pf-section">
-                    <div className="pf-section-label">{t('NOTES')}</div>
-                    <textarea
-                      rows={3}
-                      placeholder={t('Free-form notes…')}
-                      value={notes}
-                      onChange={(e) => setNotes(e.target.value)}
-                    />
-                  </div>
                 </div>
               </div>
 
@@ -2673,130 +2623,6 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
                 </div>
               </div>
 
-              {/* Vault (edit only), kept whole. */}
-              {modalMode === 'edit' ? (
-                <div className="pf-section" id="pf-section-vault">
-                  <div className="pf-section-label">{t('VAULT')}</div>
-                  <div className="form-group">
-                    <label>{vaultForm.id ? t('Edit entry') : t('Add entry')}</label>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                      <input
-                        placeholder={t('Label (e.g. main account)')}
-                        value={vaultForm.label}
-                        onChange={(e) => setVaultForm({ ...vaultForm, label: e.target.value })}
-                      />
-                      <input
-                        placeholder={t('Login')}
-                        value={vaultForm.login}
-                        onChange={(e) => setVaultForm({ ...vaultForm, login: e.target.value })}
-                      />
-                      <input
-                        type="password"
-                        placeholder={t('Password')}
-                        value={vaultForm.password}
-                        onChange={(e) => setVaultForm({ ...vaultForm, password: e.target.value })}
-                      />
-                      <input
-                        placeholder={t('TOTP secret (optional)')}
-                        value={vaultForm.totp}
-                        onChange={(e) => setVaultForm({ ...vaultForm, totp: e.target.value })}
-                      />
-                    </div>
-                    <input
-                      style={{ marginTop: 8 }}
-                      placeholder={t('Notes')}
-                      value={vaultForm.notes}
-                      onChange={(e) => setVaultForm({ ...vaultForm, notes: e.target.value })}
-                    />
-                    <div style={{ marginTop: 8, display: 'flex', gap: 8 }}>
-                      <button className="btn primary" onClick={() => void saveVaultEntry()} disabled={busy}>
-                        {vaultForm.id ? t('Save') : t('Add')}
-                      </button>
-                      {vaultForm.id ? (
-                        <button className="btn" onClick={() => setVaultForm({ id: null, label: '', login: '', password: '', totp: '', notes: '' })}>
-                          {t('Cancel')}
-                        </button>
-                      ) : null}
-                    </div>
-                  </div>
-
-                  <div className="table-container" style={{ marginTop: 10 }}>
-                    <table className="table">
-                      <thead>
-                        <tr>
-                          <th>{t('Label')}</th>
-                          <th>{t('Login')}</th>
-                          <th>{t('Password')}</th>
-                          <th style={{ width: '20%', textAlign: 'right' }}>{t('Actions')}</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {vaultEntries.length === 0 ? (
-                          <tr>
-                            <td colSpan={4} className="empty-cell" style={{ fontSize: 12.5, color: 'var(--text-muted)' }}>
-                              {t('No saved credentials yet. Passwords are encrypted (AES-256-GCM) and never leave this machine.')}
-                            </td>
-                          </tr>
-                        ) : (
-                          vaultEntries.map((e) => {
-                            const pwKey = `${e.id}:password`;
-                            const totpKey = `${e.id}:totp_secret`;
-                            return (
-                              <tr key={e.id}>
-                                <td style={{ fontSize: 12.5 }}>{e.label || '—'}</td>
-                                <td style={{ fontSize: 12.5 }}>{e.login || '—'}</td>
-                                <td style={{ fontSize: 12.5 }}>
-                                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                                    <code style={{ fontFamily: 'var(--font-mono)' }}>
-                                      {revealed[pwKey] || (e.has_password ? '******' : '—')}
-                                    </code>
-                                    {e.has_password ? (
-                                      <>
-                                        <button
-                                          className="btn-icon"
-                                          style={{ padding: '2px 6px' }}
-                                          onClick={() => void revealVaultField(e, 'password')}
-                                          title={t('Reveal / hide (15s)')}
-                                        >
-                                          <KeyIcon size={11} />
-                                        </button>
-                                        <button
-                                          className="btn-icon"
-                                          style={{ padding: '2px 6px' }}
-                                          onClick={() => revealed[pwKey] && copyVaultValue(revealed[pwKey])}
-                                          disabled={!revealed[pwKey]}
-                                          title={t('Copy value')}
-                                        >
-                                          {copiedValue && revealed[pwKey] === copiedValue ? <CheckIcon size={11} style={{ color: 'var(--ok)' }} /> : <CopyIcon size={11} />}
-                                        </button>
-                                      </>
-                                    ) : null}
-                                    {e.has_totp ? (
-                                      <code style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-muted)' }} title={revealed[totpKey] || t('TOTP secret stored')}>
-                                        {revealed[totpKey] ? `TOTP: ${revealed[totpKey]}` : 'TOTP: ******'}
-                                      </code>
-                                    ) : null}
-                                  </div>
-                                </td>
-                                <td>
-                                  <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
-                                    <button className="btn btn-sm" onClick={() => editVaultEntry(e)} disabled={busy}>
-                                      {t('Edit')}
-                                    </button>
-                                    <button className="btn btn-sm btn-danger" onClick={() => void deleteVaultEntry(e.id)} disabled={busy}>
-                                      <TrashIcon size={11} />
-                                    </button>
-                                  </div>
-                                </td>
-                              </tr>
-                            );
-                          })
-                        )}
-                      </tbody>
-                    </table>
-                  </div>
-                  </div>
-              ) : null}
 
             <div className="modal-footer">
               <button className="btn" onClick={() => setModalMode(null)}>Cancel</button>
@@ -3217,6 +3043,41 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
             await start(id, preflightModal.profileName);
           }}
         />
+      ) : null}
+
+      {noteModalProfile ? (
+        <Modal
+          title={noteModalProfile.name || t('Unnamed Profile')}
+          icon={<NoteIcon size={18} />}
+          onClose={closeNoteModal}
+          width={640}
+          footer={
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', width: '100%' }}>
+              <button type="button" className="btn" onClick={closeNoteModal} disabled={noteBusy}>
+                {t('Cancel')}
+              </button>
+              <button type="button" className="btn primary" onClick={() => void saveNoteModal()} disabled={noteBusy}>
+                {t('Save')}
+              </button>
+            </div>
+          }
+        >
+          {noteError ? <div className="error-banner" style={{ marginBottom: 12 }}>{noteError}</div> : null}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            <div className="pf-section">
+              <div className="pf-section-label">{t('NOTE')}</div>
+              <textarea
+                rows={4}
+                placeholder={t('Free-form notes…')}
+                value={noteText}
+                onChange={(e) => setNoteText(e.target.value)}
+                disabled={noteBusy}
+                style={{ width: '100%', resize: 'vertical' }}
+              />
+            </div>
+            <ProfileVault profileId={noteModalProfile.user_id} />
+          </div>
+        </Modal>
       ) : null}
     </div>
   );

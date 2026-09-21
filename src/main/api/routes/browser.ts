@@ -353,6 +353,7 @@ const updateProfileSchema = z.object({
   mobile_model_id: z.string().nullable().optional(),
   launch_args: z.array(z.string()).nullable().optional(),
   color: z.string().nullable().optional(),
+  notes: z.string().max(10000).nullable().optional(),
   do_not_track: z.enum(['off', 'on', 'auto']).nullable().optional(),
   blocked_ports: z.array(z.number().int().min(1).max(65535)).nullable().optional(),
   webrtc_policy: z.enum(['default', 'disable_non_proxied_udp', 'proxy']).nullable().optional(),
@@ -376,6 +377,7 @@ router.post('/api/v1/browser-profile/update', (req, res) => {
     mobile_model_id: parsed.data.mobile_model_id,
     launch_args: parsed.data.launch_args,
     color: parsed.data.color,
+    notes: parsed.data.notes,
     do_not_track: parsed.data.do_not_track,
     blocked_ports: parsed.data.blocked_ports,
     webrtc_policy: parsed.data.webrtc_policy,
@@ -503,6 +505,7 @@ const createSchema = z.object({
   start_urls: z.array(z.string()).optional(),
   mobile_model_id: z.string().optional(),
   color: z.string().optional(),
+  notes: z.string().max(10000).optional(),
   // Privacy knobs. Constrained to the modes the launcher actually implements, so an
   // unsupported value is rejected at the edge instead of being stored and ignored.
   do_not_track: z.enum(['off', 'on', 'auto']).optional(),
@@ -530,6 +533,7 @@ router.post('/api/v1/browser-profile/create', (req, res) => {
     start_urls: parsed.data.start_urls,
     mobile_model_id: parsed.data.mobile_model_id,
     color: parsed.data.color,
+    notes: parsed.data.notes,
     do_not_track: parsed.data.do_not_track,
     blocked_ports: parsed.data.blocked_ports,
     webrtc_policy: parsed.data.webrtc_policy,

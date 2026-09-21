@@ -2439,7 +2439,8 @@ tr.row-dense:focus-within .row-dense__actions {
   padding: 20px;
 }
 
-.modal-card {
+.modal-card,
+.modal {
   background: var(--surface-1);
   border: none;
   border-radius: var(--radius-lg);
@@ -2452,7 +2453,8 @@ tr.row-dense:focus-within .row-dense__actions {
   flex-direction: column;
 }
 
-.modal-header {
+.modal-header,
+.modal-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -2460,7 +2462,11 @@ tr.row-dense:focus-within .row-dense__actions {
   border-bottom: 1px solid var(--border);
 }
 
-.modal-header h3 {
+.modal-header h3,
+.modal-head h3 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   font-size: 16px;
   font-weight: 600;
 }
@@ -2472,13 +2478,32 @@ tr.row-dense:focus-within .row-dense__actions {
   gap: 16px;
 }
 
-.modal-footer {
+.modal-footer,
+.modal-foot {
   padding: 16px 24px;
   border-top: 1px solid var(--border);
   display: flex;
   justify-content: flex-end;
   gap: 10px;
   background: rgba(0, 0, 0, 0.15);
+}
+
+.icon-btn {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
+  border-radius: var(--radius-sm);
+  transition: color var(--transition-fast), background var(--transition-fast);
+}
+
+.icon-btn:hover {
+  color: var(--text);
+  background: var(--surface-2);
 }
 
 .form-group {
