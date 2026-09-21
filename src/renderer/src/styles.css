@@ -348,8 +348,11 @@ pre {
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #09090b;
-  box-shadow: 0 4px 12px rgba(255, 255, 255, 0.12);
+  /* Same defect as `.btn.primary`: the mark is drawn with `fill="currentColor"` cut-outs, so a
+     literal near-black here lost the mark entirely against the light theme's near-black gradient
+     in exactly the way it lost the button label. */
+  color: var(--accent-foreground);
+  box-shadow: var(--shadow-sm);
 }
 
 .brand-title {
@@ -434,14 +437,16 @@ pre {
 }
 
 .nav-item:hover {
-  background: rgba(255, 255, 255, 0.04);
+  background: var(--control-bg);
   color: var(--text);
 }
 
 .nav-item.active {
-  background: rgba(255, 255, 255, 0.08);
-  color: var(--accent);
-  border-color: rgba(255, 255, 255, 0.22);
+  /* Tokens, not white literals: on the light theme a white overlay over a near-white sidebar is
+     invisible (measured surface delta 1.01:1), so the active row lost its fill and its outline. */
+  background: var(--control-bg-active);
+  color: var(--text);
+  border-color: var(--border-focus);
   font-weight: 600;
 }
 
@@ -478,7 +483,10 @@ pre {
   flex-shrink: 0;
 }
 
-/* Running profile count badge */
+/* Running profile count badge.
+   Deliberately theme-independent: a dark pill with white text, which is high-contrast on the
+   light sidebar and a subtle chip on the dark one. It is NOT one of the light-theme defects —
+   the literals here work in both themes, unlike the white-overlay rules that disappear on white. */
 .nav-badge {
   margin-left: auto;
   background: #1a1a1d;
@@ -498,8 +506,10 @@ pre {
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: #ffffff;
-  box-shadow: 0 0 6px rgba(255, 255, 255, 0.6);
+  /* The cloud-connected indicator. Pure `#ffffff` with a white glow is invisible on the light
+     theme's near-white sidebar; it takes the accent, which is high-contrast in both themes. */
+  background: var(--accent);
+  box-shadow: 0 0 6px var(--accent);
   position: absolute;
   top: -2px;
   right: -4px;
@@ -1252,8 +1262,8 @@ pre {
 
 .btn:hover:not(:disabled) {
   background: var(--panel-hover);
-  border-color: rgba(255, 255, 255, 0.16);
-  color: #fff;
+  border-color: var(--border);
+  color: var(--text);
 }
 
 .btn:disabled {
@@ -1264,27 +1274,32 @@ pre {
 .btn.primary {
   background: var(--accent-gradient);
   border: 1px solid transparent;
-  color: #09090b;
+  /* `--accent-foreground`, not a literal. The fill inverts between themes while the literal did
+     not: in the light theme the gradient is near-black and `#09090b` text measured 1.12:1
+     against it — the label and its button were the same colour. The operator saw the result:
+     «кнопка new profile слишком темная для белой темы». The token is defined per theme
+     (#09090b dark / #fafafa light) so the label always contrasts with its own fill. */
+  color: var(--accent-foreground);
   font-weight: 600;
-  box-shadow: 0 4px 14px rgba(255, 255, 255, 0.1);
+  box-shadow: var(--shadow-sm);
 }
 
 .btn.primary:hover:not(:disabled) {
-  background: #ffffff;
+  background: var(--accent-hover);
   opacity: 1;
-  box-shadow: 0 6px 18px rgba(255, 255, 255, 0.14);
+  box-shadow: var(--shadow-md);
 }
 
 .btn.danger {
   background: transparent;
-  border-color: rgba(255, 255, 255, 0.14);
+  border-color: var(--border);
   color: var(--text-secondary);
 }
 
 .btn.danger:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.06);
-  border-color: rgba(255, 255, 255, 0.3);
-  color: #fff;
+  background: var(--control-bg);
+  border-color: var(--border-focus);
+  color: var(--text);
 }
 
 .btn-icon {
@@ -1305,7 +1320,7 @@ pre {
 .btn-icon:hover:not(:disabled) {
   background: var(--panel-hover);
   color: var(--text);
-  border-color: rgba(255, 255, 255, 0.2);
+  border-color: var(--border);
 }
 
 /* Settings section nav (two-pane layout) */
@@ -1327,34 +1342,45 @@ pre {
 }
 
 .settings-nav-item.active {
-  background: rgba(255, 255, 255, 0.08);
-  border-color: rgba(255, 255, 255, 0.18);
+  background: var(--control-bg-active);
+  border-color: var(--border);
   color: var(--text);
   font-weight: 600;
 }
 
+/*
+ * The Start control, styled as the table's one affirmative action.
+ *
+ * It used hardcoded dark-theme values (`rgba(255,255,255,0.08)` fill, `#fafafa` icon), which on
+ * the light theme's white panel measured **1.04:1** — the icon was the same colour as the surface
+ * behind it, so the Actions column rendered what the operator reported: «нопки старт не видно».
+ *
+ * It takes its colours from the accent tokens instead, which are defined per theme, so the
+ * affirmative action reads as affirmative in both. `--accent-foreground` is the icon colour ON
+ * that fill.
+ */
 .btn-icon.play-btn {
-  background: rgba(255, 255, 255, 0.08);
-  color: #fafafa;
-  border-color: rgba(255, 255, 255, 0.28);
+  background: var(--accent);
+  color: var(--accent-foreground);
+  border-color: transparent;
 }
 
 .btn-icon.play-btn:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.12);
-  color: #ffffff;
-  border-color: rgba(255,255,255,0.45);
+  background: var(--accent-hover);
+  color: var(--accent-foreground);
+  border-color: transparent;
 }
 
 .btn-icon.stop-btn {
-  background: rgba(255, 255, 255, 0.07);
+  background: var(--control-bg);
   color: var(--text-secondary);
-  border-color: rgba(255, 255, 255, 0.2);
+  border-color: var(--border);
 }
 
 .btn-icon.stop-btn:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.12);
-  color: #ffffff;
-  border-color: rgba(255,255,255,0.45);
+  background: var(--control-bg-active);
+  color: var(--text);
+  border-color: var(--border-focus);
 }
 
 /* Custom Select & Inputs */
@@ -1630,7 +1656,7 @@ body.col-resizing * {
 }
 
 .table thead {
-  background: rgba(255, 255, 255, 0.02);
+  background: var(--control-bg);
   border-bottom: 1px solid var(--border);
 }
 
@@ -1656,7 +1682,7 @@ body.col-resizing * {
 }
 
 .table tbody tr:hover {
-  background: rgba(255, 255, 255, 0.025);
+  background: var(--control-bg);
 }
 
 .table tbody tr:last-child td {
@@ -1692,7 +1718,7 @@ body.col-resizing * {
 }
 
 .row-dense:hover {
-  background: rgba(255, 255, 255, 0.025);
+  background: var(--control-bg);
 }
 
 .row-dense__lead {
@@ -1765,9 +1791,13 @@ tr.row-dense:focus-within .row-dense__actions {
 }
 
 .badge.running {
-  background: rgba(255, 255, 255, 0.09);
-  color: #fafafa;
-  border: 1px solid rgba(255, 255, 255, 0.28);
+  /* Tokens, not literals. The literals were dark-theme-only: on the light theme's white panel,
+     `rgba(255,255,255,0.09)` fill with `#fafafa` text measured **1.00:1** — white on white, so
+     the "Running" badge and its label simply were not there. The operator reported the same class
+     of defect on the Start button and New Profile (see `.btn-icon.play-btn`). */
+  background: var(--control-bg-selected);
+  color: var(--text);
+  border: 1px solid var(--border);
 }
 
 .badge.running::before {
@@ -1775,12 +1805,12 @@ tr.row-dense:focus-within .row-dense__actions {
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: #fafafa;
-  box-shadow: 0 0 6px rgba(255, 255, 255, 0.4);
+  background: var(--ok);
+  box-shadow: 0 0 6px var(--ok-bg);
 }
 
 .badge.closed {
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--control-bg);
   color: var(--text-muted);
   border: 1px solid var(--border);
 }
@@ -1798,8 +1828,8 @@ tr.row-dense:focus-within .row-dense__actions {
   align-items: center;
   gap: 5px;
   padding: 2px 8px;
-  background: rgba(255, 255, 255, 0.07);
-  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: var(--control-bg);
+  border: 1px solid var(--border);
   border-radius: 4px;
   font-size: 11.5px;
   color: var(--text);
@@ -1889,8 +1919,8 @@ tr.row-dense:focus-within .row-dense__actions {
 }
 .preflight-run-icon-btn:hover:not(:disabled) {
   background: var(--panel-hover);
-  color: #fff;
-  border-color: rgba(255, 255, 255, 0.25);
+  color: var(--text);
+  border-color: var(--border);
 }
 
 .preflight-modal-content {
@@ -1971,7 +2001,7 @@ tr.row-dense:focus-within .row-dense__actions {
   transition: background 0.12s ease;
 }
 .preflight-check-card:hover {
-  border-color: rgba(255, 255, 255, 0.18);
+  border-color: var(--border-focus);
 }
 .preflight-check-card.warn {
   border-left: 3px solid var(--warn);
@@ -2044,7 +2074,7 @@ tr.row-dense:focus-within .row-dense__actions {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  border: 1px solid rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border);
 }
 
 .preflight-reason-row {
@@ -2068,7 +2098,7 @@ tr.row-dense:focus-within .row-dense__actions {
   font-size: 12.5px;
   line-height: 1.4;
   padding-top: 4px;
-  border-top: 1px solid rgba(255, 255, 255, 0.05);
+  border-top: 1px solid var(--border);
 }
 .preflight-remediation-box strong {
   color: var(--text);
@@ -2088,7 +2118,7 @@ tr.row-dense:focus-within .row-dense__actions {
 }
 
 .proxy-type-badge {
-  background: rgba(255, 255, 255, 0.06);
+  background: var(--control-bg);
   padding: 1px 5px;
   border-radius: 3px;
   font-size: 10px;
@@ -2366,7 +2396,7 @@ tr.row-dense:focus-within .row-dense__actions {
 .setting-row code {
   font-family: var(--font-mono);
   color: var(--text);
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--control-bg);
   padding: 3px 8px;
   border-radius: 4px;
   font-size: 12.5px;

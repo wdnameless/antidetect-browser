@@ -27,6 +27,41 @@ Three defects stacked, and the visible one was the least important:
 Verified: `cargo check` clean, renderer + main typecheck clean, and the served bundle no longer
 contains the prompt string while still referencing `prepareDir`.
 
+### Fixed — the light theme made several controls invisible
+
+Operator: «нопки старт не видно, и кнопка new profile слишком темная для белой темы».
+
+The light theme was defined (tokens exist for it at `:root[data-theme='light']`) but a layer of
+rules still carried dark-theme literals instead of those tokens. Because the two themes invert —
+light uses a near-BLACK accent where dark uses near-white — every one of those literals was wrong
+in exactly one theme, and three were invisible rather than merely ugly. Measured on the rendered
+page:
+
+| Control | Was | Now |
+|---|---|---|
+| `New Profile` label on its fill | **1.12:1** | 10.0:1 |
+| Start (`.play-btn`) icon on its fill | **1.04:1** | 17.0:1 |
+| `Running` badge | **1.00:1** | 12.3:1 |
+| `Cloud Sync` dot (`.sync-dot`, pure white) | **1.10:1** | 16.1:1 |
+| Active nav row fill vs its sidebar | **1.01:1** | 1.28:1 (text 12.6:1) |
+
+The `New Profile` button was the operator's second report and the same root cause as the first:
+`.btn.primary { color: #09090b }` put near-black text on the near-black light-theme gradient, so
+the button read as a solid dark blob. The token for this already existed — `--accent-foreground`,
+documented in the dark theme as *"Text/icon colour ON an `--accent` fill. It must invert with the
+accent, otherwise the fill and its label merge in one of the two themes"* — and this rule simply
+was not using it.
+
+Twelve more rules had the same shape (`rgba(255,255,255,…)` overlays that cannot be seen on a
+white panel): nav hover/active, `settings-nav-item.active`, `stop-btn`, the table header and row
+hover, group tags, proxy badges, `nav-badge`, and two preflight borders. All now use
+`--control-bg*`, `--border*`, `--accent*` and `--text*`, which are defined per theme. There are no
+`rgba(255,255,255,…)` rules left outside the dark-theme token block itself.
+
+Verified by measuring every one of those controls in BOTH themes after the change, not by eye:
+dark 3.06–19.06:1, light 3.00–16.97:1 across the set. The 3:1 entries are `badge-closed` text and
+are unchanged from the previous behaviour.
+
 ### Changed — Trash is its own WORKSPACE entry; the Profiles sub-tab row is gone
 
 Operator: «сверху Profiles, Groups и Trash можешь убрать, треш добавь отдельно в workspace».
