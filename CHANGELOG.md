@@ -1,5 +1,49 @@
 # Changelog
 
+## [0.6.23] - 2026-09-21
+
+### Fixed — «Download MCP» asked for a TYPED path instead of opening a folder picker
+
+Operator: «это штуки быть не должно» — with a screenshot of a browser `prompt()` reading
+*"Folder to write the MCP server into:"*, a system modal with a text field and no folder browser.
+
+Three defects stacked, and the visible one was the least important:
+
+1. **The dialog had no parent window.** `pick_directory` built the dialog without one, while the
+   dialog plugin's own `open` command parents its dialog (`set_parent(&window)`). An ownerless
+   modal on Windows can open behind our frameless window, so the click looked inert. The command
+   now takes `tauri::Window` and parents the dialog, matching the plugin's working path.
+2. **Cancel and failure were the same value.** `pick_directory` distinguishes them in Rust
+   (`Ok(ok:false)` = cancelled, `Err` = could not run), and `prepareDir` in the bridge collapsed
+   both to `{ok:false}` — with an empty `catch` around the invoke that swallowed the error
+   entirely. The renderer therefore could not tell "the operator changed their mind" from "the
+   picker is broken", and treated both as "ask them to type a path". `prepareDir` now returns
+   `{ok, canceled, dir, error}` and logs a real failure through `console.warn`.
+3. **A `window.prompt()` fallback existed at all**, justified in a comment as support for "a plain
+   web client that has no bridge". Its effect was to convert a broken dialog into a worse
+   experience with no sign that anything had failed. It is gone: cancelling does nothing, failure
+   is reported as failure.
+
+Verified: `cargo check` clean, renderer + main typecheck clean, and the served bundle no longer
+contains the prompt string while still referencing `prepareDir`.
+
+### Changed — Trash is its own WORKSPACE entry; the Profiles sub-tab row is gone
+
+Operator: «сверху Profiles, Groups и Trash можешь убрать, треш добавь отдельно в workspace».
+
+The row of pills that sat above the Profiles content restated the current page and cost a line of
+vertical space above the table. Groups and Trash were reachable ONLY through it, so both were
+promoted to WORKSPACE destinations — Trash exactly as asked, Groups because dropping the row
+without promoting it would have stranded the page with no click path to it.
+
+The sub-tab mechanism itself stays: Automation (Flow Canvas / Scripts), Cloud (Cloud Sync / Teams)
+and Settings (Settings / Diagnostics) still use it, and the request named the Profiles row only.
+The sidebar went from 8 entries to 10.
+
+`tests/unit/shellGroups.test.ts` now pins the Profiles row specifically — no sub-tabs on it, and
+`groups`/`trash` present as destinations — while the existing union guard keeps every `Page` in the
+union clickable, which is the invariant that forced the promotion in the first place.
+
 ## [0.6.22] - 2026-09-20
 
 ### Fixed — an agent-opened profile did not appear until something else refreshed the table

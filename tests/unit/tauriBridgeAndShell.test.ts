@@ -99,6 +99,50 @@ describe('Tauri bridge shape and renderer contract (tasks.md §6.4)', () => {
     expect(typeof antidetect.window?.close).toBe('function');
   });
 
+  it('prepareDir separates a cancel from a failed dialog', async () => {
+    // The defect this pins: the renderer could not tell "the operator cancelled" from "the picker
+    // is broken", so BOTH produced a `window.prompt()` asking for a typed path — the modal the
+    // operator reported («это штуки быть не должно»). The two outcomes must stay distinguishable
+    // through the bridge, because only a real failure deserves an error.
+    const invokePick = async (impl: () => Promise<unknown>, cmd: string) => {
+      const mockInvoke = vi.fn().mockImplementation(async (c: string) => {
+        if (c === 'pick_directory') return impl();
+        throw new Error(`unexpected command ${c}`);
+      });
+      const sandbox = runBridgeInSandbox({ __TAURI__: { core: { invoke: mockInvoke } } });
+      void cmd;
+      return sandbox.window.antidetect!.data!.prepareDir();
+    };
+
+    // Chosen folder.
+    const chosen = (await invokePick(async () => ({ ok: true, path: 'D:\\out' }), 'chosen')) as {
+      ok: boolean;
+      canceled: boolean;
+      dir: string;
+    };
+    expect(chosen.ok).toBe(true);
+    expect(chosen.canceled).toBe(false);
+    expect(chosen.dir).toBe('D:\\out');
+
+    // Operator backed out: the shell resolves `Ok(None)` -> {ok:false}.
+    const canceled = (await invokePick(async () => ({ ok: false, path: null }), 'cancel')) as {
+      ok: boolean;
+      canceled: boolean;
+      error: string;
+    };
+    expect(canceled.ok).toBe(false);
+    expect(canceled.canceled, 'a cancel must be marked as a cancel').toBe(true);
+    expect(canceled.error).toBe('');
+
+    // Dialog could not run: the command rejects (`Err` in `pick_directory`).
+    const failed = (await invokePick(async () => {
+      throw new Error('Dialog channel error: boom');
+    }, 'fail')) as { ok: boolean; canceled: boolean; error: string };
+    expect(failed.ok).toBe(false);
+    expect(failed.canceled, 'a failure must NOT be reported as a cancel').toBe(false);
+    expect(failed.error).toContain('Dialog channel error');
+  });
+
   it('invoke routing reaches __TAURI__.core.invoke when present', async () => {
     const mockInvoke = vi.fn().mockResolvedValue('test-tauri-core');
     const sandbox = runBridgeInSandbox({

@@ -25,9 +25,9 @@ function pageUnion(): string[] {
   return [...m![1].matchAll(/'([a-z]+)'/g)].map((x) => x[1]);
 }
 
-/** The `NAV_DESTINATIONS` entries: a top-level destination and every page it exposes.
- *  Sub-tabs are the destinations' children, so a page reachable through a sub-tab must
- *  count as reachable — that is the whole point of this guard. */
+/** The `NAV_DESTINATIONS` entries: a top-level destination and any sub-tab keys it declares.
+ *  `tabs` is empty for every entry now that the sub-tab strip is gone, and the assertion on it
+ *  is what keeps a re-introduced strip from quietly hiding a page again. */
 function navEntries(): Array<{ key: string; tabs: string[] }> {
   const start = APP.indexOf('const NAV_DESTINATIONS');
   const end = APP.indexOf('\n];', start);
@@ -47,7 +47,9 @@ function navEntries(): Array<{ key: string; tabs: string[] }> {
   return out;
 }
 
-/** Every page a destination exposes: itself plus its sub-tabs. */
+/** Every page the navigation exposes: the destinations themselves plus any sub-tab keys.
+ *  With the sub-tab strip removed this is just the destination list, but the union is kept so
+ *  the guard below still holds if a future entry declares children. */
 function reachablePages(): string[] {
   const out = new Set<string>();
   for (const e of navEntries()) {
@@ -69,15 +71,20 @@ describe('navigation is compact and complete', () => {
     expect(duplicates, 'a destination must appear exactly once').toEqual([]);
   });
 
-  it('there are exactly eight top-level destinations', () => {
-    // Seven was the shape agreed when the operator asked for a shorter menu
-    // («удобные меню») and the sidebar went from 15 items to 7. It is eight now because the
-    // operator then asked for the Devices and Extensions *tabs* — which lived as pills inside
-    // the content area under a single "Fingerprints" heading — to move into the left menu:
-    // «расширения и devices вкладки вынеси в левое меню». Splitting that heading into its two
-    // children is what adds the item, and no page became unreachable: the guard below still
-    // requires every rendered page to be clickable.
-    expect(navEntries().length).toBe(8);
+  it('there are exactly ten top-level destinations', () => {
+    // The count grew in three documented steps, each an operator request, never silent drift.
+    // Seven was the shape agreed when the operator asked for a shorter menu («удобные меню»)
+    // and the sidebar went from 15 items to 7. Eight came when the Devices and Extensions
+    // *tabs* — pills inside the content area under one "Fingerprints" heading — moved into the
+    // left menu («расширения и devices вкладки вынеси в левое меню»).
+    //
+    // Ten is the Trash change: the operator asked for the sub-tab row above Profiles to go and
+    // for Trash to become a WORKSPACE entry («сверху Profiles, Groups и Trash можешь убрать,
+    // треш добавь отдельно в workspace»). Groups and Trash were reachable ONLY through that row,
+    // so dropping it without promoting them would have stranded both pages with no way to click
+    // to them. The sub-tab mechanism itself stays — Automation, Cloud and Settings still use it,
+    // and the operator's request was about the Profiles row.
+    expect(navEntries().length).toBe(10);
   });
 
   it('every page in the union is reachable by clicking', () => {
@@ -99,12 +106,29 @@ describe('navigation is compact and complete', () => {
     expect(APP).toMatch(/<Settings\s*\/>/);
   });
 
-  it('renders sub-tabs for destinations that have them', () => {
-    // Without this the regroup would silently drop pages: seven sidebar entries could
-    // exist while their children became unreachable.
-    expect(APP).toMatch(/className="subtabs"/);
-    const withTabs = navEntries().filter((e) => e.tabs.length > 0);
-    expect(withTabs.length, 'at least one destination must expose sub-tabs').toBeGreaterThan(0);
+  it('the Profiles row carries no sub-tabs, and its children are reachable without them', () => {
+    // The strip used to sit above the Profiles content and restate the current page in a row of
+    // pills. The operator asked for it to go — «сверху Profiles, Groups и Trash можешь убрать,
+    // треш добавь отдельно в workspace» — and the pages that lived ONLY inside it were promoted
+    // to WORKSPACE entries.
+    //
+    // The risk this pins is the one the old test existed for, inverted: with the Profiles row's
+    // strip gone, a page reachable only through it would now be unreachable altogether. The
+    // union check above already covers that, and it is the reason Groups and Trash had to be
+    // promoted rather than simply dropped.
+    //
+    // The mechanism itself is deliberately still present for the destinations that still use it
+    // (Automation, Cloud, Settings): the operator's request named the Profiles row, and removing
+    // working navigation for the other three was not his ask.
+    const profiles = navEntries().find((e) => e.key === 'profiles');
+    expect(profiles, 'the Profiles destination must exist').toBeDefined();
+    expect(profiles!.tabs, 'Profiles must expose no sub-tabs').toEqual([]);
+    for (const child of ['groups', 'trash']) {
+      expect(
+        navEntries().some((e) => e.key === child),
+        `${child} must be a destination of its own after losing its sub-tab`
+      ).toBe(true);
+    }
   });
 });
 

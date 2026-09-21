@@ -421,12 +421,28 @@ async fn open_path(app: AppHandle, path: String) -> Result<CommandResult, String
     }
 }
 
+/// Shows the OS folder picker and returns the chosen folder.
+///
+/// The dialog is explicitly parented to the main window, which is the part that was missing.
+/// This command built an unparented dialog while the dialog plugin's own `open` command parents
+/// its dialog (`dialog_builder.set_parent(&window)`, desktop.rs) — the same operation, wired the
+/// other way. An ownerless dialog on Windows has no owner window to be shown against: it can open
+/// behind the app, or fail to be activated at all.
+///
+/// A failure is also invisible from the outside, which is why this reached the operator as a
+/// `prompt()`. rfd reports a failed `IFileDialog::Show` by resolving the pick to `None` — the same
+/// value as a cancel — so `Ok(ok: false)` here is not proof that the operator chose nothing. The
+/// renderer-side distinction added alongside this fix is what makes the difference observable.
+///
+/// The two outcomes stay distinct at the Rust level: `Ok(ok: false)` = cancelled, `Err` = the
+/// dialog itself could not run.
 #[tauri::command]
-async fn pick_directory(app: AppHandle) -> Result<PickResult, String> {
+async fn pick_directory(app: AppHandle, window: tauri::Window) -> Result<PickResult, String> {
     use tauri_plugin_dialog::DialogExt;
     let (tx, rx) = std::sync::mpsc::channel();
     app.dialog()
         .file()
+        .set_parent(&window)
         .set_can_create_directories(true)
         .pick_folder(move |folder_path| {
             let _ = tx.send(folder_path);

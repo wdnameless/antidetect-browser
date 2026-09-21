@@ -373,6 +373,7 @@ const RU: Record<string, string> = {
 
   // Cloud Sync
   'Cloud Sync': 'Облако',
+  'Cloud Synchronization': 'Облачная синхронизация',
   'Server connection': 'Подключение к серверу',
   'Not connected': 'Не подключено',
   'Connected': 'Подключено',
@@ -779,7 +780,7 @@ const RU: Record<string, string> = {
   'Download MCP': 'Скачать MCP',
   'Building…': 'Сборка…',
   'Write a ready-to-use MCP server into a folder, for your agent to run': 'Записать готовый MCP-сервер в папку, чтобы ваш агент мог его запустить',
-  'Folder to write the MCP server into:': 'Папка для записи MCP-сервера:',
+  'Could not open the folder picker.': 'Не удалось открыть выбор папки.',
   'Could not build the MCP server.': 'Не удалось собрать MCP-сервер.',
   'MCP server written to': 'MCP-сервер записан в',
   'Config copied. Point your agent at it.': 'Конфигурация скопирована. Укажите её вашему агенту.',
@@ -938,7 +939,7 @@ const EN: Record<string, string> = {
   'Download MCP': 'Download MCP',
   'Building…': 'Building…',
   'Write a ready-to-use MCP server into a folder, for your agent to run': 'Write a ready-to-use MCP server into a folder, for your agent to run',
-  'Folder to write the MCP server into:': 'Folder to write the MCP server into:',
+  'Could not open the folder picker.': 'Could not open the folder picker.',
   'Could not build the MCP server.': 'Could not build the MCP server.',
   'MCP server written to': 'MCP server written to',
   'Config copied. Point your agent at it.': 'Config copied. Point your agent at it.',

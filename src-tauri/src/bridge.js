@@ -233,14 +233,37 @@
         }
         return { ok: true };
       },
+      /**
+       * Ask the shell for a folder.
+       *
+       * Three outcomes, deliberately distinguishable, because the caller must react differently
+       * to each: `{ok:true,dir}` a folder was chosen; `{ok:false,canceled:true}` the operator
+       * backed out (say nothing, do nothing); `{ok:false,error}` the dialog could not run (tell
+       * them). Collapsing the last two into one value is what produced the browser `prompt()` the
+       * operator reported — the UI could not tell "user changed their mind" from "the picker is
+       * broken", so it treated both as "ask them to TYPE a path".
+       */
       prepareDir: async function() {
         try {
           var res = await internalInvoke('pick_directory');
           if (res && typeof res === 'object') {
-            return { ok: !!res.ok, dir: res.path || '' };
+            if (res.ok && res.path) {
+              return { ok: true, canceled: false, dir: res.path, error: '' };
+            }
+            // A resolved `ok:false` is the shell's cancel: `Ok(None)` in `pick_directory`.
+            return { ok: false, canceled: true, dir: '', error: '' };
           }
-        } catch (_) {}
-        return { ok: false, dir: '' };
+          return { ok: false, canceled: false, dir: '', error: 'Unexpected picker response' };
+        } catch (e) {
+          // A rejected invoke is a real failure (`Err` from `pick_directory`). This used to be
+          // swallowed by an empty `catch`, which is why the failure was invisible: the UI fell
+          // back to a prompt and nothing anywhere recorded that the dialog had broken.
+          var message = e && e.message ? e.message : String(e);
+          if (typeof console !== 'undefined' && console.warn) {
+            console.warn('[bridge] pick_directory failed:', message);
+          }
+          return { ok: false, canceled: false, dir: '', error: message };
+        }
       },
       migrateDir: async function(target, migrateData) {
         try {

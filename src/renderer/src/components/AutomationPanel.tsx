@@ -135,21 +135,29 @@ export function AutomationPanel() {
    * The user picks a folder; the app writes a self-contained server (dependencies vendored,
    * no install step) plus a zip. The returned config is what the agent needs, and it is
    * copied to the clipboard so the whole flow is "click, choose folder, paste".
+   *
+   * There is deliberately NO `window.prompt()` fallback for the folder. It used to exist "for a
+   * plain web client that has no bridge", and that is exactly how the operator ended up staring at
+   * a browser modal asking them to TYPE a path: the shell's picker was failing, so the fallback
+   * silently took over and turned a broken dialog into a worse experience — a system-looking box
+   * with a text field, no folder browser, and no sign that anything was wrong.
    */
   const downloadBundle = async () => {
     setBundleResult(null);
     setError(null);
-    // Prefer the shell's native folder picker; fall back to asking for a path when running
-    // as a plain web client that has no such bridge.
-    let dir = '';
     const picked = await window.antidetect?.data?.prepareDir?.();
-    if (picked?.ok && picked.dir) {
-      dir = picked.dir;
-    } else {
-      const typed = window.prompt(t('Folder to write the MCP server into:'));
-      if (!typed) return;
-      dir = typed;
+    if (!picked) {
+      setError(t('Could not open the folder picker.'));
+      return;
     }
+    // Backing out of the dialog is not an error: say nothing, do nothing.
+    if (picked.canceled) return;
+    if (!picked.ok || !picked.dir) {
+      // A real failure, and it is reported as one instead of being retried as typed text.
+      setError(t('Could not open the folder picker.'));
+      return;
+    }
+    const dir = picked.dir;
     setBundleBusy(true);
     try {
       const res = await buildMcpBundleIn(dir);

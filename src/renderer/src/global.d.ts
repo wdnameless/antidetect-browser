@@ -48,7 +48,17 @@ declare global {
       data: {
         getDir: () => Promise<string>;
         setDir: () => Promise<{ ok: boolean; dir: string }>;
-        prepareDir: () => Promise<{ ok: boolean; dir: string }>;
+        /**
+         * Ask the shell for a folder. The three outcomes are distinguishable on purpose:
+         * `ok` chose one, `canceled` means the operator backed out, and `error` (with
+         * `canceled:false`) means the dialog could not run at all.
+         */
+        prepareDir: () => Promise<{
+          ok: boolean;
+          canceled: boolean;
+          dir: string;
+          error: string;
+        }>;
         migrateDir: (target: string, migrateData: boolean) => Promise<{ ok: boolean; dir: string; migrated?: boolean; error?: string }>;
         setDirPath: (dir: string) => Promise<{ ok: boolean; dir: string }>;
         openDir: () => Promise<string>;

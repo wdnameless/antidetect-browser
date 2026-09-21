@@ -89,11 +89,26 @@ export const NAV_DESTINATIONS: NavDestination[] = [
     label: 'Profiles',
     icon: ProfilesIcon,
     group: 'WORKSPACE',
-    subTabs: [
-      { key: 'profiles', label: 'Profiles' },
-      { key: 'groups', label: 'Groups' },
-      { key: 'trash', label: 'Trash' },
-    ],
+  },
+  // Groups and Trash are siblings of Profiles rather than pills inside it.
+  //
+  // The operator asked for the sub-tab row to go («сверху Profiles, Groups и Trash можешь убрать,
+  // треш добавь отдельно в workspace»). The row was redundant chrome — it restated the current
+  // page in a strip that occupied a full line of vertical space above every table — and it was
+  // also the ONLY way to reach Groups or Trash, since neither had a navigation entry of its own.
+  // Promoting them to destinations keeps both reachable by exactly the route the operator named,
+  // and matches what this file already does for Devices and Extensions below.
+  {
+    key: 'groups',
+    label: 'Groups',
+    icon: FolderIcon,
+    group: 'WORKSPACE',
+  },
+  {
+    key: 'trash',
+    label: 'Trash',
+    icon: TrashIcon,
+    group: 'WORKSPACE',
   },
   {
     key: 'proxies',

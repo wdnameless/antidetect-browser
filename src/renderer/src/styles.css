@@ -391,7 +391,7 @@ pre {
   font-weight: var(--weight-semibold);
   letter-spacing: var(--tracking-wide);
   color: var(--text-muted);
-  padding: 8px 12px 4px 12px;
+  padding: 7px 12px 3px 12px;
   text-transform: uppercase;
   user-select: none;
   transition: opacity 0.15s ease;
@@ -403,11 +403,23 @@ pre {
   gap: 2px;
 }
 
+/*
+ * Vertical rhythm, sized to fit the whole menu without scrolling.
+ *
+ * The row padding was 10px, which fit the 8 destinations the sidebar had before Groups and Trash
+ * were promoted out of the Profiles sub-tab row. With 10 destinations the nav measured 553px
+ * against 519px of available height at a 1280x800 window — an 82px overflow that pushed the
+ * SYSTEM group below the fold and left it looking cut off.
+ *
+ * 7px keeps every row comfortably above the 18px icon it holds (32px total, border included)
+ * while reclaiming 60px, and the label trim reclaims the rest. Verified by measuring the rendered
+ * nav against `.sidebar-content` at 1280x800, not by arithmetic alone.
+ */
 .nav-item {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 10px 14px;
+  padding: 6px 14px;
   background: transparent;
   color: var(--text-secondary);
   border: 1px solid transparent;
