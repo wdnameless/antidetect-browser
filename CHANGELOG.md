@@ -24,8 +24,17 @@ Three defects stacked, and the visible one was the least important:
    experience with no sign that anything had failed. It is gone: cancelling does nothing, failure
    is reported as failure.
 
-Verified: `cargo check` clean, renderer + main typecheck clean, and the served bundle no longer
-contains the prompt string while still referencing `prepareDir`.
+Verified: `cargo check` clean, renderer + main typecheck clean. Exercised on the SHIPPED bundle
+(`index-bTHfUnGr.js`, v0.6.23) served by a live backend, with `window.prompt` instrumented:
+
+| Scenario | Result |
+|---|---|
+| Picker unavailable (no shell bridge) | `prompt` **not** called; `"Could not open the folder picker."` shown |
+| Operator cancels the dialog | `prompt` **not** called; no error, nothing happens |
+
+The first row is the operator's exact case: previously that state called `prompt()`, which is the
+modal in the screenshot. The second is why the distinction was added — a cancel must not be
+reported as a failure.
 
 ### Fixed — the light theme made several controls invisible
 
