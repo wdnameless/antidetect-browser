@@ -494,6 +494,45 @@ export interface McpStatus {
   bundleDir: string | null;
 }
 
+// ---- Android Emulator Integration (interfaces.md §2, §6, §7) ----
+export interface AndroidPlatformInfo {
+  host: 'windows' | 'macos' | 'linux';
+  abi: 'x86_64' | 'arm64-v8a';
+  backends: ('whpx' | 'aehd' | 'hvf' | 'kvm')[];
+  emulatorSubpath: string;
+}
+
+export interface AndroidEngineStatus {
+  installed: boolean;
+  engineDir: string;
+  emulatorPath: string | null;
+  installedApiLevels: number[];
+  unpinnedAssets: string[];
+  platform: AndroidPlatformInfo | null;
+  error?: { code: string; message: string };
+}
+
+export interface AndroidInstanceStatus {
+  profileId: string;
+  state: 'starting' | 'booting' | 'running' | 'stopped' | 'error';
+  serial: string;
+  consolePort: number;
+  adbPort: number;
+  screen: { width: number; height: number };
+  stream: 'idle' | 'starting' | 'streaming' | 'error';
+  startedAt: number;
+  error?: { code: string; message: string };
+  inject?: { applied: string[]; skipped: string[]; errors: string[] };
+}
+
+export interface AndroidStreamTicket {
+  ticket: string;
+  wsUrl: string;
+  width: number;
+  height: number;
+  expiresAt: number;
+}
+
 
 export const api = {
   status: () => request<{ status: string; version: string }>('/status'),
@@ -1182,4 +1221,52 @@ export const api = {
     request<{ ok: boolean; message?: string; status?: McpStatus }>('/api/v1/mcp/start', { method: 'POST' }),
   mcpStop: () =>
     request<{ ok: boolean; message?: string; status?: McpStatus }>('/api/v1/mcp/stop', { method: 'POST' }),
+  // ---- Android emulator integration ----
+  androidEngine: () =>
+    request<AndroidEngineStatus>('/api/v1/android/engine'),
+  androidEngineInstall: (apiLevel?: number | { apiLevel?: number }) => {
+    const payload = typeof apiLevel === 'number' ? { apiLevel } : (apiLevel ?? {});
+    return request<AndroidEngineStatus>('/api/v1/android/engine/install', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  },
+  androidInstances: () =>
+    request<AndroidInstanceStatus[]>('/api/v1/android/instances'),
+  androidStart: (profileId: string) =>
+    request<AndroidInstanceStatus>(`/api/v1/android/profiles/${encodeURIComponent(profileId)}/start`, {
+      method: 'POST',
+    }),
+  androidStop: (profileId: string) =>
+    request<{ ok: boolean }>(`/api/v1/android/profiles/${encodeURIComponent(profileId)}/stop`, {
+      method: 'POST',
+    }),
+  androidStatus: (profileId: string) =>
+    request<AndroidInstanceStatus>(`/api/v1/android/profiles/${encodeURIComponent(profileId)}/status`),
+  androidStreamTicket: (profileId: string) =>
+    request<AndroidStreamTicket>(`/api/v1/android/profiles/${encodeURIComponent(profileId)}/stream-ticket`, {
+      method: 'POST',
+    }),
 };
+
+export function androidEngine(): Promise<ApiEnvelope<AndroidEngineStatus>> {
+  return api.androidEngine();
+}
+export function androidEngineInstall(apiLevel?: number | { apiLevel?: number }): Promise<ApiEnvelope<AndroidEngineStatus>> {
+  return api.androidEngineInstall(apiLevel);
+}
+export function androidInstances(): Promise<ApiEnvelope<AndroidInstanceStatus[]>> {
+  return api.androidInstances();
+}
+export function androidStart(profileId: string): Promise<ApiEnvelope<AndroidInstanceStatus>> {
+  return api.androidStart(profileId);
+}
+export function androidStop(profileId: string): Promise<ApiEnvelope<{ ok: boolean }>> {
+  return api.androidStop(profileId);
+}
+export function androidStatus(profileId: string): Promise<ApiEnvelope<AndroidInstanceStatus>> {
+  return api.androidStatus(profileId);
+}
+export function androidStreamTicket(profileId: string): Promise<ApiEnvelope<AndroidStreamTicket>> {
+  return api.androidStreamTicket(profileId);
+}

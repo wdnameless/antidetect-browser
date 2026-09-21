@@ -26,6 +26,7 @@ import { Trash } from './pages/Trash';
 import { Scripts } from './pages/Scripts';
 import { FlowCanvas } from './pages/FlowCanvas';
 import { Email } from './pages/Email';
+import { AndroidPage } from './pages/Android';
 import { WorkspaceSwitcher } from './components/WorkspaceSwitcher';
 import { AutomationPanel } from './components/AutomationPanel';
 import { ToastStack } from './components/Toasts';
@@ -57,7 +58,8 @@ type Page =
   | 'trash'
   | 'scripts'
   | 'flows'
-  | 'settings';
+  | 'settings'
+  | 'android';
 
 export interface SubTab {
   key: Page;
@@ -125,6 +127,12 @@ export const NAV_DESTINATIONS: NavDestination[] = [
       { key: 'flows', label: 'Flow Canvas' },
       { key: 'scripts', label: 'Scripts' },
     ],
+  },
+  {
+    key: 'android',
+    label: 'Android',
+    icon: DevicesIcon,
+    group: 'WORKSPACE',
   },
   // LIBRARY
   // Devices and Extensions are separate destinations rather than sub-tabs of one entry. They used
@@ -658,6 +666,8 @@ export function App() {
             <CloudSync />
           ) : page === 'flows' ? (
             <FlowCanvas />
+          ) : page === 'android' ? (
+            <AndroidPage profileId="" />
           ) : (
             <Settings />
           )}

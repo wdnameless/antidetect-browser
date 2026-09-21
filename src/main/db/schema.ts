@@ -240,4 +240,7 @@ export function migrate(db: Database): void {
   migrateProxyHealth(db);
   migratePreservedBrowserData(db);
   migrateTaskGroups(db);
+  // Android profile settings JSON (e.g. {"apiLevel":34,"screen":"phone","coldBoot":false}).
+  // browser_type is the runtime selector ('android'); desktop launch paths remain untouched.
+  ensureColumn(db, 'profiles', 'android_config', 'TEXT');
 }

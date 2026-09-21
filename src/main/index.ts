@@ -8,6 +8,7 @@ import { seedDevices } from './devices/deviceManager';
 import { recoverStaleRunning, purgeExpiredTrash, adoptOrphanedProfileDirs } from './profiles/profileManager';
 import { startupPurgeSweep, shutdownCleanup } from './profiles/temporaryRegistry';
 import { stopAll, startProfile, stopProfile, isRunning } from './launcher/chromium';
+import { shutdownAllAndroid } from './android/instance';
 import { stopAllSessions } from './syncer/actionSyncer';
 import { startScheduler, stopScheduler, onProfileStatusChanged } from './scripts/triggerScheduler';
 import { stopAllWorkers } from './scripts/scriptEngine';
@@ -308,6 +309,11 @@ export async function shutdown(reason: string, code = 0): Promise<void> {
     await shutdownCleanup();
   } catch {
     // ignore
+  }
+  try {
+    await shutdownAllAndroid();
+  } catch (err) {
+    logger.error('shutdown: android instances not stopped', { reason, error: (err as Error).message });
   }
   try {
     await stopAllSessions();
