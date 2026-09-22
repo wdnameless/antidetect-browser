@@ -20,7 +20,6 @@ import {
   getAndroidEngineStatus,
   ensureAndroidEngine,
   removeStaleDownloads,
-  AndroidAcquireError,
   ANDROID_ENGINE_ASSETS,
   ANDROID_SYSTEM_IMAGE_TAG,
   AndroidAssetInfo,
@@ -428,11 +427,11 @@ describe('Android Package Manager & Engine Acquisition', () => {
     };
 
     const fetchMock = vi.fn(async (url: string) => {
-      const buf = url.includes('emulator')
-        ? emulatorZipBuffer
-        : url.includes('scrcpy')
-          ? scrcpyJarBuffer
-          : sysImgZipBuffer;
+      const byUrlFragment: Array<[string, Buffer]> = [
+        ['emulator', emulatorZipBuffer],
+        ['scrcpy', scrcpyJarBuffer],
+      ];
+      const buf = byUrlFragment.find(([fragment]) => url.includes(fragment))?.[1] ?? sysImgZipBuffer;
       const stream = new PassThrough();
       process.nextTick(() => {
         stream.end(buf);
