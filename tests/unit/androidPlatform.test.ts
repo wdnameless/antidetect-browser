@@ -227,6 +227,10 @@ describe('Android Package Manager & Engine Acquisition', () => {
     await expect(
       ensureAndroidEngine({
         engineDir: tmpEngineDir,
+        // Pass the platform the fixtures are keyed by. Without it the resolver runs against the
+        // HOST, so this test passed on Windows and failed on a macOS runner (`macos-arm64-v8a`
+        // has no entry in the fixture, which is a different error from the one asserted here).
+        platform,
         fetchFn: fetchSpy as unknown as typeof fetch,
         assets: unpinnedAssets,
         systemImages: unpinnedImages,
