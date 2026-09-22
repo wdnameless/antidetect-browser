@@ -1,6 +1,49 @@
 # Changelog
 
-## [Unreleased]
+## [0.6.24] - 2026-09-22
+
+### Added — a Note button that reaches the profile's data
+
+Operator: «сделай в actions кнопку note (она даст возможность записывать какие то данные от
+профиля для юзера) И хранить их вместе с профилем, например я хочу туда записать свои данные
+от входа в аккаунт».
+
+The credentials half of that request was already built and already encrypted: the
+`account_credentials` table holds label / login / password / TOTP under AES-256-GCM, behind
+`/api/v1/accounts/:profileId`, and a VAULT section rendered inside the Edit Profile modal. The
+request was to reach it from the row. Two things stood in the way, and neither was visible from
+the outside.
+
+**The vault list was always empty.** Its entries were fetched only by `openVaultTab`, and nothing
+in the codebase ever called it — the Edit modal had no tab switcher (its `modalTab` state was
+dead), so the handler sat unused while the table rendered *"No saved credentials yet"* for every
+profile, including the ones whose credentials were on disk. The panel did not distinguish "you
+have not saved anything" from "I did not look", and an operator reading it has no reason to.
+
+**The form's own notes field discarded what was typed.** The Edit modal exposed a `NOTES`
+textarea bound to state that was never persisted: there was no `notes` column on `profiles`, and
+neither `createProfile` nor `updateProfile` carried the value. Typing a note and pressing Save
+reported success and lost it — the same class of defect as the browser language, in the same
+form, and it is worth noting that `docs/openapi.yaml` had documented `notes` on both profile
+request schemas the entire time. The public contract promised a field the implementation did not
+have.
+
+Now: an inline **Note** button in each row's Actions cell opens a modal scoped to that profile —
+the free-form note above, that profile's credential entries below. `notes` is persisted end to
+end (idempotent `ensureColumn`, create / update / detail, zod schemas, renderer types); an empty
+or whitespace-only value stores as SQL `NULL` rather than a blank string, so "has a note" stays a
+single check. The vault markup moves out of the Edit modal into `ProfileVault`, which loads on
+mount and on `profileId` change — **that extraction is where the empty-list bug is fixed**, not
+by adding a second trigger. The duplicate notes textarea and the dead `modalTab` state are
+removed rather than left beside the new surface.
+
+Verified against a live instance on an isolated data directory, not only in unit tests: created a
+profile with a note, updated it, confirmed a name-only update leaves the note intact, confirmed
+whitespace stores as `NULL`, then drove the UI — clicked Note in Actions, typed, saved, reopened,
+and read the same text back from the server. Both regressions carry a guard:
+`tests/unit/profileNotes.test.ts` (storage round-trip, 6 cases) and
+`tests/unit/profileVaultLoad.test.ts`, which was confirmed to FAIL when the load is disabled —
+a guard that cannot fail is not a guard.
 
 ### Fixed — the preflight check was unusable: the modal crashed on render, and its styles had no owner
 
