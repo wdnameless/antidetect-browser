@@ -43,6 +43,22 @@
   spoof module, and the Android-side binaries ship inside the AOSP image; the code here drives
   them over ADB and reports their absence instead of pretending they are present (`detectSpoofModule`,
   `InjectResult.errors`, `setupGuestNetwork().ok`).
+- **Spoofing depth depends on guest privileges, and the code now says which it got.** Read-only
+  `ro.*` properties and the goldfish/QEMU artefacts can only be rewritten with `adb root`
+  (available on the `google_apis` image this change installs) or with Magisk's `resetprop`.
+  `injectGuestIdentity` reports `privilege: 'full' | 'setprop-only'` rather than letting a
+  partial application pass as a complete spoof, and `enableGuestRoot` is the enabling step.
+- **The proxy path is enforced, not assumed.** A profile with no proxy gets its guest network
+  actively cut (OUTPUT DROP, then interface/route removal as the unprivileged backstop) and a
+  failure to apply either is reported as `ok: false`. A profile with a proxy gets a host-side
+  SOCKS5 bridge on an ephemeral loopback port — the guest dials `10.0.2.2:<bridge port>`, and the
+  bridge makes the authenticated upstream connection. `AndroidInstance.start()` refuses to reach
+  `running` if either step fails, so a guest that could not be placed behind the proxy never runs.
+- **`scrcpy-server.jar` is acquired like every other engine asset.** It is pinned by SHA-256
+  (`93c272b7438605c055e127f7444064ed78fa9ca49f81156777fd201e79ce7ba3`, 69007 bytes, scrcpy v2.4)
+  and installed through the same stream-verify-then-place path; the digest was computed from the
+  real release asset and reproduced across two independent fetches. The server version passed to
+  `app_process` is read from the same constant, so jar and invocation cannot drift apart.
 - **A full cold boot cannot run in this environment** (no hypervisor image installed, ~800 MB
   download). Verification here is therefore: pure-function unit tests for the resolver, wire-format
   round-trip tests for both parsers, digest-refusal tests with an injected fetch, injection-plan

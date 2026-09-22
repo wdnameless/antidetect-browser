@@ -5,8 +5,10 @@ import * as net from 'net';
 import * as crypto from 'crypto';
 import { spawn, type ChildProcess } from 'child_process';
 import { WebSocketServer, WebSocket } from 'ws';
-import { AdbClient, AdbError } from './adb';
+import { AdbClient } from './adb';
 import { ScrcpyParser, type ScrcpyCodecMeta } from './scrcpyProtocol';
+import { SCRCPY_SERVER_JAR_NAME, SCRCPY_SERVER_VERSION } from './packageManager';
+import { DATA_DIR } from '../config';
 import { logger } from '../util/logger';
 
 export class StreamHostError extends Error {
@@ -53,8 +55,13 @@ export interface StreamStartOptions {
 }
 
 /**
- * Resolves the location of scrcpy-server.jar from explicit options, environment,
- * or standard project vendor/data directories.
+ * Resolves the location of the guest-side scrcpy server jar.
+ *
+ * The engine installer downloads and digest-verifies this jar into the engine directory
+ * (`DATA_DIR/android/scrcpy-server.jar`, see ANDROID_ENGINE_ASSETS), so that managed copy is
+ * the canonical one and is searched first. The remaining candidates are operator escape
+ * hatches — an explicit path, an env override, or a vendored file — kept so a pinned engine
+ * can be swapped out without editing code.
  */
 function resolveScrcpyServerPath(customPath?: string): string {
   const candidates: string[] = [];
@@ -67,11 +74,12 @@ function resolveScrcpyServerPath(customPath?: string): string {
   }
 
   candidates.push(
-    path.join(process.cwd(), 'data', 'android', 'scrcpy-server.jar'),
-    path.join(process.cwd(), 'vendor', 'scrcpy-server.jar'),
-    path.join(process.cwd(), 'scrcpy-server.jar'),
-    path.resolve(__dirname, '..', '..', '..', 'vendor', 'scrcpy-server.jar'),
-    path.resolve(__dirname, '..', '..', '..', 'data', 'android', 'scrcpy-server.jar')
+    path.join(DATA_DIR, 'android', SCRCPY_SERVER_JAR_NAME),
+    path.join(process.cwd(), 'data', 'android', SCRCPY_SERVER_JAR_NAME),
+    path.join(process.cwd(), 'vendor', SCRCPY_SERVER_JAR_NAME),
+    path.join(process.cwd(), SCRCPY_SERVER_JAR_NAME),
+    path.resolve(__dirname, '..', '..', '..', 'vendor', SCRCPY_SERVER_JAR_NAME),
+    path.resolve(__dirname, '..', '..', '..', 'data', 'android', SCRCPY_SERVER_JAR_NAME)
   );
 
   for (const candidate of candidates) {
@@ -248,7 +256,9 @@ export class AndroidStreamHost {
       'app_process',
       '/',
       'com.genymobile.scrcpy.Server',
-      '2.4',
+      // Must equal the version of the jar the installer verified — a mismatch makes the guest
+      // server reject the invocation, so both read from the same pinned constant.
+      SCRCPY_SERVER_VERSION,
       `max_size=${maxSize}`,
       `bit_rate=${bitRate}`,
       `max_fps=${maxFps}`,

@@ -22,7 +22,7 @@ import {
   removeStaleDownloads,
   AndroidAcquireError,
   ANDROID_ENGINE_ASSETS,
-  ANDROID_SYSTEM_IMAGES,
+  ANDROID_SYSTEM_IMAGE_TAG,
   AndroidAssetInfo,
 } from '../../src/main/android/packageManager';
 
@@ -218,7 +218,7 @@ describe('Android Package Manager & Engine Acquisition', () => {
             sha256: null,
             sha1: null,
             archiveType: 'zip',
-            marker: path.join('system-images', 'android-34', 'google_apis_playstore', 'x86_64', '.installed'),
+            marker: path.join('system-images', 'android-34', ANDROID_SYSTEM_IMAGE_TAG, 'x86_64', '.installed'),
           },
         ],
       },
@@ -273,7 +273,7 @@ describe('Android Package Manager & Engine Acquisition', () => {
             sha256: wrongSha256,
           sha1: null,
             archiveType: 'zip',
-            marker: path.join('system-images', 'android-34', 'google_apis_playstore', 'x86_64', '.installed'),
+            marker: path.join('system-images', 'android-34', ANDROID_SYSTEM_IMAGE_TAG, 'x86_64', '.installed'),
           },
         ],
       },
@@ -338,7 +338,7 @@ describe('Android Package Manager & Engine Acquisition', () => {
             sha256: actualHash,
           sha1: null,
             archiveType: 'zip',
-            marker: path.join('system-images', 'android-34', 'google_apis_playstore', 'x86_64', '.installed'),
+            marker: path.join('system-images', 'android-34', ANDROID_SYSTEM_IMAGE_TAG, 'x86_64', '.installed'),
           },
         ],
       },
@@ -379,6 +379,11 @@ describe('Android Package Manager & Engine Acquisition', () => {
     });
     const sysImgHash = crypto.createHash('sha256').update(sysImgZipBuffer).digest('hex');
 
+    // The streaming server ships as a plain (non-archive) download, and an engine is only
+    // reported installed once every engine asset — including this one — is present.
+    const scrcpyJarBuffer = Buffer.from('PK\x03\x04mock-scrcpy-server-jar', 'binary');
+    const scrcpyJarHash = crypto.createHash('sha256').update(scrcpyJarBuffer).digest('hex');
+
     const mockAssets: Record<string, AndroidAssetInfo[]> = {
       [platformKey]: [
         {
@@ -389,6 +394,15 @@ describe('Android Package Manager & Engine Acquisition', () => {
           sha1: null,
           archiveType: 'zip',
           marker: path.join('emulator', '.installed'),
+        },
+        {
+          file: 'scrcpy-server.jar',
+          url: 'https://github.com/Genymobile/scrcpy/releases/download/v2.4/scrcpy-server-v2.4',
+          size: scrcpyJarBuffer.length,
+          sha256: scrcpyJarHash,
+          sha1: null,
+          archiveType: 'plain',
+          marker: 'scrcpy-server.jar',
         },
       ],
     };
@@ -403,14 +417,18 @@ describe('Android Package Manager & Engine Acquisition', () => {
             sha256: sysImgHash,
             sha1: null,
             archiveType: 'zip',
-            marker: path.join('system-images', 'android-34', 'google_apis_playstore', 'x86_64', '.installed'),
+            marker: path.join('system-images', 'android-34', ANDROID_SYSTEM_IMAGE_TAG, 'x86_64', '.installed'),
           },
         ],
       },
     };
 
     const fetchMock = vi.fn(async (url: string) => {
-      const buf = url.includes('emulator') ? emulatorZipBuffer : sysImgZipBuffer;
+      const buf = url.includes('emulator')
+        ? emulatorZipBuffer
+        : url.includes('scrcpy')
+          ? scrcpyJarBuffer
+          : sysImgZipBuffer;
       const stream = new PassThrough();
       process.nextTick(() => {
         stream.end(buf);
@@ -438,12 +456,20 @@ describe('Android Package Manager & Engine Acquisition', () => {
 
     expect(result.engineDir).toBe(tmpEngineDir);
     expect(result.emulatorPath).toBe(path.join(tmpEngineDir, 'emulator', 'emulator.exe'));
-    expect(result.systemImageDir).toBe(path.join(tmpEngineDir, 'system-images', 'android-34', 'google_apis_playstore', 'x86_64'));
+    expect(result.systemImageDir).toBe(
+      path.join(tmpEngineDir, 'system-images', 'android-34', ANDROID_SYSTEM_IMAGE_TAG, 'x86_64'),
+    );
 
     expect(fs.existsSync(result.emulatorPath)).toBe(true);
     expect(fs.existsSync(path.join(tmpEngineDir, 'emulator', '.installed'))).toBe(true);
     expect(fs.existsSync(path.join(result.systemImageDir, '.installed'))).toBe(true);
     expect(progressReports.length).toBeGreaterThan(0);
+
+    // The plain asset lands under its own name holding the verified bytes, not a marker
+    // timestamp — a marker write here would have overwritten the jar the guest executes.
+    const installedJar = path.join(tmpEngineDir, 'scrcpy-server.jar');
+    expect(fs.existsSync(installedJar)).toBe(true);
+    expect(fs.readFileSync(installedJar).equals(scrcpyJarBuffer)).toBe(true);
 
     // No leftover .download-*.tmp files
     const remainingTmp = fs.readdirSync(tmpEngineDir).filter((f) => f.startsWith('.download-'));

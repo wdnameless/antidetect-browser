@@ -38,3 +38,17 @@ Verbatim sources in this session:
 | R16 | The architecture is formalized as a Markdown spec in the repo, split into sequential stages | recorded prior instruction; `docs/ANDROID_EMULATOR_ARCHITECTURE.md` | done |
 | R17 | Existing open-source tooling is audited before proprietary code is written — scrcpy (`@yume-chan/scrcpy` protocol) and the AOSP emulator itself are the reused components | recorded prior instruction | in-spec |
 | R18 | The desktop (Chromium/Stealth) launch path must not regress: all 146 existing tests stay green | repo invariant; `i`-suffix | in-spec |
+
+## Defects found in blind acceptance, and what closed them
+
+A blind oracle audited the built slice against this manifest and rejected it on R08, R09, R10
+and R14, plus a missing streaming artifact. Each was reproduced against the code before being
+fixed; none was accepted on the auditor's word alone.
+
+| Row | Defect as found | Fix | Evidence |
+|---|---|---|---|
+| R08 | IMEI/MAC and the `ro.*` build.prop writes were gated on a Magisk/Zygisk module that the installed image does not ship, so they were reported as `skipped` on every real guest. | `enableGuestRoot()` runs `adb root` before injection; the pinned image is the rootable `google_apis` variant, not `google_apis_playstore`; `injectGuestIdentity` reports `privilege: 'full' \| 'setprop-only'`. | `src/main/android/injector.ts`, `packageManager.ts` |
+| R09 | Emulator-artefact removal (`ro.kernel.qemu`, goldfish, QEMU props) was skipped for the same reason, leaving the guest trivially detectable. | Artefacts are rewritten whenever *either* root or `resetprop` is available, not only with a module. | `src/main/android/injector.ts` |
+| R10 | `setupGuestNetwork` returned `ok`, but `start()` ignored it; a `blocked` plan executed no commands at all; the guest was pointed at the remote proxy's port where nothing listened. | The result is enforced — a failed enforcement aborts the launch; `blocked` applies OUTPUT DROP then removes routes; a host-side SOCKS5 bridge supplies the port the guest actually dials, and is closed on stop. | `src/main/android/network.ts`, `instance.ts` |
+| R14 | `/api/v1/browser/start` resolved `android` to `chromium` (any non-firefox type), so the documented surface launched a desktop browser for an Android profile. | `handleStart` dispatches `browser_type === 'android'` to the Android runtime (and stop/bulk paths likewise), sharing one `launchAndroidProfile` implementation; missing engine answers `409 NOT_READY`. | `src/main/api/routes/browser.ts`, `android.ts`, `instance.ts` |
+| R04 | `streamHost` threw `ERR_ANDROID_SCRCPY_NOT_FOUND` because `scrcpy-server.jar` was neither bundled nor downloaded. | The jar is an engine asset pinned by SHA-256 and installed via the verified path; the `app_process` version reads the same constant. | `src/main/android/packageManager.ts`, `streamHost.ts` |

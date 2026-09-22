@@ -29,18 +29,52 @@ export interface AndroidAssetInfo {
    * ERR_ANDROID_DIGEST_UNPINNED — null is never "skip verification".
    */
   sha1: string | null;
-  archiveType: 'zip' | 'tar.gz';
+  /**
+   * How the payload is unpacked after verification.
+   * `plain` = the verified bytes ARE the artifact (no archive to expand).
+   */
+  archiveType: 'zip' | 'tar.gz' | 'plain';
   /** Marker path (relative to engine dir) whose existence means "already installed". */
   marker: string;
 }
 
 // Google publishes the official Android emulator and system image archives under dl.google.com,
 // and does publish their digests — but only SHA-1, as <checksum type="sha1"> entries inside
-// repository2-3.xml (emulator) and sys-img/google_apis_playstore/sys-img2-3.xml (system images).
+// repository2-3.xml (emulator) and sys-img/google_apis/sys-img2-3.xml (system images).
 // There is no SHA-256 feed, so these builds are pinned with the published SHA-1 rather than
 // nulled out: a null digest would make acquisition impossible rather than merely weaker.
 // Digests and file names below are transcribed from those manifests; the build/revision numbers
 // matter, because a stale revision yields a URL that 404s rather than a clean digest failure.
+// Genymobile publishes the scrcpy server jar for each release; the version here MUST match the
+// version string passed to `app_process ... com.genymobile.scrcpy.Server` in streamHost.ts, or the
+// guest server rejects the invocation. Unlike the Google feeds above, scrcpy publishes no digest
+// file, so this SHA-256 was computed from the real release asset
+// (https://github.com/Genymobile/scrcpy/releases/download/v2.4/scrcpy-server-v2.4, 69007 bytes)
+// and reproduced byte-identically across two independent fetches.
+export const SCRCPY_SERVER_VERSION = '2.4';
+export const SCRCPY_SERVER_FILE = `scrcpy-server-v${SCRCPY_SERVER_VERSION}`;
+export const SCRCPY_SERVER_URL = `https://github.com/Genymobile/scrcpy/releases/download/v${SCRCPY_SERVER_VERSION}/${SCRCPY_SERVER_FILE}`;
+export const SCRCPY_SERVER_SHA256 = '93c272b7438605c055e127f7444064ed78fa9ca49f81156777fd201e79ce7ba3';
+export const SCRCPY_SERVER_SIZE = 69007;
+/** Installed name: the guest-side classpath entry streamHost pushes and executes. */
+export const SCRCPY_SERVER_JAR_NAME = 'scrcpy-server.jar';
+
+/**
+ * The scrcpy server jar, acquired like every other engine artifact: downloaded, digest-verified
+ * while streaming, and only then installed. It is not an archive, so it is written straight to
+ * its final name once the digest matches.
+ */
+const SCRCPY_SERVER_ASSET: AndroidAssetInfo = {
+  file: SCRCPY_SERVER_JAR_NAME,
+  url: SCRCPY_SERVER_URL,
+  size: SCRCPY_SERVER_SIZE,
+  sha256: SCRCPY_SERVER_SHA256,
+  sha1: null,
+  archiveType: 'plain',
+  marker: SCRCPY_SERVER_JAR_NAME,
+};
+
+// The guest-side server is architecture-independent Java, so one asset serves every host.
 export const ANDROID_ENGINE_ASSETS: Record<string, AndroidAssetInfo[]> = {
   'windows-x86_64': [
     {
@@ -52,6 +86,7 @@ export const ANDROID_ENGINE_ASSETS: Record<string, AndroidAssetInfo[]> = {
       archiveType: 'zip',
       marker: path.join('emulator', '.installed'),
     },
+    SCRCPY_SERVER_ASSET,
   ],
   'macos-arm64-v8a': [
     {
@@ -63,6 +98,7 @@ export const ANDROID_ENGINE_ASSETS: Record<string, AndroidAssetInfo[]> = {
       archiveType: 'zip',
       marker: path.join('emulator', '.installed'),
     },
+    SCRCPY_SERVER_ASSET,
   ],
   'macos-x86_64': [
     {
@@ -74,6 +110,7 @@ export const ANDROID_ENGINE_ASSETS: Record<string, AndroidAssetInfo[]> = {
       archiveType: 'zip',
       marker: path.join('emulator', '.installed'),
     },
+    SCRCPY_SERVER_ASSET,
   ],
   'linux-x86_64': [
     {
@@ -85,58 +122,72 @@ export const ANDROID_ENGINE_ASSETS: Record<string, AndroidAssetInfo[]> = {
       archiveType: 'zip',
       marker: path.join('emulator', '.installed'),
     },
+    SCRCPY_SERVER_ASSET,
   ],
 };
+
+// The system image is the `google_apis` variant, NOT `google_apis_playstore`.
+//
+// This is what makes R08/R09 possible at all: spoofing identity needs writes to read-only
+// `ro.*` properties and the removal of goldfish/QEMU artefacts, and both require root. The
+// Play Store image ships as a locked production build where `adb root` is refused, so on it
+// every one of those steps can only ever be reported as skipped. The operator's chosen stack
+// («AOSP + Zygisk/Magisk + tun2socks») presumes a rootable AOSP-based image, which is this one.
+//
+// Digests are the SHA-1 values Google publishes for these builds in
+// sys-img/google_apis/sys-img2-3.xml; sizes match the byte counts the CDN advertises.
+/** SDK tag of the system image variant above; the marker, the asset URL and the extraction
+ * target all derive from it, so they cannot disagree about which image is installed. */
+export const ANDROID_SYSTEM_IMAGE_TAG = 'google_apis';
 
 export const ANDROID_SYSTEM_IMAGES: Record<number, Record<string, AndroidAssetInfo[]>> = {
   34: {
     'windows-x86_64': [
       {
         file: 'x86_64-34_r14.zip',
-        url: 'https://dl.google.com/android/repository/sys-img/google_apis_playstore/x86_64-34_r14.zip',
-        size: 1510752654,
+        url: 'https://dl.google.com/android/repository/sys-img/google_apis/x86_64-34_r14.zip',
+        size: 1563721130,
         sha256: null,
-        sha1: '01d32617fd1937e540faf8731d70cf50e35af854',
+        sha1: 'e0f6c9a0691aa27bd597d0deb1bcfdc943ac8ca7',
         archiveType: 'zip',
-        marker: path.join('system-images', 'android-34', 'google_apis_playstore', 'x86_64', '.installed'),
+        marker: path.join('system-images', 'android-34', 'google_apis', 'x86_64', '.installed'),
       },
     ],
     'macos-arm64-v8a': [
       {
         file: 'arm64-v8a-34_r14.zip',
-        url: 'https://dl.google.com/android/repository/sys-img/google_apis_playstore/arm64-v8a-34_r14.zip',
-        size: 1548905381,
+        url: 'https://dl.google.com/android/repository/sys-img/google_apis/arm64-v8a-34_r14.zip',
+        size: 1610393229,
         sha256: null,
-        sha1: 'c307c3301dc52635ebc78b943c39b3c377856ebc',
+        sha1: '2fe8b46d419a3400e30f31b0152b241b50c8b99f',
         archiveType: 'zip',
-        marker: path.join('system-images', 'android-34', 'google_apis_playstore', 'arm64-v8a', '.installed'),
+        marker: path.join('system-images', 'android-34', 'google_apis', 'arm64-v8a', '.installed'),
       },
     ],
     'macos-x86_64': [
       {
         file: 'x86_64-34_r14.zip',
-        url: 'https://dl.google.com/android/repository/sys-img/google_apis_playstore/x86_64-34_r14.zip',
-        size: 1510752654,
+        url: 'https://dl.google.com/android/repository/sys-img/google_apis/x86_64-34_r14.zip',
+        size: 1563721130,
         sha256: null,
-        sha1: '01d32617fd1937e540faf8731d70cf50e35af854',
+        sha1: 'e0f6c9a0691aa27bd597d0deb1bcfdc943ac8ca7',
         archiveType: 'zip',
-        marker: path.join('system-images', 'android-34', 'google_apis_playstore', 'x86_64', '.installed'),
+        marker: path.join('system-images', 'android-34', 'google_apis', 'x86_64', '.installed'),
       },
     ],
     'linux-x86_64': [
       {
         file: 'x86_64-34_r14.zip',
-        url: 'https://dl.google.com/android/repository/sys-img/google_apis_playstore/x86_64-34_r14.zip',
-        size: 1510752654,
+        url: 'https://dl.google.com/android/repository/sys-img/google_apis/x86_64-34_r14.zip',
+        size: 1563721130,
         sha256: null,
-        sha1: '01d32617fd1937e540faf8731d70cf50e35af854',
+        sha1: 'e0f6c9a0691aa27bd597d0deb1bcfdc943ac8ca7',
         archiveType: 'zip',
-        marker: path.join('system-images', 'android-34', 'google_apis_playstore', 'x86_64', '.installed'),
+        marker: path.join('system-images', 'android-34', 'google_apis', 'x86_64', '.installed'),
       },
     ],
   },
-};
-interface FetchResponseLike {
+};interface FetchResponseLike {
   ok: boolean;
   status: number;
   statusText: string;
@@ -147,10 +198,16 @@ interface FetchResponseLike {
   body?: unknown;
 }
 
+/** What the Node stream shim returns from `on()`/`pipe()`: the emitter itself, or the sink. */
+interface StreamSubscription {
+  addListener(listener: (chunk: Buffer) => void): StreamSubscription;
+  cancel(): void;
+}
+
 interface NodeStreamLike {
-  on(event: 'data', listener: (chunk: Buffer) => void): unknown;
-  on(event: 'error', listener: (err: Error) => void): unknown;
-  pipe(destination: NodeJS.WritableStream): unknown;
+  on(event: 'data', listener: (chunk: Buffer) => void): StreamSubscription | void;
+  on(event: 'error', listener: (err: Error) => void): StreamSubscription | void;
+  pipe(destination: NodeJS.WritableStream): NodeJS.WritableStream;
 }
 
 interface WebReaderLike {
@@ -389,8 +446,10 @@ export function getAndroidEngineStatus(opts?: {
  *    otherwise the published SHA-1) so the full archive (~350MB - 1.5GB) is NEVER buffered in RAM.
  * 4. Verifies byte size when provided; fails closed if truncated.
  * 5. Verifies the calculated digest against the pinned digest; on mismatch, deletes the temporary file immediately.
- * 6. Extracts archive contents; on any failure, deletes temporary file and aborts without writing the marker.
- * 7. Writes the marker file LAST so a half-extracted engine is never reported installed.
+ * 6. Installs the verified payload: `zip` and `tar.gz` are unpacked, `plain` is moved into place
+ *    under its final name; on any failure the temporary file is deleted and no marker is written.
+ * 7. Writes the marker file LAST so a half-installed engine is never reported installed. A `plain`
+ *    asset is its own marker — its presence is the proof that it verified.
  */
 export async function ensureAndroidEngine(opts?: {
   apiLevel?: number;
@@ -448,7 +507,7 @@ export async function ensureAndroidEngine(opts?: {
     engineDir,
     'system-images',
     `android-${apiLevel}`,
-    'google_apis_playstore',
+    ANDROID_SYSTEM_IMAGE_TAG,
     platform.abi
   );
 
@@ -485,12 +544,16 @@ export async function ensureAndroidEngine(opts?: {
     try {
       let res: FetchResponseLike;
       try {
-        // Cast untyped external fetch response to minimal validated structure
         const rawRes = await fetchImpl(asset.url, {
           signal: opts?.signal,
           redirect: 'follow',
           headers: { 'User-Agent': 'antidetect-browser/androidPackageManager' },
         });
+        // SAFETY: `fetch` returns the runtime `Response` type, which structural typing cannot
+        // match against `FetchResponseLike` because the declarations come from different
+        // TypeScript lib sets. Only `ok`, `status`, `statusText`, `headers.get` and `body` are
+        // read, and each is re-validated at its use site (`headers.get` is feature-tested,
+        // `body` is narrowed by isNodeStreamLike/isWebStreamLike) before any byte is consumed.
         res = rawRes as unknown as FetchResponseLike;
       } catch (netErr: unknown) {
         if (opts?.signal?.aborted) {
@@ -603,7 +666,7 @@ export async function ensureAndroidEngine(opts?: {
                 name.startsWith('arm64-v8a/'),
             );
             if (hasSubdir) {
-              extractDir = path.join(engineDir, 'system-images', `android-${apiLevel}`, 'google_apis_playstore');
+              extractDir = path.join(engineDir, 'system-images', `android-${apiLevel}`, ANDROID_SYSTEM_IMAGE_TAG);
             } else {
               extractDir = systemImageDir;
             }
@@ -633,6 +696,12 @@ export async function ensureAndroidEngine(opts?: {
             'ERR_ANDROID_EXTRACTION_FAILED'
           );
         }
+      } else if (asset.archiveType === 'plain') {
+        // The verified bytes ARE the artifact: move the download into place under its final
+        // name. Nothing is unpacked, so the digest checked above is the digest of the file the
+        // guest will actually receive.
+        fs.mkdirSync(path.dirname(markerFullPath), { recursive: true });
+        fs.renameSync(tmpDownloadPath, markerFullPath);
       } else {
         throw new AndroidAcquireError(
           `Unsupported archive type for ${asset.file}: ${asset.archiveType}`,
@@ -641,8 +710,13 @@ export async function ensureAndroidEngine(opts?: {
       }
 
       // Write marker LAST so a partial or aborted extraction is never reported installed.
+      // For a `plain` asset the artifact itself is the marker (its existence is the proof) and
+      // renaming already put it in place — writing here would overwrite the verified bytes with
+      // a timestamp, so the marker write is skipped for that one case.
       fs.mkdirSync(path.dirname(markerFullPath), { recursive: true });
-      fs.writeFileSync(markerFullPath, String(Date.now()), 'utf8');
+      if (asset.archiveType !== 'plain') {
+        fs.writeFileSync(markerFullPath, String(Date.now()), 'utf8');
+      }
 
       // Unlink temporary file on successful extraction
       try {

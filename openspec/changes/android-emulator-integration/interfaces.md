@@ -166,8 +166,10 @@ actual values (`ERR_ANDROID_DIGEST_MISMATCH`).
 
 The URL/version constants are pinned from Google's public repository
 (`https://dl.google.com/android/repository/`), and the file list is the real one
-(`emulator-windows_x64-<build>.zip`, `sys-img/google_apis_playstore/x86_64-34_r14.zip` —
-underscores, not hyphens). A test injects a deliberately digest-free asset table and asserts
+(`emulator-windows_x64-<build>.zip`, `sys-img/google_apis/x86_64-34_r14.zip` —
+underscores, not hyphens). The system image is the `google_apis` variant, not
+`google_apis_playstore`: spoofing read-only `ro.*` properties and removing emulator artefacts
+needs `adb root`, and the Play Store image refuses it.. A test injects a deliberately digest-free asset table and asserts
 exactly this refusal with **no** network call.
 
 ## 4. A2 — ADB, scrcpy wire format, stream host

@@ -14,6 +14,10 @@ import {
   connectController,
 } from './network';
 import { logger } from '../util/logger';
+import { PROFILES_DIR } from '../config';
+import { getAndroidEngineStatus, ensureAndroidEngine } from './packageManager';
+import { resolveAdbPath } from './adb';
+import { resolveAndroidConfig } from './config';
 
 export interface AndroidStartOptions {
   profileId: string;
@@ -43,6 +47,13 @@ export interface AndroidInstanceStatus {
   startedAt: number;
   error?: { code: string; message: string };
   inject?: InjectResult;
+  /** Outcome of forcing guest traffic through the profile's proxy. */
+  network?: { ok: boolean; detail: string };
+}
+
+/** Message of an unknown thrown value, for wrapping an engine failure into a coded error. */
+function messageOf(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
 }
 
 export class AndroidRuntimeError extends Error {
@@ -83,6 +94,8 @@ export class AndroidInstance implements AndroidInstanceLike {
 
   private process: child_process.ChildProcess | null = null;
   private streamHost: AndroidStreamHost | null = null;
+  /** Loopback SOCKS bridge serving this guest; closed on stop so nothing keeps listening. */
+  private stopNetworkBridge: (() => Promise<void>) | null = null;
   private _status: AndroidInstanceStatus;
 
   constructor(private readonly options: AndroidStartOptions) {
@@ -199,10 +212,33 @@ export class AndroidInstance implements AndroidInstanceLike {
         hasZygisk,
       });
       this._status.inject = injectResult;
+      if (injectResult.privilege !== 'full') {
+        // The guest is running with an identity that a careful check can still recognise as an
+        // emulator. That is a degraded anti-detect posture, not a launch failure — but it must
+        // be visible in the status rather than passed off as a complete spoof.
+        logger.warn(
+          `Android profile ${this.profileId} launched with a partial identity spoof ` +
+            `(privilege=${injectResult.privilege}); read-only properties and emulator artefacts ` +
+            `were not rewritten`,
+        );
+      }
 
       // 5. Setup guest network & geolocation
       const netPlan = planGuestNetwork(this.options.proxy);
-      await setupGuestNetwork(this.adb, netPlan, {});
+      const netResult = await setupGuestNetwork(this.adb, netPlan, {});
+      this._status.network = { ok: netResult.ok, detail: netResult.detail };
+      this.stopNetworkBridge = netResult.stopBridge ?? null;
+      if (!netResult.ok) {
+        // Fail closed. A guest that could not be placed behind the proxy is a guest whose
+        // traffic would leave through the emulator's own NAT, i.e. the operator's real
+        // address. Refusing to run is the only safe outcome; `stop()` in the catch below
+        // tears the emulator down so nothing is left reachable in that state.
+        throw new AndroidRuntimeError(
+          `Guest traffic could not be forced through the profile's proxy: ${netResult.detail}. ` +
+            `Refusing to start rather than leak.`,
+          'ERR_ANDROID_NETWORK_NOT_ENFORCED'
+        );
+      }
 
       if (typeof this.options.latitude === 'number' && typeof this.options.longitude === 'number') {
         try {
@@ -318,6 +354,17 @@ export class AndroidInstance implements AndroidInstanceLike {
       }
     }
 
+    // 2b. Close the host-side SOCKS bridge. It is a loopback listener this process owns, so it
+    // would survive the guest and keep a port open for a profile that no longer runs.
+    if (this.stopNetworkBridge) {
+      try {
+        await this.stopNetworkBridge();
+      } catch (err) {
+        logger.warn(`Failed to close guest SOCKS bridge for ${this.profileId}: ${err}`);
+      }
+      this.stopNetworkBridge = null;
+    }
+
     // 3. Stop stream host (removes forwards)
     if (this.streamHost) {
       try {
@@ -342,7 +389,8 @@ export class AndroidInstance implements AndroidInstanceLike {
       const pid = this.process.pid;
       try {
         if (process.platform === 'win32') {
-          child_process.execSync(`taskkill /pid ${pid} /T /F`, { stdio: 'ignore' });
+          // Argument-vector form: no shell, so the pid cannot be interpreted as a command.
+          child_process.spawnSync('taskkill', ['/pid', String(pid), '/T', '/F'], { stdio: 'ignore' });
         } else {
           process.kill(-pid, 'SIGKILL');
         }
@@ -373,6 +421,48 @@ export class AndroidInstance implements AndroidInstanceLike {
 
 // Module-level registry
 const instances = new Map<string, AndroidInstance>();
+
+/**
+ * Launches an Android profile, resolving the engine first so a missing installation is reported
+ * as a not-ready condition rather than as a launch failure. Shared by the `/api/v1/android/*`
+ * routes and the general profile surface (`/api/v1/browser/start`), so both paths run the same
+ * code and cannot drift apart (R14).
+ *
+ * Throws `AndroidRuntimeError` with code `NOT_READY` when the engine is absent.
+ */
+export async function launchAndroidProfile(profileId: string): Promise<AndroidInstanceStatus> {
+  const config = resolveAndroidConfig(profileId);
+
+  const engineStatus = getAndroidEngineStatus();
+  if (!engineStatus.installed || !engineStatus.emulatorPath) {
+    throw new AndroidRuntimeError('Android engine is not installed', 'NOT_READY');
+  }
+
+  let engine: { engineDir: string; emulatorPath: string; systemImageDir: string };
+  try {
+    engine = await ensureAndroidEngine();
+  } catch (engineErr: unknown) {
+    throw new AndroidRuntimeError(
+      messageOf(engineErr) || 'Android engine is not ready',
+      'NOT_READY',
+    );
+  }
+
+  return startAndroidProfile({
+    profileId,
+    systemImageDir: engine.systemImageDir,
+    emulatorPath: engine.emulatorPath,
+    adbPath: resolveAdbPath(engine.engineDir),
+    dataImagePath: path.join(PROFILES_DIR, profileId, 'android', 'userdata.img'),
+    screen: config.screen,
+    proxy: config.proxy,
+    timezone: config.timezone,
+    latitude: config.geolocation?.latitude,
+    longitude: config.geolocation?.longitude,
+    seed: config.seed,
+  });
+}
+
 
 export async function startAndroidProfile(o: AndroidStartOptions): Promise<AndroidInstanceStatus> {
   if (!o.emulatorPath || !fs.existsSync(o.emulatorPath)) {

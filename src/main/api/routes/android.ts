@@ -1,23 +1,14 @@
 import { Router, Request, Response } from 'express';
-import * as path from 'path';
 import { getDb } from '../../db';
-import { PROFILES_DIR } from '../../config';
 import { getAndroidEngineStatus, ensureAndroidEngine } from '../../android/packageManager';
-import { resolveAdbPath } from '../../android/adb';
-import { resolveAndroidConfig } from '../../android/config';
 import {
-  startAndroidProfile,
+  launchAndroidProfile,
   stopAndroidProfile,
   getAndroidInstance,
   listAndroidStatuses,
 } from '../../android/instance';
 
 const router = Router();
-
-interface ErrorWithCode {
-  code?: string;
-  message: string;
-}
 
 function extractErrorCode(err: unknown): string | undefined {
   if (err && typeof err === 'object' && 'code' in err) {
@@ -70,46 +61,18 @@ router.get('/api/v1/android/instances', async (_req: Request, res: Response) => 
 router.post('/api/v1/android/profiles/:id/start', async (req: Request, res: Response) => {
   const id = String(req.params.id);
   try {
-    const config = resolveAndroidConfig(id);
-
-    const engineStatus = getAndroidEngineStatus();
-    if (!engineStatus.installed || !engineStatus.emulatorPath) {
-      res.status(409).json({ code: 'NOT_READY', msg: 'Android engine is not installed', data: { code: 'NOT_READY' } });
-      return;
-    }
-
-    let engine: { engineDir: string; emulatorPath: string; systemImageDir: string };
-    try {
-      engine = await ensureAndroidEngine();
-    } catch (engineErr: unknown) {
+    const status = await launchAndroidProfile(id);
+    res.json({ code: 0, msg: 'success', data: status });
+  } catch (err: unknown) {
+    const code = extractErrorCode(err);
+    if (code === 'NOT_READY') {
       res.status(409).json({
         code: 'NOT_READY',
-        msg: toErrorMessage(engineErr) || 'Android engine is not ready',
+        msg: toErrorMessage(err) || 'Android engine is not ready',
         data: { code: 'NOT_READY' },
       });
       return;
     }
-
-    const adbPath = resolveAdbPath(engine.engineDir);
-    const dataImagePath = path.join(PROFILES_DIR, id, 'android', 'userdata.img');
-
-    const status = await startAndroidProfile({
-      profileId: id,
-      systemImageDir: engine.systemImageDir,
-      emulatorPath: engine.emulatorPath,
-      adbPath,
-      dataImagePath,
-      screen: config.screen,
-      proxy: config.proxy,
-      timezone: config.timezone,
-      latitude: config.geolocation?.latitude,
-      longitude: config.geolocation?.longitude,
-      seed: config.seed,
-    });
-
-    res.json({ code: 0, msg: 'success', data: status });
-  } catch (err: unknown) {
-    const code = extractErrorCode(err);
     res.json({ code: -1, msg: toErrorMessage(err), data: code ? { code } : {} });
   }
 });

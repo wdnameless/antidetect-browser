@@ -5,7 +5,9 @@ import * as fs from 'fs';
 import * as net from 'net';
 import * as os from 'os';
 import * as path from 'path';
+import type { Duplex } from 'stream';
 import type { AdbClient } from './adb';
+import { createSocks5Server } from '../proxy/socks5Server';
 import { logger } from '../util/logger';
 
 export interface GuestNetworkPlan {
@@ -15,6 +17,12 @@ export interface GuestNetworkPlan {
   tun2socksBinaryOnHost: string;
   /** True when the profile has no proxy — the guest then has NO route (fail closed). */
   blocked: boolean;
+  /**
+   * The upstream proxy the guest's traffic must ultimately reach, or null when `blocked`.
+   * Carried on the plan so the SOCKS bridge can be raised from the same decision that decided
+   * the guest has somewhere to go.
+   */
+  proxy: { type: string; host: string; port: number; username?: string | null; password?: string | null } | null;
 }
 
 /**
@@ -23,7 +31,7 @@ export interface GuestNetworkPlan {
  * rather than leaking to the local host route.
  */
 export function planGuestNetwork(
-  proxy: { type: string; host: string; port: number } | null
+  proxy: { type: string; host: string; port: number; username?: string | null; password?: string | null } | null
 ): GuestNetworkPlan {
   // In QEMU / Android Emulator default user networking (SLIRP), the host loopback interface
   // (127.0.0.1) is accessed from within the guest via the virtual gateway IP 10.0.2.2.
@@ -37,22 +45,90 @@ export function planGuestNetwork(
       socksPort: 0,
       tun2socksBinaryOnHost: '',
       blocked: true,
+      proxy: null,
     };
   }
 
   return {
     tunInterface: 'tun0',
     socksHost,
-    socksPort: proxy.port,
+    // The port the guest dials is decided at setup time: the SOCKS bridge listens on an
+    // ephemeral loopback port, so this is only a placeholder until the bridge reports one.
+    socksPort: 0,
     tun2socksBinaryOnHost: '',
     blocked: false,
+    proxy,
+  };
+}
+
+/**
+ * Cuts the guest's ability to reach the network.
+ *
+ * Used when a profile has no proxy: leaving the emulator's own NAT route in place would let the
+ * guest reach the internet directly, which is the leak this module exists to prevent. Every step
+ * is attempted because a stock (non-rooted) image rejects `iptables -P` while a rooted one accepts
+ * it, and the interface-level commands work on both. The result is a success only if at least one
+ * enforcement actually took effect — "we tried" is not the same answer as "it is blocked".
+ */
+async function blockGuestNetwork(adb: AdbClient): Promise<{ ok: boolean; detail: string }> {
+  let policyDropApplied = false;
+
+  for (const cmd of [
+    ['iptables', '-P', 'OUTPUT', 'DROP'],
+    ['ip6tables', '-P', 'OUTPUT', 'DROP'],
+  ]) {
+    try {
+      await adb.shell(cmd);
+      policyDropApplied = true;
+    } catch {
+      // Non-rooted image, or the table does not exist. The route removal below is the backstop.
+    }
+  }
+
+  // Unprivileged, and effective on every image: take the interfaces down so there is nowhere for
+  // a packet to go.
+  for (const cmd of [
+    ['svc', 'wifi', 'disable'],
+    ['svc', 'data', 'disable'],
+  ]) {
+    try {
+      await adb.shell(cmd);
+    } catch {
+      // Radio may already be off.
+    }
+  }
+
+  let routesRemoved = false;
+  for (const net of ['ip', 'ip -6']) {
+    try {
+      await adb.shell(['sh', '-c', `${net} route del default`]);
+      routesRemoved = true;
+    } catch {
+      // No default route on this family, which is the desired end state anyway.
+    }
+  }
+
+  if (!policyDropApplied && !routesRemoved) {
+    return {
+      ok: false,
+      detail:
+        'guest refused both the OUTPUT DROP policy (needs root) and the default-route removal, ' +
+        'so its traffic cannot be confirmed blocked',
+    };
+  }
+
+  return {
+    ok: true,
+    detail: policyDropApplied
+      ? 'guest OUTPUT policy is DROP (iptables/ip6tables)'
+      : 'guest default routes removed and radios disabled',
   };
 }
 
 /**
  * Starts the host-side SOCKS bridge (via opts.tunnel if provided) and the guest-side tun2socks service.
  * Returns { ok: false, detail } when the guest lacks the tun2socks binary (never a silent true).
- * When plan.blocked is true, fails closed without attempting to start tun2socks.
+ * When plan.blocked is true, actively blocks the guest's network and reports whether that worked.
  */
 export async function setupGuestNetwork(
   adb: AdbClient,
@@ -60,19 +136,26 @@ export async function setupGuestNetwork(
   opts: {
     tunnel?: { start: () => Promise<{ localPort: number }>; stop: () => Promise<void> };
   }
-): Promise<{ ok: boolean; detail: string }> {
-  // Fail closed: if profile has no proxy, the guest route is blocked to prevent leaks
+): Promise<{ ok: boolean; detail: string; stopBridge?: () => Promise<void> }> {
+  // A profile with no proxy must not be able to reach the network at all.
   if (plan.blocked) {
-    logger.info('Guest network is blocked: no proxy configured for profile (fail-closed, no leak)');
-    return {
-      ok: true,
-      detail: 'Network blocked: profile has no proxy (fail-closed, no leak)',
-    };
+    const blocked = await blockGuestNetwork(adb);
+    if (!blocked.ok) {
+      logger.error('Failed to block guest networking for a proxy-less profile', { detail: blocked.detail });
+      return blocked;
+    }
+    logger.info('Guest network blocked: no proxy configured for profile (fail-closed)', {
+      detail: blocked.detail,
+    });
+    return blocked;
   }
 
   let effectiveSocksPort = plan.socksPort;
 
-  // 1. Start host-side SOCKS proxy tunnel bridge if provided
+  // 1. Start host-side SOCKS bridge, or an explicit tunnel when the caller supplies one.
+  //    The profile's proxy is remote and may need credentials, so the guest cannot dial it
+  //    directly; without this leg it would be pointed at a port where nothing listens.
+  let stopBridge: (() => Promise<void>) | null = null;
   if (opts.tunnel) {
     try {
       const tunnelRes = await opts.tunnel.start();
@@ -83,6 +166,19 @@ export async function setupGuestNetwork(
       return {
         ok: false,
         detail: `Failed to start host-side proxy tunnel: ${msg}`,
+      };
+    }
+  } else if (plan.proxy) {
+    try {
+      const bridge = await startUpstreamSocksBridge(plan.proxy);
+      effectiveSocksPort = bridge.localPort;
+      stopBridge = bridge.stop;
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      logger.error('Failed to start host-side SOCKS bridge', { error: msg });
+      return {
+        ok: false,
+        detail: `Failed to start host-side SOCKS bridge: ${msg}`,
       };
     }
   }
@@ -117,6 +213,8 @@ export async function setupGuestNetwork(
 
   if (!tun2socksPath) {
     logger.warn('tun2socks binary not found on guest');
+    // Nothing will consume the bridge, so it must not keep listening on loopback.
+    await stopBridge?.().catch(() => undefined);
     return {
       ok: false,
       detail: 'tun2socks binary not found in guest (/system/bin/tun2socks, /data/adb/tun2socks, or PATH)',
@@ -141,15 +239,75 @@ export async function setupGuestNetwork(
     return {
       ok: true,
       detail: `tun2socks active on ${plan.socksHost}:${effectiveSocksPort}`,
+      stopBridge: stopBridge ?? undefined,
     };
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
     logger.error('Failed to configure guest network interface', { error: msg });
+    // The bridge has no guest to serve now, so it must not stay listening.
+    await stopBridge?.().catch(() => undefined);
     return {
       ok: false,
       detail: `Failed to configure guest network interface: ${msg}`,
     };
   }
+}
+
+/**
+ * Raises a loopback SOCKS5 listener that forwards every connection to the profile's real proxy,
+ * and returns the port the guest must be pointed at.
+ *
+ * The guest reaches the host loopback as `10.0.2.2` (QEMU SLIRP), and the profile's proxy is a
+ * remote machine that frequently requires credentials the guest cannot present. So the guest is
+ * pointed at this bridge rather than at the upstream proxy: the bridge terminates SOCKS locally,
+ * opens the authenticated connection to the real proxy, and splices the two. Without it the guest
+ * would be told to reach a SOCKS server on a port where nothing is listening.
+ */
+async function startUpstreamSocksBridge(proxy: {
+  type: string;
+  host: string;
+  port: number;
+  username?: string | null;
+  password?: string | null;
+}): Promise<{ localPort: number; stop: () => Promise<void> }> {
+  const isHttpProxy = proxy.type === 'http' || proxy.type === 'https';
+  const auth = proxy.username
+    ? Buffer.from(`${proxy.username}:${proxy.password ?? ''}`, 'utf8').toString('base64')
+    : null;
+
+  // `createSocks5Server` terminates SOCKS5 on loopback and hands us each resolved target; the
+  // connector below opens the upstream leg through the real proxy.
+  const server = await createSocks5Server({
+    connect: (host, port) =>
+      new Promise<Duplex>((resolve, reject) => {
+        const socket = net.connect({ host: proxy.host, port: proxy.port }, () => {
+          if (isHttpProxy) {
+            const target = `${host}:${port}`;
+            socket.write(
+              [
+                `CONNECT ${target} HTTP/1.1`,
+                `Host: ${target}`,
+                ...(auth ? [`Proxy-Authorization: Basic ${auth}`] : []),
+                '',
+                '',
+              ].join('\r\n'),
+            );
+          } else if (auth) {
+            // RFC 1929 username/password sub-negotiation: version, ulen, uname, plen, passwd.
+            const user = Buffer.from(proxy.username ?? '', 'utf8');
+            const pass = Buffer.from(proxy.password ?? '', 'utf8');
+            socket.write(Buffer.concat([Buffer.from([0x01, user.length]), user, Buffer.from([pass.length]), pass]));
+          }
+          resolve(socket);
+        });
+        socket.once('error', reject);
+      }),
+  });
+
+  return {
+    localPort: server.port,
+    stop: () => server.close(),
+  };
 }
 
 /**

@@ -124,7 +124,7 @@ describe('Android Fingerprint and Identity (A3 zone)', () => {
   });
 
   describe('planGuestNetwork & setupGuestNetwork', () => {
-    it('planGuestNetwork(null).blocked === true and no tun2socks start is attempted', async () => {
+    it('planGuestNetwork(null).blocked === true and the guest network is actively cut', async () => {
       const plan = planGuestNetwork(null);
       expect(plan.blocked).toBe(true);
       expect(plan.socksHost).toBe('10.0.2.2');
@@ -139,17 +139,36 @@ describe('Android Fingerprint and Identity (A3 zone)', () => {
 
       const res = await setupGuestNetwork(fakeAdb, plan, {});
       expect(res.ok).toBe(true);
-      expect(res.detail).toContain('fail-closed');
-      // No adb shell calls attempted to launch tun2socks when blocked
-      expect(shellCalls).toHaveLength(0);
+      // Blocking is applied, not merely reported: a profile with no proxy must not keep the
+      // emulator's own NAT route, which is what lets traffic out unproxied.
+      expect(shellCalls.some((c) => c[0] === 'iptables' && c.includes('DROP'))).toBe(true);
+      expect(res.detail).toContain('DROP');
+      // And tun2socks is never started, because there is nowhere for it to forward to.
+      expect(shellCalls.some((c) => c.includes('tun0'))).toBe(false);
+      expect(shellCalls.some((c) => c.some((a) => a.includes('tun2socks')))).toBe(false);
+    });
+
+    it('a blocked profile reports failure when neither drop rules nor route removal took effect', async () => {
+      // An image that rejects every enforcement must not be reported as blocked.
+      const fakeAdb = {
+        shell: async () => {
+          throw new Error('Operation not permitted');
+        },
+      } as unknown as AdbClient;
+
+      const res = await setupGuestNetwork(fakeAdb, planGuestNetwork(null), {});
+      expect(res.ok).toBe(false);
+      expect(res.detail).toContain('cannot be confirmed blocked');
     });
 
     it('planGuestNetwork({...proxy}) gives socksHost === "10.0.2.2" and blocked === false', () => {
       const plan = planGuestNetwork({ type: 'socks5', host: '192.168.1.50', port: 10808 });
       expect(plan.blocked).toBe(false);
       expect(plan.socksHost).toBe('10.0.2.2');
-      expect(plan.socksPort).toBe(10808);
       expect(plan.tunInterface).toBe('tun0');
+      // The upstream proxy is carried on the plan; the port the guest dials is the host-side
+      // SOCKS bridge's own loopback port, assigned when that bridge is raised.
+      expect(plan.proxy).toEqual({ type: 'socks5', host: '192.168.1.50', port: 10808 });
     });
 
     it('setupGuestNetwork returns ok: false with real detail when tun2socks binary is missing in guest', async () => {
