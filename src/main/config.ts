@@ -418,6 +418,18 @@ export const API_HOST = process.env.API_HOST || '127.0.0.1';
 export const API_PORT = Number(process.env.API_PORT || 50325);
 
 /**
+ * Publisher's OAuth client, injected at build time. Empty when the build was not given one —
+ * the UI then falls back to the per-operator Client ID fields, so a dev build still works.
+ *
+ * Why empty by default:
+ * A placeholder string would break the fallback logic in `getGDriveCredentials()`, which relies
+ * on an empty or missing value to detect that the build was not configured with a publisher
+ * client. Without this check, a dev build would attempt OAuth against an invalid client ID rather
+ * than letting the operator supply their own credentials in the UI.
+ */
+export const SHIPPED_GDRIVE_CLIENT_ID: string = (process.env.SHIPPED_GDRIVE_CLIENT_ID || '').trim();
+
+/**
  * The running application version, read from package.json.
  *
  * Resolved by walking up from this file so it works both compiled (`dist/src/main`) and

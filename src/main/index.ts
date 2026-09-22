@@ -26,6 +26,7 @@ import {
 import { onAgentActivity } from './agentActivity';
 import { logger, initLogger, flushLogs } from './util/logger';
 import { McpService } from './mcpService';
+import { startSyncEngine, stopSyncEngine, requestSync } from './cloud/gdriveSync';
 
 // ---------------------------------------------------------------------------
 // Single-instance lock: two service instances would race on the DB file.
@@ -340,6 +341,12 @@ export async function shutdown(reason: string, code = 0): Promise<void> {
     // ignore
   }
   try {
+    await requestSync('exit');
+    stopSyncEngine();
+  } catch {
+    // ignore
+  }
+  try {
     flushDb();
     closeDb();
   } catch {
@@ -471,6 +478,7 @@ export async function startService(): Promise<void> {
   logger.info('service starting', { pid: process.pid, dataDir: DATA_DIR, port: API_PORT });
   acquireInstanceLock();
   await initDb();
+  startSyncEngine();
   seedDevices();
 
   // Crash recovery: profiles stuck in "running" from a previous session.

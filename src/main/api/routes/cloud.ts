@@ -4,6 +4,8 @@
 // local API; all remote calls are made here, so the remote never needs CORS
 // for us and credentials stay in the main process.
 import { Router, Request, Response } from 'express';
+import * as child_process from 'child_process';
+import { z } from 'zod';
 import * as pm from '../../profiles/profileManager';
 import { isRunning } from '../../launcher/chromium';
 import { getSetting, setSetting } from '../../config';
@@ -13,6 +15,16 @@ import {
   saveGDriveCredentials,
   disconnectGDrive,
 } from '../../cloud/gdriveAuth';
+import {
+  getSyncStatus,
+  getSessionPassphrase,
+  requestSync,
+  unlockSession,
+  setPendingPassphrase,
+  getPendingPassphrase,
+  clearPendingPassphrase,
+  clearSyncSession,
+} from '../../cloud/gdriveSync';
 import {
   getOAuthTransport,
   GDRIVE_REQUIRED_SCOPE,
@@ -269,9 +281,281 @@ router.get('/api/v1/cloud/gdrive/status', (_req: Request, res: Response) => {
   res.json({
     code: 0,
     msg: 'success',
-    data: getGDriveStatus(),
+    data: {
+      ...getGDriveStatus(),
+      ...getSyncStatus(),
+      // Read through the mirror module so the switch and the engine agree on where the flag lives.
+      // The UI needs this on load: without it the toggle rendered "off" for an operator who had
+      // enabled it, and the next click silently turned it back on instead of off.
+      mirrorEnabled: readMirrorEnabled(),
+    },
   });
 });
+
+/**
+ * Whether the opt-in directory mirror is on.
+ *
+ * Delegates to the mirror module when it is available, and falls back to the same setting key it
+ * uses. The two used to disagree (`gdrive_mirror_enabled` vs `gdriveFullMirrorEnabled`), so a
+ * toggle written by the route was invisible to the module that reads it.
+ */
+function readMirrorEnabled(): boolean {
+  try {
+    // Synchronous require keeps this a plain GET with no await; the module has no side effects at
+    // load time beyond reading a setting.
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const mod = require('../../cloud/gdriveFullMirror') as { isMirrorEnabled?: () => boolean };
+    if (typeof mod.isMirrorEnabled === 'function') return mod.isMirrorEnabled();
+  } catch {
+    // fall through to the setting key below
+  }
+  return getSetting('gdriveFullMirrorEnabled') === true;
+}
+
+/**
+ * Minimum passphrase length, enforced on the SERVER.
+ *
+ * The UI already asks for 8 characters, but a UI-only rule is not a rule: the API is what an
+ * operator's agent, a script, or a stale client actually calls. The passphrase is the only thing
+ * protecting the uploaded payload — a one-character phrase turns AES-256-GCM into decoration,
+ * because the ciphertext travels with everything needed to brute-force it. Verified: `abc` was
+ * accepted and unlocked the session before this bound existed.
+ */
+const SYNC_PASSPHRASE_MIN_LENGTH = 8;
+
+const connectSchema = z.object({
+  passphrase: z
+    .string()
+    .min(SYNC_PASSPHRASE_MIN_LENGTH, `Passphrase must be at least ${SYNC_PASSPHRASE_MIN_LENGTH} characters`),
+});
+
+/** Connect to Google Drive in one step: runs device-code auth if needed, then unlocks */
+router.post('/api/v1/cloud/gdrive/connect', async (req: Request, res: Response) => {
+  const parsed = connectSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({
+      code: 400,
+      msg: parsed.error.errors[0]?.message || 'Passphrase is required',
+    });
+    return;
+  }
+
+  const { passphrase } = parsed.data;
+  const { getGDriveCredentials, getGDriveRefreshToken, getGDriveUserEmail } = await import('../../cloud/gdriveAuth');
+  const creds = getGDriveCredentials();
+  if (!creds || !creds.clientId) {
+    res.status(400).json({
+      code: 400,
+      msg: 'Google OAuth Client ID must be configured first',
+    });
+    return;
+  }
+
+  const isAlreadyConnected = Boolean(getGDriveRefreshToken());
+
+  if (isAlreadyConnected) {
+    const unlocked = await unlockSession(passphrase);
+    if (!unlocked) {
+      res.status(400).json({
+        code: 'BAD_PASSPHRASE',
+        msg: 'Incorrect passphrase',
+      });
+      return;
+    }
+    const email = getGDriveUserEmail() ?? undefined;
+    res.json({
+      code: 0,
+      msg: 'Connected successfully',
+      data: { email },
+      email,
+    });
+    return;
+  }
+
+  // Not yet authorized: run device-code flow
+  setPendingPassphrase(passphrase);
+  try {
+    const transport = getOAuthTransport();
+    const deviceResp = await transport.requestDeviceCode(creds.clientId, GDRIVE_REQUIRED_SCOPE);
+
+    // Check for instant approval (e.g. test mock transport)
+    const pollCheck = await transport.pollDeviceToken(creds.clientId, creds.clientSecret, deviceResp.device_code);
+    if (pollCheck.status === 'success' && pollCheck.data) {
+      const finalInfo = await finalizeTokenExchange(pollCheck.data);
+      const unlocked = await unlockSession(passphrase);
+      clearPendingPassphrase();
+      if (!unlocked) {
+        res.status(400).json({
+          code: 'BAD_PASSPHRASE',
+          msg: 'Incorrect passphrase',
+        });
+        return;
+      }
+      res.json({
+        code: 0,
+        msg: 'Connected successfully',
+        data: { email: finalInfo.email },
+        email: finalInfo.email,
+      });
+      return;
+    }
+
+    // Launch platform browser for device-code authorization
+    try {
+      const openCmd =
+        process.platform === 'win32'
+          ? `start "" "${deviceResp.verification_url}"`
+          : process.platform === 'darwin'
+            ? `open "${deviceResp.verification_url}"`
+            : `xdg-open "${deviceResp.verification_url}"`;
+      child_process.exec(openCmd);
+    } catch {
+      // Non-fatal: UI displays URL and user code
+    }
+
+    res.json({
+      code: 0,
+      msg: 'Device authorization required',
+      data: {
+        userCode: deviceResp.user_code,
+        verificationUrl: deviceResp.verification_url,
+        deviceCode: deviceResp.device_code,
+        expiresIn: deviceResp.expires_in,
+        interval: deviceResp.interval,
+      },
+    });
+  } catch (err: unknown) {
+    res.status(500).json({
+      code: 500,
+      msg: err instanceof Error ? err.message : String(err),
+    });
+  }
+});
+
+const unlockSchema = z.object({
+  passphrase: z
+    .string()
+    .min(SYNC_PASSPHRASE_MIN_LENGTH, `Passphrase must be at least ${SYNC_PASSPHRASE_MIN_LENGTH} characters`),
+});
+
+/** Unlock sync engine for this session using operator's passphrase */
+router.post('/api/v1/cloud/gdrive/unlock', async (req: Request, res: Response) => {
+  const parsed = unlockSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({
+      code: 400,
+      msg: parsed.error.errors[0]?.message || 'Passphrase is required',
+    });
+    return;
+  }
+
+  const ok = await unlockSession(parsed.data.passphrase);
+  if (!ok) {
+    res.status(400).json({
+      code: 'BAD_PASSPHRASE',
+      msg: 'Incorrect passphrase',
+    });
+    return;
+  }
+
+  res.json({
+    code: 0,
+    msg: 'Unlocked successfully',
+    data: { ok: true },
+    ok: true,
+  });
+});
+
+/** Trigger on-demand sync push/pull */
+router.post('/api/v1/cloud/gdrive/sync-now', async (_req: Request, res: Response) => {
+  try {
+    await requestSync('manual');
+    res.json({
+      code: 0,
+      msg: 'success',
+      data: getSyncStatus(),
+    });
+  } catch (err: unknown) {
+    res.status(500).json({
+      code: 500,
+      msg: err instanceof Error ? err.message : String(err),
+      data: getSyncStatus(),
+    });
+  }
+});
+
+const mirrorEnableSchema = z.object({
+  enabled: z.boolean(),
+});
+
+/** Enable or disable full Chromium directory mirror (Zone C) */
+router.post('/api/v1/cloud/gdrive/mirror/enable', async (req: Request, res: Response) => {
+  const parsed = mirrorEnableSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({
+      code: 400,
+      msg: parsed.error.errors[0]?.message || 'Invalid body: enabled boolean is required',
+    });
+    return;
+  }
+
+  const { enabled } = parsed.data;
+  try {
+    const mirrorModule = await import('../../cloud/gdriveFullMirror');
+    mirrorModule.setMirrorEnabled(enabled);
+    res.json({
+      code: 0,
+      msg: 'success',
+      data: { enabled, mirrorEnabled: enabled },
+      enabled,
+    });
+  } catch (err: unknown) {
+    res.status(500).json({
+      code: 500,
+      msg: err instanceof Error ? err.message : String(err),
+    });
+  }
+});
+
+/**
+ * Run the opt-in directory mirror: collect, seal, upload.
+ *
+ * Returns the bytes that actually reached Drive. An earlier version built the archive and reported
+ * its size without uploading anything, so the operator was told the mirror ran while the Drive
+ * folder stayed empty — a false success.
+ */
+router.post('/api/v1/cloud/gdrive/mirror/run', async (req: Request, res: Response) => {
+  const passphrase = typeof req.body?.passphrase === 'string' ? req.body.passphrase : '';
+  const siteStateOnly = req.body?.siteStateOnly !== false;
+
+  const unlocked = getSessionPassphrase() ?? '';
+  const effective = passphrase || unlocked;
+  if (!effective) {
+    res.status(400).json({
+      code: 'PASSPHRASE_REQUIRED',
+      msg: 'Unlock the sync passphrase before running the directory mirror.',
+      data: {},
+    });
+    return;
+  }
+
+  try {
+    const mirrorModule = await import('../../cloud/gdriveFullMirror');
+    const result = await mirrorModule.uploadMirrorArchive(effective, null, siteStateOnly);
+    res.json({
+      code: 0,
+      msg: 'success',
+      data: { bytes: result.bytes, fileCount: result.fileCount, skipped: result.skipped },
+      bytes: result.bytes,
+    });
+  } catch (err: unknown) {
+    res.status(500).json({
+      code: 500,
+      msg: err instanceof Error ? err.message : String(err),
+    });
+  }
+});
+
 
 /** Save operator's OAuth client credentials (stored in DPAPI secret store) */
 router.post('/api/v1/cloud/gdrive/credentials', (req: Request, res: Response) => {
@@ -356,6 +640,11 @@ router.post('/api/v1/cloud/gdrive/auth/poll', async (req: Request, res: Response
 
     if (result.status === 'success' && result.data) {
       const finalInfo = await finalizeTokenExchange(result.data);
+      const pending = getPendingPassphrase();
+      if (pending) {
+        await unlockSession(pending);
+        clearPendingPassphrase();
+      }
       res.json({
         code: 0,
         msg: 'Connected successfully',
@@ -380,6 +669,7 @@ router.post('/api/v1/cloud/gdrive/auth/poll', async (req: Request, res: Response
 /** Disconnect GDrive (clears refresh token) */
 router.post('/api/v1/cloud/gdrive/disconnect', (_req: Request, res: Response) => {
   disconnectGDrive();
+  clearSyncSession();
   res.json({
     code: 0,
     msg: 'Disconnected from Google Drive',

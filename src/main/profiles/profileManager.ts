@@ -1,4 +1,4 @@
-﻿import { randomUUID, randomInt } from 'crypto';
+import { randomUUID, randomInt } from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
 import { getDb } from '../db';
@@ -8,7 +8,7 @@ import { getEnabledExtensionPaths } from '../extensions/extensionManager';
 import { pickMobilePreset, buildMobileUa, getMobilePreset, type MobilePreset } from '../devices/mobilePresets';
 import { protectSecret, revealSecret } from '../util/secretStore';
 import { deleteEntriesForProfile } from '../vault/accountVault';
-import { removeBindingsForProfile } from '../tags/tagManager';
+import { removeBindingsForProfile, tagsForProfile, createTag, attachTag } from '../tags/tagManager';
 import { deriveHardwareVector, migrateLegacySeed, selectFamilyBySeed } from '../fingerprints/derivation';
 import { EXTENDED_FINGERPRINT_CATALOG } from '../fingerprints/catalog';
 import { queueGeoChecks } from '../proxy/proxyManager';
@@ -1162,6 +1162,9 @@ function hasBrowserWorkspaceArtifacts(profileDir: string): boolean {
 export interface ProfileBundle {
   version: 1;
   exported_at: number;
+  notes?: string | null;
+  tags?: string[];
+  group?: { id: string; name: string } | null;
   profile: {
     name: string | null;
     browser_type: string;
@@ -1187,9 +1190,12 @@ export interface ProfileBundle {
     blocked_ports?: number[];
     webrtc_policy?: string | null;
     headless?: boolean;
+    tags?: string[];
+    group?: { id: string; name: string } | null;
     fingerprint: { seed: number; config: Record<string, unknown> } | null;
     device: { device_id: string; name: string; platform: string; config: Record<string, unknown> } | null;
     proxy: {
+      id?: string;
       type: string;
       host: string;
       port: number;
@@ -1267,16 +1273,30 @@ export function exportProfileBundle(id: string): ProfileBundle | null {
     const px = db.prepare('SELECT * FROM proxies WHERE id = ?').get(p.proxy_id) as ProxyRow | undefined;
     if (px) {
       proxy = {
+        id: px.id,
         type: px.type,
         host: px.host,
         port: px.port,
         username: px.username || undefined,
-        // bundles are explicit user exports â€” include the usable (decrypted) credentials
+        // bundles are explicit user exports — include the usable (decrypted) credentials
         password: revealSecret(px.password),
         private_key: revealSecret(px.private_key),
       };
     }
   }
+
+  let group: { id: string; name: string } | null = null;
+  if (p.group_id) {
+    const g = db.prepare('SELECT id, name FROM groups WHERE id = ?').get(p.group_id) as
+      | { id: string; name: string }
+      | undefined;
+    if (g) {
+      group = { id: g.id, name: g.name };
+    }
+  }
+
+  const notes = p.notes ?? null;
+  const tags = tagsForProfile(p.id).map((t) => t.name);
 
   let cookies: Array<Record<string, unknown>> = [];
   if (p.cookies_json) {
@@ -1289,6 +1309,9 @@ export function exportProfileBundle(id: string): ProfileBundle | null {
   return {
     version: 1,
     exported_at: Date.now(),
+    notes,
+    tags,
+    group,
     profile: {
       name: p.name,
       browser_type: p.browser_type || 'chromium',
@@ -1299,6 +1322,8 @@ export function exportProfileBundle(id: string): ProfileBundle | null {
       // Carried so a profile moved between machines arrives as configured, not as a
       // default shell. One shared mapper, so this cannot drift from the detail payload.
       ...operatorConfigColumns(p),
+      tags,
+      group,
       fingerprint,
       device,
       proxy,
@@ -1313,13 +1338,14 @@ export function exportProfileBundle(id: string): ProfileBundle | null {
  * stable ids); otherwise the profile falls back to the default device.
  * Returns the new profile id.
  */
-export function importProfileBundle(bundle: ProfileBundle): string {
+export function importProfileBundle(bundle: ProfileBundle, opts?: { exactName?: boolean }): string {
   if (!bundle || bundle.version !== 1 || !bundle.profile) {
     throw new Error('invalid bundle: expected { version: 1, profile }');
   }
   const db = getDb();
   const src = bundle.profile;
 
+  // 1. Re-link device preset by id if it exists on this machine; fallback to default
   let deviceId: string | undefined;
   if (src.device?.device_id) {
     const dev = db.prepare('SELECT id FROM devices WHERE id = ?').get(src.device.device_id) as
@@ -1328,8 +1354,118 @@ export function importProfileBundle(bundle: ProfileBundle): string {
     deviceId = dev?.id;
   }
 
+  // 2. Re-link group: look up by id, then name, or create the group so assignment survives
+  let groupId: string | undefined;
+  const groupRef = src.group ?? bundle.group;
+  if (groupRef?.id) {
+    const existingGroup = db.prepare('SELECT id FROM groups WHERE id = ?').get(groupRef.id) as
+      | { id: string }
+      | undefined;
+    if (existingGroup) {
+      groupId = existingGroup.id;
+    } else if (groupRef.name) {
+      const byName = db.prepare('SELECT id FROM groups WHERE lower(name) = lower(?)').get(groupRef.name) as
+        | { id: string }
+        | undefined;
+      if (byName) {
+        groupId = byName.id;
+      } else {
+        try {
+          db.prepare('INSERT INTO groups (id, name, created_at) VALUES (?, ?, ?)').run(
+            groupRef.id,
+            groupRef.name,
+            Date.now()
+          );
+          groupId = groupRef.id;
+        } catch {
+          // ignore constraint conflict
+        }
+      }
+    }
+  }
+
+  // 3. Re-link proxy: match existing by id, or match by endpoint attributes, or restore proxy row
+  let proxyId: string | undefined;
+  let proxyInput: ProxyInput | undefined;
+  if (src.proxy) {
+    if (src.proxy.id) {
+      const existingProxy = db.prepare('SELECT id FROM proxies WHERE id = ?').get(src.proxy.id) as
+        | { id: string }
+        | undefined;
+      if (existingProxy) {
+        proxyId = existingProxy.id;
+      }
+    }
+    if (!proxyId) {
+      const matchingPx = db
+        .prepare(
+          'SELECT id FROM proxies WHERE host = ? AND port = ? AND type = ? AND (username = ? OR (username IS NULL AND ? IS NULL))'
+        )
+        .get(
+          src.proxy.host,
+          src.proxy.port,
+          src.proxy.type,
+          src.proxy.username ?? null,
+          src.proxy.username ?? null
+        ) as { id: string } | undefined;
+      if (matchingPx) {
+        proxyId = matchingPx.id;
+      }
+    }
+    if (!proxyId) {
+      if (src.proxy.id) {
+        try {
+          db.prepare(
+            `INSERT INTO proxies (id, type, host, port, username, password, private_key, country, timezone, status, created_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+          ).run(
+            src.proxy.id,
+            src.proxy.type,
+            src.proxy.host,
+            src.proxy.port,
+            src.proxy.username ?? null,
+            protectSecret(src.proxy.password),
+            protectSecret(src.proxy.private_key),
+            null,
+            null,
+            'unknown',
+            Date.now()
+          );
+          proxyId = src.proxy.id;
+        } catch {
+          proxyInput = {
+            type: src.proxy.type as ProxyType,
+            host: src.proxy.host,
+            port: src.proxy.port,
+            username: src.proxy.username,
+            password: src.proxy.password,
+            privateKey: src.proxy.private_key,
+          };
+        }
+      } else {
+        proxyInput = {
+          type: src.proxy.type as ProxyType,
+          host: src.proxy.host,
+          port: src.proxy.port,
+          username: src.proxy.username,
+          password: src.proxy.password,
+          privateKey: src.proxy.private_key,
+        };
+      }
+    }
+  }
+
+  const profileName = opts?.exactName
+    ? (src.name ?? undefined)
+    : (src.name ? `${src.name} (imported)` : undefined);
+
+  const notesToRestore = src.notes ?? bundle.notes ?? undefined;
+
   const newId = createProfile({
-    name: src.name ? `${src.name} (imported)` : undefined,
+    name: profileName,
+    group_id: groupId,
+    proxy_id: proxyId,
+    proxy: proxyInput,
     browser_type: src.browser_type === 'firefox' ? 'firefox' : 'chromium',
     user_agent: src.user_agent || undefined,
     timezone: src.timezone || undefined,
@@ -1348,16 +1484,7 @@ export function importProfileBundle(bundle: ProfileBundle): string {
     headless: src.headless === true,
     device_id: deviceId,
     fingerprint_seed: src.fingerprint?.seed,
-    proxy: src.proxy
-      ? {
-          type: src.proxy.type as ProxyType,
-          host: src.proxy.host,
-          port: src.proxy.port,
-          username: src.proxy.username,
-          password: src.proxy.password,
-          privateKey: src.proxy.private_key,
-        }
-      : undefined,
+    notes: notesToRestore ?? undefined,
   });
 
   // Restore the full fingerprint config (platform/brand/cores/lang/...).
@@ -1380,6 +1507,28 @@ export function importProfileBundle(bundle: ProfileBundle): string {
       Date.now(),
       newId
     );
+  }
+
+  // Restore tags via tagManager
+  const tagsToRestore = src.tags ?? bundle.tags;
+  if (Array.isArray(tagsToRestore) && tagsToRestore.length > 0) {
+    for (const tagName of tagsToRestore) {
+      if (typeof tagName !== 'string' || !tagName.trim()) continue;
+      const cleanName = tagName.trim();
+      const existingTag = db
+        .prepare('SELECT id FROM tags WHERE lower(name) = lower(?)')
+        .get(cleanName) as { id: string } | undefined;
+      let tagId = existingTag?.id;
+      if (!tagId) {
+        const created = createTag(cleanName);
+        if (created.ok) {
+          tagId = created.data.id;
+        }
+      }
+      if (tagId) {
+        attachTag(tagId, [newId]);
+      }
+    }
   }
 
   return newId;

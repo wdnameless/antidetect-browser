@@ -1,4 +1,5 @@
 import { protectSecret, revealSecret } from '../util/secretStore';
+import { SHIPPED_GDRIVE_CLIENT_ID } from '../config';
 
 export interface GDriveClientCredentials {
   clientId: string;
@@ -115,17 +116,26 @@ export function saveGDriveCredentials(creds: GDriveClientCredentials): void {
 
 /**
  * Retrieves client credentials, unprotecting them from the secret store.
+ * When the operator has stored no credentials of their own, falls back to the
+ * publisher's OAuth client ID injected at build time (`SHIPPED_GDRIVE_CLIENT_ID`).
+ * Operator-stored credentials always take precedence over the shipped client.
  */
 export function getGDriveCredentials(): GDriveClientCredentials | null {
   const encClientId = activeStorage.get(KEY_CLIENT_ID);
-  if (!encClientId) return null;
-  const clientId = revealSecret(encClientId);
-  if (!clientId) return null;
+  if (encClientId) {
+    const clientId = revealSecret(encClientId);
+    if (clientId && clientId.trim().length > 0) {
+      const encSecret = activeStorage.get(KEY_CLIENT_SECRET);
+      const clientSecret = encSecret ? revealSecret(encSecret) ?? undefined : undefined;
+      return { clientId: clientId.trim(), clientSecret };
+    }
+  }
 
-  const encSecret = activeStorage.get(KEY_CLIENT_SECRET);
-  const clientSecret = encSecret ? revealSecret(encSecret) ?? undefined : undefined;
+  if (SHIPPED_GDRIVE_CLIENT_ID && SHIPPED_GDRIVE_CLIENT_ID.trim().length > 0) {
+    return { clientId: SHIPPED_GDRIVE_CLIENT_ID.trim() };
+  }
 
-  return { clientId, clientSecret };
+  return null;
 }
 
 /**

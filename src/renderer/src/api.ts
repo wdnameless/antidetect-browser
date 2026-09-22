@@ -355,6 +355,22 @@ export interface CloudStateData {
   error?: string;
 }
 
+export interface GDriveStatusData {
+  configured: boolean;
+  connected: boolean;
+  userEmail: string | null;
+  folderId: string | null;
+  lastPushTimestamp: number | null;
+  lastPullTimestamp: number | null;
+  account?: string | null;
+  unlocked?: boolean;
+  syncing?: boolean;
+  lastSyncAt?: number | null;
+  lastError?: string | null;
+  pendingRemoteChanges?: number;
+  mirrorEnabled?: boolean;
+}
+
 export interface SyncResultRow {
   user_id: string;
   name: string;
@@ -939,15 +955,38 @@ export const api = {
       body: JSON.stringify({ user_ids: user_ids ?? null }),
     }),
   // ---- Google Drive Sync (nulltrace-gdrive) ----
-  gdriveStatus: () =>
+  gdriveStatus: () => request<GDriveStatusData>('/api/v1/cloud/gdrive/status'),
+  cloudGdriveStatus: () => request<GDriveStatusData>('/api/v1/cloud/gdrive/status'),
+  cloudGdriveConnect: (passphrase: string) =>
     request<{
-      configured: boolean;
-      connected: boolean;
-      userEmail: string | null;
-      folderId: string | null;
-      lastPushTimestamp: number | null;
-      lastPullTimestamp: number | null;
-    }>('/api/v1/cloud/gdrive/status'),
+      email?: string;
+      userCode?: string;
+      verificationUrl?: string;
+      deviceCode?: string;
+      interval?: number;
+      status?: string;
+    }>('/api/v1/cloud/gdrive/connect', {
+      method: 'POST',
+      body: JSON.stringify({ passphrase }),
+    }),
+  cloudGdriveUnlock: (passphrase: string) =>
+    request<{ ok: boolean }>('/api/v1/cloud/gdrive/unlock', {
+      method: 'POST',
+      body: JSON.stringify({ passphrase }),
+    }),
+  cloudGdriveSyncNow: () =>
+    request<GDriveStatusData>('/api/v1/cloud/gdrive/sync-now', {
+      method: 'POST',
+    }),
+  cloudGdriveMirrorEnable: (enabled: boolean) =>
+    request<{ enabled: boolean }>('/api/v1/cloud/gdrive/mirror/enable', {
+      method: 'POST',
+      body: JSON.stringify({ enabled }),
+    }),
+  cloudGdriveMirrorRun: () =>
+    request<{ bytes: number }>('/api/v1/cloud/gdrive/mirror/run', {
+      method: 'POST',
+    }),
   gdriveSaveCredentials: (clientId: string, clientSecret?: string) =>
     request<Record<string, unknown>>('/api/v1/cloud/gdrive/credentials', {
       method: 'POST',

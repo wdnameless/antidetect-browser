@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { api, CloudStateData, SyncResultRow } from '../api';
+import { api, CloudStateData, GDriveStatusData, ProfileListItem, SyncResultRow } from '../api';
 import { useI18n } from '../i18n';
 import { openExternalUrl, BOOTSTRAP_RAW_URL, SERVER_DEPLOY_DOC_URL, SERVER_README_URL } from '../externalUrl';
 
@@ -12,13 +12,29 @@ const DEPLOY_COMMAND = [
   '.\\bootstrap.ps1 -Peers 3',
 ].join('\n');
 
-interface GDriveStatusState {
-  configured: boolean;
-  connected: boolean;
-  userEmail: string | null;
-  folderId: string | null;
-  lastPushTimestamp: number | null;
-  lastPullTimestamp: number | null;
+function formatBytes(bytes: number): string {
+  if (bytes === 0) return '0 B';
+  const k = 1024;
+  const sizes = ['B', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`;
+}
+
+function formatRelativeTime(
+  timestamp: number | null | undefined,
+  t: (s: string) => string
+): string {
+  if (!timestamp || timestamp <= 0) return t('Never');
+  const now = Date.now();
+  const diffSec = Math.max(0, Math.floor((now - timestamp) / 1000));
+  if (diffSec < 15) return t('Just now');
+  if (diffSec < 60) return `${diffSec} ${t('seconds ago')}`;
+  const diffMin = Math.floor(diffSec / 60);
+  if (diffMin < 60) return `${diffMin} ${t('minutes ago')}`;
+  const diffHours = Math.floor(diffMin / 60);
+  if (diffHours < 24) return `${diffHours} ${t('hours ago')}`;
+  const diffDays = Math.floor(diffHours / 24);
+  return `${diffDays} ${t('days ago')}`;
 }
 
 interface InspectPullResult {
@@ -49,11 +65,27 @@ export const CloudSync: React.FC = () => {
   const [syncLog, setSyncLog] = useState<SyncResultRow[]>([]);
 
   // Google Drive state
-  const [gdriveStatus, setGdriveStatus] = useState<GDriveStatusState | null>(null);
+  const [gdriveStatus, setGdriveStatus] = useState<GDriveStatusData | null>(null);
   const [gdriveClientId, setGdriveClientId] = useState('');
   const [gdriveClientSecret, setGdriveClientSecret] = useState('');
   const [gdriveBusy, setGdriveBusy] = useState(false);
   const [gdriveNotice, setGdriveNotice] = useState('');
+  const [gdriveError, setGdriveError] = useState('');
+
+  // One-click Connect flow (R1, R5)
+  const [connectStep, setConnectStep] = useState<'idle' | 'passphrase' | 'progress'>('idle');
+  const [passphrase, setPassphrase] = useState('');
+  const [confirmPassphrase, setConfirmPassphrase] = useState('');
+  const [passphraseError, setPassphraseError] = useState('');
+
+  // Session unlock flow
+  const [unlockPassphrase, setUnlockPassphrase] = useState('');
+  const [unlockError, setUnlockError] = useState('');
+
+  // Full Chromium mirror switch (R4 opt-in)
+  const [mirrorEnabled, setMirrorEnabled] = useState(false);
+  const [mirrorNotice, setMirrorNotice] = useState('');
+
   const [deviceAuthData, setDeviceAuthData] = useState<{
     userCode: string;
     verificationUrl: string;
@@ -63,8 +95,13 @@ export const CloudSync: React.FC = () => {
   const [inspection, setInspection] = useState<InspectPullResult | null>(null);
 
   const refreshGDriveStatus = (): void => {
-    api.gdriveStatus().then((r) => {
-      if (r.code === 0) setGdriveStatus(r.data);
+    api.cloudGdriveStatus().then((r) => {
+      if (r.code === 0) {
+        setGdriveStatus(r.data);
+        if (typeof r.data.mirrorEnabled === 'boolean') {
+          setMirrorEnabled(r.data.mirrorEnabled);
+        }
+      }
     }).catch(() => undefined);
   };
 
@@ -97,20 +134,158 @@ export const CloudSync: React.FC = () => {
         }
       }).catch((err) => {
         setDeviceAuthData(null);
-        setGdriveNotice((err as Error).message || 'Authentication error');
+        setGdriveError((err as Error).message || 'Authentication error');
       });
     }, intervalSec * 1000);
 
     return () => clearInterval(timer);
   }, [deviceAuthData]);
 
+  const handleConnectSubmit = (): void => {
+    setPassphraseError('');
+    if (passphrase.length < 8) {
+      setPassphraseError(t('Passphrase must be at least 8 characters long'));
+      return;
+    }
+    if (passphrase !== confirmPassphrase) {
+      setPassphraseError(t('Passphrases do not match'));
+      return;
+    }
+
+    setGdriveBusy(true);
+    setGdriveNotice('');
+    setGdriveError('');
+    setConnectStep('progress');
+
+    api.cloudGdriveConnect(passphrase)
+      .then((r) => {
+        setGdriveBusy(false);
+        if (r.code === 0) {
+          if (r.data?.verificationUrl && r.data?.deviceCode && r.data?.userCode) {
+            setDeviceAuthData({
+              userCode: r.data.userCode,
+              verificationUrl: r.data.verificationUrl,
+              deviceCode: r.data.deviceCode,
+              interval: r.data.interval || 5,
+            });
+            setConnectStep('idle');
+            setPassphrase('');
+            setConfirmPassphrase('');
+          } else {
+            setConnectStep('idle');
+            setPassphrase('');
+            setConfirmPassphrase('');
+            setGdriveNotice(t('Google Drive connected successfully'));
+            refreshGDriveStatus();
+          }
+        } else {
+          setConnectStep('passphrase');
+          setGdriveError(r.msg || t('Connection failed'));
+        }
+      })
+      .catch((err) => {
+        setGdriveBusy(false);
+        setConnectStep('passphrase');
+        setGdriveError((err as Error).message || t('Connection failed'));
+      });
+  };
+
+  const handleSyncNow = (): void => {
+    setGdriveBusy(true);
+    setGdriveNotice('');
+    setGdriveError('');
+    api.cloudGdriveSyncNow()
+      .then((r) => {
+        setGdriveBusy(false);
+        if (r.code === 0) {
+          setGdriveStatus(r.data);
+          setGdriveNotice(t('Sync completed successfully'));
+        } else {
+          setGdriveError(r.msg || t('Sync failed'));
+        }
+      })
+      .catch((err) => {
+        setGdriveBusy(false);
+        setGdriveError((err as Error).message || t('Sync failed'));
+      });
+  };
+
+  const handleUnlockSession = (): void => {
+    if (!unlockPassphrase) return;
+    setGdriveBusy(true);
+    setUnlockError('');
+    api.cloudGdriveUnlock(unlockPassphrase)
+      .then((r) => {
+        setGdriveBusy(false);
+        if (r.code === 0) {
+          setUnlockPassphrase('');
+          setGdriveNotice(t('Google Drive sync unlocked for this session'));
+          refreshGDriveStatus();
+        } else {
+          setUnlockError(r.msg || t('Incorrect passphrase'));
+        }
+      })
+      .catch((err) => {
+        setGdriveBusy(false);
+        setUnlockError((err as Error).message || t('Incorrect passphrase'));
+      });
+  };
+
+  const handleToggleMirror = (e: React.ChangeEvent<HTMLInputElement>): void => {
+    const enabled = e.target.checked;
+    setMirrorEnabled(enabled);
+    setGdriveBusy(true);
+    setMirrorNotice('');
+    api.cloudGdriveMirrorEnable(enabled)
+      .then((r) => {
+        setGdriveBusy(false);
+        if (r.code === 0) {
+          setMirrorNotice(
+            enabled
+              ? t('Full Chromium mirror enabled')
+              : t('Full Chromium mirror disabled')
+          );
+          refreshGDriveStatus();
+        } else {
+          setMirrorEnabled(!enabled);
+          setGdriveError(r.msg || t('Failed to update mirror setting'));
+        }
+      })
+      .catch((err) => {
+        setGdriveBusy(false);
+        setMirrorEnabled(!enabled);
+        setGdriveError((err as Error).message || t('Failed to update mirror setting'));
+      });
+  };
+
+  const handleRunMirror = (): void => {
+    setGdriveBusy(true);
+    setMirrorNotice('');
+    api.cloudGdriveMirrorRun()
+      .then((r) => {
+        setGdriveBusy(false);
+        if (r.code === 0) {
+          setMirrorNotice(
+            `${t('Chromium mirror backup completed:')} ${formatBytes(r.data.bytes)}`
+          );
+        } else {
+          setGdriveError(r.msg || t('Mirror backup failed'));
+        }
+      })
+      .catch((err) => {
+        setGdriveBusy(false);
+        setGdriveError((err as Error).message || t('Mirror backup failed'));
+      });
+  };
+
   const handleSaveCredentials = (): void => {
     if (!gdriveClientId.trim()) {
-      setGdriveNotice('Client ID cannot be empty');
+      setGdriveError('Client ID cannot be empty');
       return;
     }
     setGdriveBusy(true);
     setGdriveNotice('');
+    setGdriveError('');
     api.gdriveSaveCredentials(gdriveClientId.trim(), gdriveClientSecret.trim() || undefined)
       .then((r) => {
         setGdriveBusy(false);
@@ -118,30 +293,31 @@ export const CloudSync: React.FC = () => {
           setGdriveNotice(t('Drive credentials saved securely'));
           refreshGDriveStatus();
         } else {
-          setGdriveNotice(r.msg);
+          setGdriveError(r.msg);
         }
       })
       .catch((err) => {
         setGdriveBusy(false);
-        setGdriveNotice((err as Error).message);
+        setGdriveError((err as Error).message);
       });
   };
 
   const handleStartDeviceAuth = (): void => {
     setGdriveBusy(true);
     setGdriveNotice('');
+    setGdriveError('');
     api.gdriveStartDeviceAuth()
       .then((r) => {
         setGdriveBusy(false);
         if (r.code === 0) {
           setDeviceAuthData(r.data);
         } else {
-          setGdriveNotice(r.msg);
+          setGdriveError(r.msg);
         }
       })
       .catch((err) => {
         setGdriveBusy(false);
-        setGdriveNotice((err as Error).message);
+        setGdriveError((err as Error).message);
       });
   };
 
@@ -155,7 +331,7 @@ export const CloudSync: React.FC = () => {
       })
       .catch((err) => {
         setGdriveBusy(false);
-        setGdriveNotice((err as Error).message);
+        setGdriveError((err as Error).message);
       });
   };
 
@@ -293,10 +469,10 @@ export const CloudSync: React.FC = () => {
           {/* Status text badge: Accessible without color alone (has text: [CONFIGURED] / [CONNECTED] / [DISCONNECTED]) */}
           <span className="badge" style={{ textTransform: 'uppercase', letterSpacing: '0.05em' }}>
             {gdriveStatus?.connected
-              ? `[CONNECTED] ${gdriveStatus.userEmail || ''}`
+              ? `[CONNECTED] ${gdriveStatus.account || gdriveStatus.userEmail || ''}`
               : gdriveStatus?.configured
               ? '[CONFIGURED / DISCONNECTED]'
-              : '[NOT CONFIGURED]'}
+              : '[NOT CONNECTED]'}
           </span>
         </div>
 
@@ -306,118 +482,447 @@ export const CloudSync: React.FC = () => {
           </div>
         )}
 
-        {/* Step-by-step Setup Instructions */}
-        {!gdriveStatus?.connected && (
-          <div style={{ background: 'var(--bg-secondary)', padding: '12px', borderRadius: '4px', marginBottom: '16px' }}>
-            <strong style={{ display: 'block', marginBottom: '6px' }}>{t('Setup Instructions')}:</strong>
-            <ol style={{ margin: 0, paddingLeft: '18px', fontSize: '13px', lineHeight: '1.6' }}>
-              <li>{t('1. Create a Google Cloud project or use an existing one in the Google Cloud Console.')}</li>
-              <li>{t('2. Enable the Google Drive API for your project.')}</li>
-              <li>{t('3. Configure an OAuth consent screen (External, add drive.file scope).')}</li>
-              <li>{t('4. Create OAuth 2.0 credentials (Desktop Application or TV/Limited Input Device).')}</li>
-              <li>{t('5. Paste the Client ID below. Secret is optional for desktop clients.')}</li>
-            </ol>
+        {gdriveError && (
+          <div
+            className="notice-banner"
+            style={{
+              marginBottom: '12px',
+              padding: '8px 12px',
+              borderColor: 'var(--danger)',
+              color: 'var(--danger)',
+            }}
+          >
+            {gdriveError}
           </div>
         )}
 
-        {/* Configuration inputs */}
+        {/* NOT CONNECTED STATE */}
         {!gdriveStatus?.connected && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '16px' }}>
-            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-              <label style={{ width: '160px', fontSize: '13px' }}>{t('OAuth Client ID')}:</label>
-              <input
-                type="text"
-                value={gdriveClientId}
-                onChange={(e) => setGdriveClientId(e.target.value)}
-                placeholder="xxxx.apps.googleusercontent.com"
-                style={{ flex: 1 }}
-                disabled={gdriveBusy}
-              />
-            </div>
-            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-              <label style={{ width: '160px', fontSize: '13px' }}>{t('OAuth Client Secret (optional)')}:</label>
-              <input
-                type="password"
-                value={gdriveClientSecret}
-                onChange={(e) => setGdriveClientSecret(e.target.value)}
-                placeholder="(Optional for Desktop Client)"
-                style={{ flex: 1 }}
-                disabled={gdriveBusy}
-              />
-            </div>
-            <div style={{ display: 'flex', gap: '8px', marginTop: '4px' }}>
-              <button className="btn" onClick={handleSaveCredentials} disabled={gdriveBusy || !gdriveClientId.trim()}>
-                {t('Save Credentials')}
-              </button>
-              {gdriveStatus?.configured && !deviceAuthData && (
-                <button className="btn btn-primary" onClick={handleStartDeviceAuth} disabled={gdriveBusy}>
-                  {t('Connect Google Drive')}
+          <div>
+            {/* 1. Default View: Exactly ONE prominent button, no Client ID field (R1) */}
+            {connectStep === 'idle' && !deviceAuthData && (
+              <div>
+                <p style={{ fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '16px', lineHeight: '1.5' }}>
+                  {t('Sync all your browser profiles, proxies, tags, notes, vault credentials, scripts, and settings automatically to your personal Google Drive.')}
+                </p>
+
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                  <button
+                    type="button"
+                    className="btn primary btn-primary"
+                    style={{ padding: '10px 24px', fontSize: '14px', fontWeight: 600 }}
+                    onClick={() => {
+                      setGdriveError('');
+                      setGdriveNotice('');
+                      setPassphraseError('');
+                      setConnectStep('passphrase');
+                    }}
+                    disabled={gdriveBusy}
+                  >
+                    {t('Connect Google Drive')}
+                  </button>
+                </div>
+
+                {/* Collapsed Advanced Disclosure (R1, R6 fallback) */}
+                <details
+                  style={{
+                    marginTop: '24px',
+                    border: '1px solid var(--border)',
+                    borderRadius: '6px',
+                    padding: '10px 14px',
+                    background: 'var(--bg-secondary)',
+                  }}
+                >
+                  <summary
+                    style={{
+                      cursor: 'pointer',
+                      fontWeight: 600,
+                      fontSize: '13px',
+                      color: 'var(--text-muted)',
+                    }}
+                  >
+                    {t('Advanced: Custom Google OAuth Credentials')}
+                  </summary>
+                  <div style={{ marginTop: '14px' }}>
+                    <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '12px', lineHeight: '1.5' }}>
+                      {t('Fallback for development builds or custom Google Cloud projects without a preconfigured client.')}
+                    </p>
+
+                    {/* Step-by-step Setup Instructions (R1/2d: ONLY inside advanced disclosure) */}
+                    <div
+                      style={{
+                        background: 'var(--surface-1)',
+                        border: '1px solid var(--border)',
+                        padding: '12px',
+                        borderRadius: '4px',
+                        marginBottom: '16px',
+                       }}
+                    >
+                      <strong style={{ display: 'block', marginBottom: '6px', fontSize: '12.5px' }}>
+                        {t('Setup Instructions')}:
+                      </strong>
+                      <ol style={{ margin: 0, paddingLeft: '18px', fontSize: '12.5px', lineHeight: '1.6', color: 'var(--text-secondary)' }}>
+                        <li>{t('1. Create a Google Cloud project or use an existing one in the Google Cloud Console.')}</li>
+                        <li>{t('2. Enable the Google Drive API for your project.')}</li>
+                        <li>{t('3. Configure an OAuth consent screen (External, add drive.file scope).')}</li>
+                        <li>{t('4. Create OAuth 2.0 credentials (Desktop Application or TV/Limited Input Device).')}</li>
+                        <li>{t('5. Paste the Client ID below. Secret is optional for desktop clients.')}</li>
+                      </ol>
+                    </div>
+
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '12px' }}>
+                      <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                        <label style={{ width: '160px', fontSize: '13px' }}>{t('OAuth Client ID')}:</label>
+                        <input
+                          type="text"
+                          value={gdriveClientId}
+                          onChange={(e) => setGdriveClientId(e.target.value)}
+                          placeholder="xxxx.apps.googleusercontent.com"
+                          style={{ flex: 1 }}
+                          disabled={gdriveBusy}
+                        />
+                      </div>
+                      <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                        <label style={{ width: '160px', fontSize: '13px' }}>{t('OAuth Client Secret (optional)')}:</label>
+                        <input
+                          type="password"
+                          value={gdriveClientSecret}
+                          onChange={(e) => setGdriveClientSecret(e.target.value)}
+                          placeholder="(Optional for Desktop Client)"
+                          style={{ flex: 1 }}
+                          disabled={gdriveBusy}
+                        />
+                      </div>
+                      <div style={{ display: 'flex', gap: '8px', marginTop: '4px' }}>
+                        <button
+                          type="button"
+                          className="btn"
+                          onClick={handleSaveCredentials}
+                          disabled={gdriveBusy || !gdriveClientId.trim()}
+                        >
+                          {t('Save Credentials')}
+                        </button>
+                        {gdriveStatus?.configured && !deviceAuthData && (
+                          <button
+                            type="button"
+                            className="btn"
+                            onClick={handleStartDeviceAuth}
+                            disabled={gdriveBusy}
+                          >
+                            {t('Start Device Authorization')}
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </details>
+              </div>
+            )}
+
+            {/* 2. Passphrase Step (min 8 chars, entered twice, data loss warning per 2a & 2e) */}
+            {connectStep === 'passphrase' && (
+              <div
+                style={{
+                  background: 'var(--bg-secondary)',
+                  border: '1px solid var(--border)',
+                  borderRadius: '6px',
+                  padding: '16px',
+                  marginBottom: '16px',
+                }}
+              >
+                <h4 style={{ margin: '0 0 8px 0', fontSize: '15px', fontWeight: 600 }}>
+                  {t('Set Encryption Passphrase')}
+                </h4>
+                <p style={{ fontSize: '13px', color: 'var(--text-secondary)', margin: '0 0 12px 0', lineHeight: '1.5' }}>
+                  {t('Your sync data is encrypted client-side with AES-256-GCM before being sent to Google Drive. Google never sees your passwords, cookies, or profile data.')}
+                </p>
+
+                {/* Crucial Data-loss Warning Box (Requirement 2e & Acceptance) */}
+                <div
+                  style={{
+                    background: 'var(--danger-bg))',
+                    border: '1px solid var(--danger)',
+                    borderRadius: '6px',
+                    padding: '12px 14px',
+                    marginBottom: '16px',
+                  }}
+                >
+                  <strong style={{ color: 'var(--danger)', display: 'block', marginBottom: '6px', fontSize: '13.5px' }}>
+                    ⚠️ {t('Important: Non-Recoverable Passphrase')}
+                  </strong>
+                  <p style={{ margin: 0, fontSize: '13px', lineHeight: '1.5', color: 'var(--text)' }}>
+                    {t('The passphrase is not stored anywhere. It is required on every machine to decrypt your data. If you forget this passphrase, your Google Drive backup cannot be restored and data will be permanently lost.')}
+                  </p>
+                </div>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxWidth: '440px', marginBottom: '16px' }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '13px', marginBottom: '4px' }}>
+                      {t('Passphrase (minimum 8 characters)')}:
+                    </label>
+                    <input
+                      type="password"
+                      value={passphrase}
+                      onChange={(e) => setPassphrase(e.target.value)}
+                      placeholder={t('Enter passphrase')}
+                      disabled={gdriveBusy}
+                      style={{ width: '100%' }}
+                      autoFocus
+                    />
+                  </div>
+
+                  <div>
+                    <label style={{ display: 'block', fontSize: '13px', marginBottom: '4px' }}>
+                      {t('Confirm Passphrase')}:
+                    </label>
+                    <input
+                      type="password"
+                      value={confirmPassphrase}
+                      onChange={(e) => setConfirmPassphrase(e.target.value)}
+                      placeholder={t('Repeat passphrase')}
+                      disabled={gdriveBusy}
+                      style={{ width: '100%' }}
+                    />
+                  </div>
+                </div>
+
+                {passphraseError && (
+                  <div style={{ color: 'var(--danger)', fontSize: '13px', marginBottom: '14px', fontWeight: 500 }}>
+                    {passphraseError}
+                  </div>
+                )}
+
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <button
+                    type="button"
+                    className="btn primary btn-primary"
+                    onClick={handleConnectSubmit}
+                    disabled={gdriveBusy || passphrase.length < 8 || passphrase !== confirmPassphrase}
+                  >
+                    {gdriveBusy ? t('Connecting…') : t('Confirm & Connect')}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn"
+                    onClick={() => {
+                      setConnectStep('idle');
+                      setPassphrase('');
+                      setConfirmPassphrase('');
+                      setPassphraseError('');
+                    }}
+                    disabled={gdriveBusy}
+                  >
+                    {t('Cancel')}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* 3. Connecting progress state */}
+            {connectStep === 'progress' && (
+              <div
+                style={{
+                  padding: '24px 16px',
+                  textAlign: 'center',
+                  background: 'var(--bg-secondary)',
+                  borderRadius: '6px',
+                  border: '1px solid var(--border)',
+                }}
+              >
+                <h4 style={{ margin: '0 0 8px 0', fontSize: '15px', fontWeight: 600 }}>
+                  {t('Connecting to Google Drive...')}
+                </h4>
+                <p style={{ margin: 0, fontSize: '13px', color: 'var(--text-secondary)', lineHeight: '1.5' }}>
+                  {t('Please wait while your connection is established. If a browser window opened, follow the instructions to grant access.')}
+                </p>
+              </div>
+            )}
+
+            {/* 4. Active Device Auth flow dialog (if initiated) */}
+            {deviceAuthData && (
+              <div style={{ border: '1px solid var(--border-color)', padding: '16px', borderRadius: '4px', marginBottom: '16px', background: 'var(--bg-secondary)' }}>
+                <h4>{t('Authorizing Google Drive...')}</h4>
+                <p style={{ margin: '8px 0', fontSize: '13px' }}>
+                  {t('To authorize, open the following URL in any browser:')}
+                </p>
+                <div style={{ margin: '8px 0', wordBreak: 'break-all' }}>
+                  <a href={deviceAuthData.verificationUrl} target="_blank" rel="noreferrer">
+                    {deviceAuthData.verificationUrl}
+                  </a>
+                </div>
+                <p style={{ margin: '8px 0', fontSize: '14px' }}>
+                  <strong>{t('Enter Code:')}</strong>{' '}
+                  <span style={{ fontSize: '18px', letterSpacing: '0.1em', fontWeight: 'bold' }}>
+                    {deviceAuthData.userCode}
+                  </span>
+                </p>
+                <p style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+                  {t('Waiting for approval in browser...')}
+                </p>
+                <button type="button" className="btn" onClick={() => setDeviceAuthData(null)}>
+                  {t('Cancel Authorization')}
                 </button>
-              )}
-            </div>
+              </div>
+            )}
           </div>
         )}
 
-        {/* Device Auth active flow dialog */}
-        {deviceAuthData && (
-          <div style={{ border: '1px solid var(--border-color)', padding: '16px', borderRadius: '4px', marginBottom: '16px' }}>
-            <h4>{t('Authorizing Google Drive...')}</h4>
-            <p style={{ margin: '8px 0', fontSize: '13px' }}>
-              {t('To authorize, open the following URL in any browser:')}
-            </p>
-            <div style={{ margin: '8px 0', wordBreak: 'break-all' }}>
-              <a href={deviceAuthData.verificationUrl} target="_blank" rel="noreferrer">
-                {deviceAuthData.verificationUrl}
-              </a>
-            </div>
-            <p style={{ margin: '8px 0', fontSize: '14px' }}>
-              <strong>{t('Enter Code:')}</strong>{' '}
-              <span style={{ fontSize: '18px', letterSpacing: '0.1em', fontWeight: 'bold' }}>
-                {deviceAuthData.userCode}
-              </span>
-            </p>
-            <p style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
-              {t('Waiting for approval in browser...')}
-            </p>
-            <button className="btn" onClick={() => setDeviceAuthData(null)}>
-              {t('Cancel Authorization')}
-            </button>
-          </div>
-        )}
-
-        {/* Connected state & Operations */}
+        {/* CONNECTED STATE (Requirement 2c) */}
         {gdriveStatus?.connected && (
           <div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px', marginBottom: '16px' }}>
-              <div style={{ padding: '8px', background: 'var(--bg-secondary)', borderRadius: '4px' }}>
-                <span style={{ fontSize: '12px', color: 'var(--text-muted)', display: 'block' }}>{t('Connected Account:')}</span>
-                <strong>{gdriveStatus.userEmail || 'OAuth Connected'}</strong>
+            {/* Session locked warning / unlock form */}
+            {gdriveStatus.unlocked === false && (
+              <div
+                style={{
+                  background: 'var(--warn-bg))',
+                  border: '1px solid var(--warn)',
+                  borderRadius: '6px',
+                  padding: '12px 14px',
+                  marginBottom: '16px',
+                }}
+              >
+                <strong style={{ display: 'block', color: 'var(--warn)', marginBottom: '6px', fontSize: '13.5px' }}>
+                  🔒 {t('Unlock Sync')}
+                </strong>
+                <p style={{ margin: '0 0 10px 0', fontSize: '13px', color: 'var(--text)' }}>
+                  {t('Enter your passphrase to unlock synchronization for this session:')}
+                </p>
+                <div style={{ display: 'flex', gap: '8px', maxWidth: '400px' }}>
+                  <input
+                    type="password"
+                    value={unlockPassphrase}
+                    onChange={(e) => setUnlockPassphrase(e.target.value)}
+                    placeholder={t('Enter passphrase')}
+                    disabled={gdriveBusy}
+                    style={{ flex: 1 }}
+                  />
+                  <button
+                    type="button"
+                    className="btn primary btn-primary"
+                    onClick={handleUnlockSession}
+                    disabled={gdriveBusy || !unlockPassphrase}
+                  >
+                    {gdriveBusy ? t('Syncing…') : t('Unlock Sync')}
+                  </button>
+                </div>
+                {unlockError && (
+                  <div style={{ color: 'var(--danger)', fontSize: '12px', marginTop: '6px' }}>
+                    {unlockError}
+                  </div>
+                )}
               </div>
-              <div style={{ padding: '8px', background: 'var(--bg-secondary)', borderRadius: '4px' }}>
-                <span style={{ fontSize: '12px', color: 'var(--text-muted)', display: 'block' }}>{t('Drive Folder ID:')}</span>
-                <span style={{ fontFamily: 'monospace', fontSize: '12px' }}>{gdriveStatus.folderId || 'auto'}</span>
+            )}
+
+            {/* Grid of account, last sync, auto-sync state, folder (Requirement 2c) */}
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+                gap: '12px',
+                marginBottom: '16px',
+              }}
+            >
+              <div style={{ padding: '10px 12px', background: 'var(--bg-secondary)', borderRadius: '4px' }}>
+                <span style={{ fontSize: '12px', color: 'var(--text-muted)', display: 'block', marginBottom: '2px' }}>
+                  {t('Connected Account')}
+                </span>
+                <strong style={{ fontSize: '13px', wordBreak: 'break-all' }}>
+                  {gdriveStatus.account || gdriveStatus.userEmail || 'OAuth Connected'}
+                </strong>
               </div>
-              <div style={{ padding: '8px', background: 'var(--bg-secondary)', borderRadius: '4px' }}>
-                <span style={{ fontSize: '12px', color: 'var(--text-muted)', display: 'block' }}>{t('Last Push:')}</span>
-                <span>{gdriveStatus.lastPushTimestamp ? new Date(gdriveStatus.lastPushTimestamp).toLocaleString() : 'Never'}</span>
+
+              <div style={{ padding: '10px 12px', background: 'var(--bg-secondary)', borderRadius: '4px' }}>
+                <span style={{ fontSize: '12px', color: 'var(--text-muted)', display: 'block', marginBottom: '2px' }}>
+                  {t('Last Synced')}
+                </span>
+                <span style={{ fontSize: '13px', fontWeight: 500 }}>
+                  {formatRelativeTime(
+                    gdriveStatus.lastSyncAt || gdriveStatus.lastPushTimestamp || gdriveStatus.lastPullTimestamp,
+                    t
+                  )}
+                </span>
               </div>
-              <div style={{ padding: '8px', background: 'var(--bg-secondary)', borderRadius: '4px' }}>
-                <span style={{ fontSize: '12px', color: 'var(--text-muted)', display: 'block' }}>{t('Last Pull:')}</span>
-                <span>{gdriveStatus.lastPullTimestamp ? new Date(gdriveStatus.lastPullTimestamp).toLocaleString() : 'Never'}</span>
+
+              <div style={{ padding: '10px 12px', background: 'var(--bg-secondary)', borderRadius: '4px' }}>
+                <span style={{ fontSize: '12px', color: 'var(--text-muted)', display: 'block', marginBottom: '2px' }}>
+                  {t('Automatic Sync')}
+                </span>
+                <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--ok)' }}>
+                  ● {t('Active (syncs on data change, launch, and exit)')}
+                </span>
+              </div>
+
+              <div style={{ padding: '10px 12px', background: 'var(--bg-secondary)', borderRadius: '4px' }}>
+                <span style={{ fontSize: '12px', color: 'var(--text-muted)', display: 'block', marginBottom: '2px' }}>
+                  {t('Drive Folder')}
+                </span>
+                <span style={{ fontFamily: 'var(--font-mono)', fontSize: '12px' }}>
+                  {gdriveStatus.folderId ? 'nulltrace data' : 'nulltrace data (auto)'}
+                </span>
               </div>
             </div>
 
+            {gdriveStatus.syncing && (
+              <div className="notice-banner" style={{ marginBottom: '12px' }}>
+                {t('Sync in progress...')}
+              </div>
+            )}
+
+            {gdriveStatus.lastError && (
+              <div
+                className="notice-banner"
+                style={{ marginBottom: '12px', borderColor: 'var(--danger)', color: 'var(--danger)' }}
+              >
+                <strong>{t('Last sync error:')}</strong> {gdriveStatus.lastError}
+              </div>
+            )}
+
+            {Boolean(gdriveStatus.pendingRemoteChanges && gdriveStatus.pendingRemoteChanges > 0) && (
+              <div className="notice-banner" style={{ marginBottom: '12px' }}>
+                {gdriveStatus.pendingRemoteChanges} {t('pending remote updates waiting to be pulled.')}
+              </div>
+            )}
+
+            {/* Operations buttons: Primary "Sync now" button (2c) + secondary operations */}
             <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '16px' }}>
-              <button className="btn btn-primary" onClick={handleGDrivePush} disabled={gdriveBusy}>
-                {t('Push to Google Drive')}
+              <button
+                type="button"
+                className="btn primary btn-primary"
+                onClick={handleSyncNow}
+                disabled={gdriveBusy || Boolean(gdriveStatus.syncing)}
+              >
+                {gdriveBusy || gdriveStatus.syncing ? t('Syncing…') : t('Sync now')}
               </button>
-              <button className="btn" onClick={handleInspectPull} disabled={gdriveBusy}>
+              <button
+                type="button"
+                className="btn"
+                onClick={handleInspectPull}
+                disabled={gdriveBusy}
+              >
                 {t('Check for Remote Updates')}
               </button>
-              <button className="btn" onClick={() => handleExecutePull()} disabled={gdriveBusy}>
+              <button
+                type="button"
+                className="btn"
+                onClick={() => handleExecutePull()}
+                disabled={gdriveBusy}
+              >
                 {t('Pull from Google Drive')}
               </button>
-              <button className="btn" onClick={handleDisconnectGDrive} disabled={gdriveBusy}>
+              <button
+                type="button"
+                className="btn"
+                onClick={handleGDrivePush}
+                disabled={gdriveBusy}
+              >
+                {t('Push to Google Drive')}
+              </button>
+              <button
+                type="button"
+                className="btn"
+                onClick={handleDisconnectGDrive}
+                disabled={gdriveBusy}
+              >
                 {t('Disconnect Google Drive')}
               </button>
             </div>
@@ -445,13 +950,13 @@ export const CloudSync: React.FC = () => {
                       ))}
                     </ul>
                     <div style={{ display: 'flex', gap: '8px' }}>
-                      <button className="btn btn-primary" onClick={() => handleExecutePull('overwrite_remote')}>
+                      <button type="button" className="btn btn-primary" onClick={() => handleExecutePull('overwrite_remote')}>
                         {t('Overwrite Local Data')}
                       </button>
-                      <button className="btn" onClick={() => handleExecutePull('keep_local')}>
+                      <button type="button" className="btn" onClick={() => handleExecutePull('keep_local')}>
                         {t('Keep Local (Skip Conflicts)')}
                       </button>
-                      <button className="btn" onClick={() => setInspection(null)}>
+                      <button type="button" className="btn" onClick={() => setInspection(null)}>
                         {t('Cancel Pull')}
                       </button>
                     </div>
@@ -459,6 +964,113 @@ export const CloudSync: React.FC = () => {
                 )}
               </div>
             )}
+
+            {/* Full Chromium Mirror section (Requirement 2f & R4 deviation) */}
+            <div
+              style={{
+                marginTop: '20px',
+                padding: '16px',
+                borderRadius: '6px',
+                border: '1px solid var(--border)',
+                background: 'var(--bg-secondary)',
+              }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                <div>
+                  <h4 style={{ margin: 0, fontSize: '14px', fontWeight: 600 }}>
+                    {t('Full Chromium Directory Mirror (Experimental)')}
+                  </h4>
+                  <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+                    {t('Optional full backup of profile directories in addition to standard portable sync')}
+                  </span>
+                </div>
+                <label style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', cursor: 'pointer', userSelect: 'none' }}>
+                  <input
+                    type="checkbox"
+                    checked={mirrorEnabled}
+                    onChange={handleToggleMirror}
+                    disabled={gdriveBusy}
+                    style={{ width: '16px', height: '16px', cursor: 'pointer' }}
+                  />
+                  <span style={{ fontSize: '13px', fontWeight: 600 }}>
+                    {mirrorEnabled ? t('Enabled') : t('Disabled (Default)')}
+                  </span>
+                </label>
+              </div>
+
+              {/* Measured cost comparison breakdown (304 KB vs 795 MB) */}
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+                  gap: '10px',
+                  margin: '12px 0',
+                }}
+              >
+                <div style={{ padding: '10px', background: 'var(--surface-1)', borderRadius: '4px', border: '1px solid var(--border)' }}>
+                  <div style={{ fontSize: '11px', textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: '4px' }}>
+                    {t('Standard Portable Sync (Active)')}
+                  </div>
+                  <div style={{ fontSize: '16px', fontWeight: 700, color: 'var(--ok)' }}>
+                    ~304 KB
+                  </div>
+                  <div style={{ fontSize: '11.5px', color: 'var(--text-secondary)', marginTop: '4px', lineHeight: '1.4' }}>
+                    {t('Database, profiles, proxies, fingerprints, groups, tags, notes, vault credentials, scripts, settings, and session cookies.')}
+                  </div>
+                </div>
+
+                <div style={{ padding: '10px', background: 'var(--surface-1)', borderRadius: '4px', border: '1px solid var(--border)' }}>
+                  <div style={{ fontSize: '11px', textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: '4px' }}>
+                    {t('Chromium Directory Mirror')}
+                  </div>
+                  <div style={{ fontSize: '16px', fontWeight: 700, color: mirrorEnabled ? 'var(--warn)' : 'var(--text-muted)' }}>
+                    ~795 MB
+                  </div>
+                  <div style={{ fontSize: '11.5px', color: 'var(--text-secondary)', marginTop: '4px', lineHeight: '1.4' }}>
+                    {t('Full profile directories including HTTP/code caches and internal runtime files.')}
+                  </div>
+                </div>
+              </div>
+
+              <p style={{ fontSize: '12px', color: 'var(--text-muted)', margin: '0 0 10px 0', lineHeight: '1.5' }}>
+                ℹ️ {t('Note: Chromium caches (~400 MB) are automatically regenerated on the target machine anyway and are not needed to restore profiles.')}
+              </p>
+
+              {mirrorEnabled && (
+                <div
+                  style={{
+                    background: 'var(--warn-bg))',
+                    border: '1px solid var(--warn)',
+                    borderRadius: '4px',
+                    padding: '12px',
+                    marginTop: '10px',
+                  }}
+                >
+                  <strong style={{ display: 'block', color: 'var(--warn)', marginBottom: '4px', fontSize: '13px' }}>
+                    ⚠️ {t('Warning: High Storage & Machine Binding Restrictions')}
+                  </strong>
+                  <p style={{ margin: 0, fontSize: '12.5px', lineHeight: '1.5', color: 'var(--text)' }}>
+                    {t('Full Chromium mirroring is significantly slower (~795 MB) and consumes cloud quota. Furthermore, raw Chromium cookies are encrypted via Windows DPAPI (tied to the local machine), and Device Bound Sessions are machine-bound, so cookies from Chromium directories may still not transfer to another computer. Standard portable sync (~304 KB) already transfers active sessions safely.')}
+                  </p>
+                  <div style={{ marginTop: '10px' }}>
+                    <button
+                      type="button"
+                      className="btn btn-sm"
+                      onClick={handleRunMirror}
+                      disabled={gdriveBusy}
+                    >
+                      {t('Run Chromium Mirror Backup Now')}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {mirrorNotice && (
+                <div style={{ marginTop: '8px', fontSize: '12px', color: 'var(--ok)' }}>
+                  {mirrorNotice}
+                </div>
+              )}
+            </div>
           </div>
         )}
       </div>

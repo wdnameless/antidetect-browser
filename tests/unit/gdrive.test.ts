@@ -40,6 +40,7 @@ import {
   pullFromGDrive,
   type GDriveTransport,
   type DriveFileInfo,
+  setSyncPassphrase,
 } from '../../src/main/cloud/gdriveTransfer';
 import { initDb, closeDb } from '../../src/main/db';
 
@@ -217,13 +218,43 @@ describe('folder reuse across machines', () => {
 });
 
 describe('transfer', () => {
+  it('push refuses to run without a passphrase, rather than uploading plaintext', () => {
+    // The payload carries proxy passwords, SSH keys and live session cookies. Before end-to-end
+    // encryption existed, push wrote that as plain JSON into Drive. Refusing here is the property
+    // worth pinning: a push that silently falls back to plaintext is worse than one that fails,
+    // because the operator sees a successful sync and Google holds readable credentials.
+    connect();
+    setGDriveTransport(driveTransport().transport);
+
+    return expect(pushToGDrive()).rejects.toThrow(/passphrase/i);
+  });
+
   it('push records a timestamp', async () => {
     connect();
     setGDriveTransport(driveTransport().transport);
+    setSyncPassphrase('test passphrase for the suite');
 
     const before = getGDriveStatus().lastPush;
     await pushToGDrive();
     expect(getGDriveStatus().lastPush).not.toBe(before);
+  });
+
+  it('push uploads sealed bytes, not readable JSON', async () => {
+    connect();
+    const { transport, files } = driveTransport();
+    setGDriveTransport(transport);
+    setSyncPassphrase('test passphrase for the suite');
+
+    await pushToGDrive();
+
+    // Whatever landed in the (in-memory) Drive must not contain a readable payload. An empty store
+    // still produces a manifest and sealed profile/script/settings files, so there is always
+    // something to inspect.
+    const uploaded = [...files.values()].filter((f) => f.name.endsWith('.json'));
+    const profileFile = uploaded.find((f) => f.name.includes('profiles'));
+    if (profileFile) {
+      expect(profileFile.content.includes('"profile"'), 'plaintext bundle reached Drive').toBe(false);
+    }
   });
 
   it('inspection is read-only and reports conflicts', async () => {
