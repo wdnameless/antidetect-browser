@@ -19,6 +19,7 @@ export type PreflightReasonCode =
   // Proxy
   | 'proxy-ok'
   | 'proxy-not-configured'
+  | 'proxy-not-found'
   | 'proxy-unreachable'
   | 'proxy-auth-failed'
   | 'proxy-timeout'
@@ -58,6 +59,7 @@ export type PreflightReasonCode =
 
 export const PREFLIGHT_REASON = {
   DIRECT_NO_PROXY: 'proxy-not-configured',
+  PROXY_NOT_FOUND: 'proxy-not-found',
   PROXY_UNREACHABLE: 'proxy-unreachable',
   GEO_LOOKUP_FAILED: 'geo-lookup-failed',
   EGRESS_GEO_MISMATCH: 'geo-mismatch',
@@ -95,6 +97,7 @@ export interface ProfileResolvedData {
   id: string;
   name: string | null;
   proxy_id: string | null;
+  proxyMissing?: boolean;
   timezone: string | null;
   language?: string;
   browser_type?: string;

@@ -1,5 +1,59 @@
 # Changelog
 
+## [0.6.28] - 2026-09-22
+
+### Added — the preflight verdict is visible in the row again
+
+Requested: «Надо доделать фичу, поискть баги и запушить все в новый релиз». The unfinished feature
+was the preflight badge: `PreflightBadge` was fully implemented and fully styled, and **nothing
+rendered it**. Tracing the history showed why, and it changed what "finish" could mean — commit
+`3a3d790` had deliberately dropped the Preflight *column* at the operator's request (*"the profiles
+table no longer carries Device/OS, Fingerprint or Preflight"*) and left the import plus eight
+orphaned `useState` declarations behind. So the column was not restored; the badge took the place of
+the shield button in the Actions cell instead, keeping the table narrow. It now shows
+PASS / WARN / FAIL / CHECKING and the count of failing or warning checks without a click, with the
+same click behaviour the shield button had.
+
+The sweep also proved why this needed the rendered DOM rather than a typecheck: the component was
+imported the whole time. A headless check now clicks the badge in a real browser and reads the
+result — `Check` → `✕ FAIL 2`, tooltip `Preflight: FAIL (2 issues)`.
+
+Also removed: eight dead `useState` declarations, the `copySeedToClipboard` helper whose only user
+was one of them, and the unused `DevicesIcon` import — all orphaned by the same commit.
+
+### Fixed — an unresolvable proxy failed the launch guard OPEN and leaked the real IP
+
+The most serious defect this release closes. A profile whose `proxy_id` was set but whose `proxies`
+row no longer existed (deleted proxy, imported profile, stale id) resolved to "no proxy", and
+`checkProxyAlive`/`checkEgressIpGeo` treated that as a legitimate direct connection and returned
+`pass`. The launch guard only blocks on `overall === 'fail'`, so it allowed the launch — and the
+browser started **directly over the host network** while the operator believed the profile was
+proxied. That exposes the real IP and ISP, which is the one outcome an antidetect browser must never
+produce.
+
+The two cases are now distinguished: a profile with no proxy configured keeps passing (a legitimate
+choice), while a configured proxy that cannot be resolved fails with the new `proxy-not-found` reason
+code and refuses the launch. Reproduced both ways against a live service — the dangling reference is
+refused with HTTP 412, the proxy-less profile still launches.
+
+Five further defects were found in the same subsystem and fixed:
+
+- **"Launch Anyway" could not launch.** The override button called `start()`, which re-ran the same
+  guard, hit HTTP 412 and reopened the modal — an inescapable loop. `start` now takes an explicit
+  override, applied only by that button; the ordinary Start control stays guarded.
+- **"Re-run Checks" never updated the modal.** It called `runPreflight(..., false)`, and every
+  `setPreflightModal` update is gated behind that flag, so the modal sat on the stale verdict
+  forever and never showed an error.
+- **The remediation map matched almost nothing.** It was keyed on codes no probe emits — of the
+  codes actually produced, only `tz-proxy-mismatch` matched, so 8 of 9 failures showed the generic
+  hint. Re-keyed against what the probes really emit, including the new code.
+- **The language check could never fire.** It read `cfg.language`, but fingerprints store the locale
+  at `cfg.lang` (which is what the launcher turns into `--lang`), so `data.language` was always
+  undefined and the check always reported "not configured".
+- **The QUIC relay check could never pass.** `getUdpRelayState` returns a string; the code tested
+  `state.active`, which is `undefined` on a string — so a correctly running relay was never
+  reported ready.
+
 ## [0.6.27] - 2026-09-22
 
 ### Added — the cookie farm: a profile that warms itself in one click

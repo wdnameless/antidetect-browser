@@ -38,6 +38,7 @@ export function resolveProfileData(profileId: string): ProfileResolvedData | nul
 
   const db = getDb();
   let proxy: ResolvedProxyInfo | undefined;
+  let proxyMissing = false;
   if (profile.proxy_id) {
     const px = db.prepare('SELECT * FROM proxies WHERE id = ?').get(profile.proxy_id) as
       | proxyManager.ProxyRow
@@ -53,6 +54,8 @@ export function resolveProfileData(profileId: string): ProfileResolvedData | nul
         country: px.country ?? undefined,
         timezone: px.timezone ?? undefined,
       };
+    } else {
+      proxyMissing = true;
     }
   }
 
@@ -64,7 +67,9 @@ export function resolveProfileData(profileId: string): ProfileResolvedData | nul
     if (fp) {
       try {
         const cfg = JSON.parse(fp.config_json || '{}') as Record<string, unknown>;
-        if (typeof cfg.language === 'string') {
+        if (typeof cfg.lang === 'string') {
+          language = cfg.lang;
+        } else if (typeof cfg.language === 'string') {
           language = cfg.language;
         } else if (Array.isArray(cfg.languages) && typeof cfg.languages[0] === 'string') {
           language = cfg.languages[0];
@@ -79,6 +84,7 @@ export function resolveProfileData(profileId: string): ProfileResolvedData | nul
     id: profile.id,
     name: profile.name,
     proxy_id: profile.proxy_id,
+    proxyMissing,
     timezone: profile.timezone,
     language,
     browser_type: profile.browser_type ?? undefined,
@@ -86,7 +92,18 @@ export function resolveProfileData(profileId: string): ProfileResolvedData | nul
   };
 }
 
-export async function checkProxyAlive(proxy?: ResolvedProxyInfo): Promise<CheckVerdict> {
+export async function checkProxyAlive(
+  proxy?: ResolvedProxyInfo,
+  proxyMissing?: boolean
+): Promise<CheckVerdict> {
+  if (proxyMissing) {
+    return {
+      status: 'fail',
+      reasonCode: PREFLIGHT_REASON.PROXY_NOT_FOUND,
+      detail: 'Configured proxy record not found in database; cannot route through missing proxy',
+    };
+  }
+
   if (!proxy) {
     return {
       status: 'pass',
@@ -133,7 +150,18 @@ export async function checkProxyAlive(proxy?: ResolvedProxyInfo): Promise<CheckV
   }
 }
 
-export async function checkEgressIpGeo(proxy?: ResolvedProxyInfo): Promise<CheckVerdict> {
+export async function checkEgressIpGeo(
+  proxy?: ResolvedProxyInfo,
+  proxyMissing?: boolean
+): Promise<CheckVerdict> {
+  if (proxyMissing) {
+    return {
+      status: 'fail',
+      reasonCode: PREFLIGHT_REASON.PROXY_NOT_FOUND,
+      detail: 'Configured proxy record not found; egress geo check failed',
+    };
+  }
+
   if (!proxy) {
     return {
       status: 'pass',
@@ -348,11 +376,18 @@ export async function checkQuicRelayState(
     const mod = await import('../proxy/udpRelay' as string);
     if (typeof mod.getUdpRelayState === 'function') {
       const state = mod.getUdpRelayState(profileId);
-      if (state && state.active) {
+      if (state === 'relay') {
         return {
           status: 'pass',
           reasonCode: PREFLIGHT_REASON.RELAY_READY,
           detail: 'UDP relay active; QUIC/HTTP/3 supported over SOCKS5 relay',
+        };
+      }
+      if (state === 'quic-disabled') {
+        return {
+          status: 'pass',
+          reasonCode: 'relay-disabled',
+          detail: 'QUIC explicitly disabled for profile; TCP/HTTP/2 will be used',
         };
       }
     }
@@ -458,6 +493,7 @@ export function calculateOverallVerdict(checks: PreflightCheckResult): Preflight
 export async function runPreflight(profileId: string): Promise<PreflightVerdict> {
   const data = resolveProfileData(profileId);
   const proxy = data?.proxy;
+  const proxyMissing = Boolean(data?.proxyMissing);
 
   const [
     proxyAlive,
@@ -465,8 +501,8 @@ export async function runPreflight(profileId: string): Promise<PreflightVerdict>
     timezoneMatch,
     quicRelay,
   ] = await Promise.all([
-    checkProxyAlive(proxy),
-    checkEgressIpGeo(proxy),
+    checkProxyAlive(proxy, proxyMissing),
+    checkEgressIpGeo(proxy, proxyMissing),
     checkTimezoneMatch(data?.timezone, proxy),
     checkQuicRelayState(profileId, proxy),
   ]);

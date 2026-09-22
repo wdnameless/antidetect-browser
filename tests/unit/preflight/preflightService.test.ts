@@ -8,12 +8,15 @@ import {
   checkDnsEgress,
   checkQuicRelayState,
   calculateOverallVerdict,
-  runPreflight,
   blockOnFailLaunchGuard,
+  resolveProfileData,
 } from '../../../src/main/preflight/preflightService';
 import { PREFLIGHT_REASON, PreflightCheckResult } from '../../../src/main/preflight/types';
 import * as proxyManager from '../../../src/main/proxy/proxyManager';
 import * as pm from '../../../src/main/profiles/profileManager';
+import type { Profile } from '../../../src/main/profiles/profileManager';
+import * as dbModule from '../../../src/main/db';
+import { registerUdpRelayState, unregisterUdpRelayState } from '../../../src/main/proxy/udpRelay';
 
 vi.mock('../../../src/main/proxy/proxyManager', () => ({
   checkProxy: vi.fn(),
@@ -41,6 +44,11 @@ describe('Preflight Service Unit Tests', () => {
       const res = await checkProxyAlive(undefined);
       expect(res.status).toBe('pass');
       expect(res.reasonCode).toBe(PREFLIGHT_REASON.DIRECT_NO_PROXY);
+    });
+    it('fails with proxy-not-found when proxyMissing is true', async () => {
+      const res = await checkProxyAlive(undefined, true);
+      expect(res.status).toBe('fail');
+      expect(res.reasonCode).toBe(PREFLIGHT_REASON.PROXY_NOT_FOUND);
     });
 
     it('passes when proxy responds ok', async () => {
@@ -250,6 +258,35 @@ describe('Preflight Service Unit Tests', () => {
       expect(res.status).toBe('warn');
       expect(res.reasonCode).toBe('relay-unavailable');
     });
+    it('passes with relay-ready when UDP relay is in relay state', async () => {
+      registerUdpRelayState('p-relay', 'relay');
+      try {
+        const res = await checkQuicRelayState('p-relay', {
+          type: 'socks5',
+          host: '1.2.3.4',
+          port: 1080,
+        });
+        expect(res.status).toBe('pass');
+        expect(res.reasonCode).toBe(PREFLIGHT_REASON.RELAY_READY);
+      } finally {
+        unregisterUdpRelayState('p-relay');
+      }
+    });
+
+    it('passes with relay-disabled when QUIC is explicitly disabled', async () => {
+      registerUdpRelayState('p-quic-off', 'quic-disabled');
+      try {
+        const res = await checkQuicRelayState('p-quic-off', {
+          type: 'socks5',
+          host: '1.2.3.4',
+          port: 1080,
+        });
+        expect(res.status).toBe('pass');
+        expect(res.reasonCode).toBe('relay-disabled');
+      } finally {
+        unregisterUdpRelayState('p-quic-off');
+      }
+    });
   });
 
   describe('calculateOverallVerdict', () => {
@@ -334,7 +371,7 @@ describe('Preflight Service Unit Tests', () => {
       } as any);
 
       const dbMock = {
-        prepare: vi.fn((sql: string) => ({
+        prepare: vi.fn(() => ({
           get: vi.fn(() => ({
             id: 'px1',
             type: 'socks5',
@@ -356,5 +393,87 @@ describe('Preflight Service Unit Tests', () => {
       expect(res.verdict?.overall).toBe('fail');
       expect(res.verdict?.checks['proxy-alive'].status).toBe('fail');
     });
+    it('blocks launch if proxy_id is set but proxy row is missing in database', async () => {
+      vi.mocked(pm.getProfile).mockReturnValueOnce({
+        id: 'p-missing-px',
+        name: 'missing-px-profile',
+        proxy_id: 'deleted-px-id',
+        fingerprint_id: null,
+      } as unknown as Profile);
+
+      const dbMock = {
+        prepare: vi.fn(() => ({
+          get: vi.fn(() => undefined),
+        })),
+      };
+      vi.mocked(dbModule.getDb).mockReturnValue(dbMock as unknown as ReturnType<typeof dbModule.getDb>);
+
+      const res = await blockOnFailLaunchGuard('p-missing-px', true);
+      expect(res.allowed).toBe(false);
+      expect(res.verdict?.overall).toBe('fail');
+      expect(res.verdict?.checks['proxy-alive'].status).toBe('fail');
+      expect(res.verdict?.checks['proxy-alive'].reasonCode).toBe(PREFLIGHT_REASON.PROXY_NOT_FOUND);
+      expect(res.verdict?.checks['egress-ip-geo'].status).toBe('fail');
+      expect(res.verdict?.checks['egress-ip-geo'].reasonCode).toBe(PREFLIGHT_REASON.PROXY_NOT_FOUND);
+    });
   });
+
+  describe('resolveProfileData', () => {
+    it('sets proxyMissing=true when proxy_id exists but no DB row matches', () => {
+      vi.mocked(pm.getProfile).mockReturnValueOnce({
+        id: 'p1',
+        name: 'test',
+        proxy_id: 'missing-id',
+        fingerprint_id: null,
+      } as unknown as Profile);
+      const dbMock = {
+        prepare: vi.fn(() => ({
+          get: vi.fn(() => undefined),
+        })),
+      };
+      vi.mocked(dbModule.getDb).mockReturnValue(dbMock as unknown as ReturnType<typeof dbModule.getDb>);
+
+      const data = resolveProfileData('p1');
+      expect(data).not.toBeNull();
+      expect(data?.proxyMissing).toBe(true);
+      expect(data?.proxy).toBeUndefined();
+    });
+
+    it('sets proxyMissing=false when proxy_id is absent', () => {
+      vi.mocked(pm.getProfile).mockReturnValueOnce({
+        id: 'p2',
+        name: 'direct',
+        proxy_id: null,
+        fingerprint_id: null,
+      } as unknown as Profile);
+      const dbMock = { prepare: vi.fn() };
+      vi.mocked(dbModule.getDb).mockReturnValue(dbMock as unknown as ReturnType<typeof dbModule.getDb>);
+
+      const data = resolveProfileData('p2');
+      expect(data).not.toBeNull();
+      expect(data?.proxyMissing).toBe(false);
+      expect(data?.proxy).toBeUndefined();
+    });
+
+    it('reads language from cfg.lang in fingerprint config_json', () => {
+      vi.mocked(pm.getProfile).mockReturnValueOnce({
+        id: 'p3',
+        name: 'fp-lang-test',
+        proxy_id: null,
+        fingerprint_id: 'fp-123',
+      } as unknown as Profile);
+      const dbMock = {
+        prepare: vi.fn(() => ({
+          get: vi.fn(() => ({
+            config_json: JSON.stringify({ lang: 'fr-FR' }),
+          })),
+        })),
+      };
+      vi.mocked(dbModule.getDb).mockReturnValue(dbMock as unknown as ReturnType<typeof dbModule.getDb>);
+
+      const data = resolveProfileData('p3');
+      expect(data).not.toBeNull();
+      expect(data?.language).toBe('fr-FR');
+    });
+});
 });

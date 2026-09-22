@@ -53,45 +53,49 @@ export function checksOf(verdict: PreflightVerdict): PreflightCheckVerdict[] {
 }
 
 export const PREFLIGHT_REASON_REMEDIATION: Record<string, { summary: string; hint: string }> = {
+  'proxy-not-found': {
+    summary: 'Configured proxy record not found',
+    hint: 'The proxy assigned to this profile was deleted or does not exist. Reassign a proxy or set profile to direct connection.',
+  },
+  'proxy-unreachable': {
+    summary: 'Proxy endpoint is unreachable or connection failed',
+    hint: 'Verify proxy credentials, host, port, server health, and firewall access.',
+  },
+  'geo-mismatch': {
+    summary: 'Detected egress country does not match expected proxy country',
+    hint: 'Check proxy server stability or upstream IP rotation settings.',
+  },
+  'geo-lookup-failed': {
+    summary: 'Could not determine egress geo location',
+    hint: 'Verify proxy connectivity and upstream IP lookup service availability.',
+  },
   'tz-proxy-mismatch': {
     summary: 'Timezone does not match proxy location',
     hint: 'Update profile timezone in settings or configure auto-match to proxy location.',
   },
-  'geo-lang-mismatch': {
+  'lang-mismatch': {
     summary: 'Language does not match proxy country',
     hint: 'Adjust browser Accept-Language and profile locale to match proxy origin.',
   },
-  'ip-mismatch': {
-    summary: 'Detected IP does not match expected proxy IP',
-    hint: 'Check proxy server stability or upstream IP rotation settings.',
+  'webrtc-leak-risk': {
+    summary: 'WebRTC routing may bypass proxy or leak local IP',
+    hint: 'Proxy type cannot route UDP. Set WebRTC mode to disabled or use a SOCKS5 proxy.',
   },
-  'dns-leak-detected': {
-    summary: 'DNS requests are leaking outside the proxy tunnel',
-    hint: 'Enable remote DNS resolution or use a secure proxy protocol (SOCKS5/SSH).',
+  'dns-leak-risk': {
+    summary: 'DNS queries may leak outside the proxy tunnel',
+    hint: 'HTTP proxies do not tunnel raw DNS queries. Use SOCKS5 or configure DNS-over-HTTPS.',
   },
-  'webrtc-leak-detected': {
-    summary: 'WebRTC is exposing your real local or public IP',
-    hint: 'Set WebRTC mode to disabled, proxy-only, or fake public IP.',
+  'relay-unavailable': {
+    summary: 'UDP/QUIC relay unavailable for proxy profile',
+    hint: 'Browser will fall back to TCP/HTTP/2. Configure UDP relay or SOCKS5 with UDP associate for QUIC support.',
   },
-  'proxy-offline': {
-    summary: 'Proxy endpoint is unreachable or timing out',
-    hint: 'Verify proxy credentials, port, server health, and firewall access.',
+  'coherence-fail': {
+    summary: 'Critical fingerprint hardware incoherence detected',
+    hint: 'Fingerprint hardware parameters (GPU, platform, architecture) conflict with catalog rules. Regenerate fingerprint.',
   },
-  'proxy-slow': {
-    summary: 'Proxy latency exceeds acceptable threshold',
-    hint: 'Switch to a faster proxy node or closer geographical location.',
-  },
-  'udp-disabled': {
-    summary: 'UDP traffic is not supported by proxy',
-    hint: 'Enable UDP relay or use SOCKS5 with UDP associate for WebRTC/QUIC support.',
-  },
-  'ssl-handshake-failed': {
-    summary: 'SSL/TLS handshake with proxy or gateway failed',
-    hint: 'Inspect custom certificates or certificate authorities configured for proxy.',
-  },
-  'header-signature-mismatch': {
-    summary: 'HTTP client headers do not match fingerprint expectations',
-    hint: 'Regenerate user-agent headers and fingerprint preset.',
+  'coherence-warn': {
+    summary: 'Fingerprint configuration has minor coherence warnings',
+    hint: 'Review fingerprint settings or regenerate fingerprint to match standard browser families.',
   },
 };
 

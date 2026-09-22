@@ -51,10 +51,9 @@ export function PreflightBadge({ status, verdict, onClick, onRun, title }: Prefl
     icon = '!';
   }
 
-  // `checkList`, not `checks`: the latter is an object keyed by check name, so `.filter` on it
-  // threw a TypeError and blanked the UI. See the note on `PreflightVerdict`.
+  // Use `checksOf(verdict)` to ensure issues are counted even when checkList is absent or empty.
   const issuesCount = verdict
-    ? (verdict.checkList ?? []).filter((c) => c.status === 'fail' || c.status === 'warn').length
+    ? checksOf(verdict).filter((c) => c.status === 'fail' || c.status === 'warn').length
     : 0;
 
   return (

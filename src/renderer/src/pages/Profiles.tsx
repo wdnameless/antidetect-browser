@@ -39,7 +39,6 @@ import {
   TrashIcon,
   ProxiesIcon,
   RefreshIcon,
-  DevicesIcon,
   ProfilesIcon,
   NoteIcon,
   UsersIcon,
@@ -75,7 +74,6 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
   const [total, setTotal] = useState(0);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [copiedId, setCopiedId] = useState<string | null>(null);
-  const [copiedSeed, setCopiedSeed] = useState<number | null>(null);
   const [endpoint, setEndpoint] = useState<{ id: string; ws: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const [bulkBusy, setBulkBusy] = useState(false);
@@ -103,8 +101,6 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
   const [mobileModelId, setMobileModelId] = useState('');
   const [userAgent, setUserAgent] = useState('');
   const [cores, setCores] = useState<number>(8);
-  const [memoryGb, setMemoryGb] = useState<number>(16);
-  const [osPlatform, setOsPlatform] = useState<'windows' | 'mac' | 'linux' | 'android'>('windows');
   const [profileTimezone, setProfileTimezone] = useState<string>('');
   // Empty means "Auto": the language is then derived from the fingerprint seed. The default used
   // to be 'en-US', which made the Auto option indistinguishable from an explicit en-US choice —
@@ -114,9 +110,6 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
   const [blockedPorts, setBlockedPorts] = useState<number[]>([]);
   const [portInput, setPortInput] = useState<string>('');
   const [webrtcPolicy, setWebrtcPolicy] = useState<'default' | 'disable_non_proxied_udp' | 'proxy'>('default');
-  const [mediaMicCount, setMediaMicCount] = useState<number>(1);
-  const [mediaSpeakerCount, setMediaSpeakerCount] = useState<number>(2);
-  const [mediaWebcamCount, setMediaWebcamCount] = useState<number>(1);
 
   // Proxy state in modal: mode = 'none' | 'saved' | 'custom'
   const [proxyMode, setProxyMode] = useState<'none' | 'saved' | 'custom'>('none');
@@ -144,7 +137,6 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
   // Drawer (Cookies, Fingerprint Overrides, Extensions)
   const [manage, setManage] = useState<{ id: string; tab: 'cookies' | 'fingerprint' | 'extensions' } | null>(null);
   const [cookiesText, setCookiesText] = useState('');
-  const [fpConfig, setFpConfig] = useState('');
   interface FpForm {
     platform?: string;
     brand?: string;
@@ -539,17 +531,12 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
     setCustomProxyPass('');
     setProxyTestResult(null);
     setCores(8);
-    setMemoryGb(16);
-    setOsPlatform('windows');
     setProfileTimezone('');
     setProfileLang('');
     setDoNotTrack('auto');
     setBlockedPorts([]);
     setPortInput('');
     setWebrtcPolicy('default');
-    setMediaMicCount(1);
-    setMediaSpeakerCount(2);
-    setMediaWebcamCount(1);
   };
 
   /**
@@ -592,15 +579,7 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
         setDoNotTrack((d.do_not_track as 'off' | 'on' | 'auto') || 'auto');
         setBlockedPorts(Array.isArray(d.blocked_ports) ? d.blocked_ports.map(Number).filter((n) => !isNaN(n) && n > 0 && n <= 65535) : []);
         setWebrtcPolicy((d.webrtc_policy as 'default' | 'disable_non_proxied_udp' | 'proxy') || 'default');
-        if (typeof fpCfg.deviceMemory === 'number') setMemoryGb(fpCfg.deviceMemory);
         if (typeof d.fingerprint?.hardwareConcurrency === 'number') setCores(d.fingerprint.hardwareConcurrency);
-        if (d.fingerprint?.platform) {
-          const pl = d.fingerprint.platform.toLowerCase();
-          if (pl.includes('mac')) setOsPlatform('mac');
-          else if (pl.includes('linux')) setOsPlatform('linux');
-          else if (pl.includes('android')) setOsPlatform('android');
-          else setOsPlatform('windows');
-        }
         setPortInput('');
         setName(d.name || '');
         setGroupId(d.group_id || '');
@@ -984,12 +963,12 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
     }
   };
 
-  const start = async (id: string, profileName?: string) => {
+  const start = async (id: string, profileName?: string, skipPreflightGuard = false) => {
     setBusy(true);
     setError('');
     try {
-      // If blockOnFail is enabled, run startWithPreflight guard check
-      if (blockOnFail) {
+      // If blockOnFail is enabled, run startWithPreflight guard check unless overridden
+      if (blockOnFail && !skipPreflightGuard) {
         const guardRes = await api.startWithPreflight(id, true);
         if (guardRes.code !== 0 || !guardRes.data?.allowed) {
           const errMsg = guardRes.msg || 'Launch blocked by preflight check failure';
@@ -1063,7 +1042,6 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
     setError('');
     setManage({ id, tab });
     setCookiesText('');
-    setFpConfig('');
     setFpForm({});
     setExtSel([]);
     if (tab === 'extensions') {
@@ -1207,12 +1185,6 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
     setSelectedIds(next);
   };
 
-  const copySeedToClipboard = (seedNum: number | null | undefined) => {
-    if (!seedNum) return;
-    void navigator.clipboard.writeText(String(seedNum));
-    setCopiedSeed(seedNum);
-    setTimeout(() => setCopiedSeed(null), 1500);
-  };
 
   // Realistic random Chrome UA matching the bundled kernel (Chrome 148).
   // Platform-consistent: Windows 10/11 or macOS — never mixes (e.g. Mac UA on Windows kernel).
@@ -1713,15 +1685,12 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
                           <PlayIcon size={13} />
                         </button>
                       )}
-                      <button
-                        type="button"
-                        className="btn-icon"
+                      <PreflightBadge
+                        status={preflightCache[p.user_id]?.status}
+                        verdict={preflightCache[p.user_id]?.verdict}
                         onClick={() => void inspectPreflight(p.user_id, p.name || undefined)}
-                        disabled={busy || preflightCache[p.user_id]?.status === 'loading'}
-                        title={t('Run / Inspect Preflight Check')}
-                      >
-                        <ShieldCheckIcon size={14} />
-                      </button>
+                        onRun={() => void runPreflight(p.user_id, p.name || undefined, true)}
+                      />
                       <button
                         type="button"
                         className="btn-icon"
@@ -3102,10 +3071,10 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
           loading={preflightModal.loading}
           error={preflightModal.error}
           onRecheck={async (id: string) => {
-            await runPreflight(id, preflightModal.profileName, false);
+            await runPreflight(id, preflightModal.profileName, true);
           }}
           onStartProfile={async (id: string) => {
-            await start(id, preflightModal.profileName);
+            await start(id, preflightModal.profileName, true);
           }}
         />
       ) : null}
