@@ -20,7 +20,6 @@ import {
   getAndroidEngineStatus,
   ensureAndroidEngine,
   removeStaleDownloads,
-  ANDROID_ENGINE_ASSETS,
   ANDROID_SYSTEM_IMAGE_TAG,
   AndroidAssetInfo,
 } from '../../src/main/android/packageManager';
