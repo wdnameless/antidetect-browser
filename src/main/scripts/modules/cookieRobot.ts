@@ -1,11 +1,16 @@
 import { randomUUID } from 'crypto';
-import puppeteer, { Page, Browser } from 'puppeteer-core';
+import puppeteer, { Page } from 'puppeteer-core';
+import type { Browser } from 'puppeteer-core';
 import { getDb } from '../../db';
 import { TaskGroup, createTaskGroup } from '../taskGroups';
+import { selectFarmSites, FARM_SITES } from './cookieFarm/sites';
+export { selectFarmSites, FARM_SITES };
+import { acceptCookieConsent } from './cookieFarm/consent';
+import type { ConsentOutcome } from './cookieFarm/consent';
 
 export interface CookieRobotConfig {
   profileId: string;
-  urls: string[] | string;
+  urls?: string[] | string;
   maxPages?: number;
   dwellMsMin?: number;
   dwellMsMax?: number;
@@ -15,6 +20,10 @@ export interface CookieRobotConfig {
   headless?: boolean;
   clickInternalLinks?: boolean;
   internalLinkClickProbability?: number;
+  acceptConsent?: boolean;
+  useBuiltInSites?: boolean;
+  seed?: number;
+  stopOnChallenge?: boolean;
 }
 
 export interface CookieRobotReport {
@@ -29,6 +38,8 @@ export interface CookieRobotReport {
   startedAt: number;
   finishedAt: number;
   dwells?: number[];
+  consents?: Array<{ domain: string; clicked: boolean; label?: string }>;
+  managedProfile?: boolean;
 }
 
 export interface CookieRobotHandle {
@@ -149,7 +160,8 @@ export const abortCookieRobot = abortCookieRobotRun;
  * Parses URL list from string (text lines or JSON array) or array.
  * Tolerates malformed lines, whitespace, comments, and invalid URLs.
  */
-export function parseUrlList(input: string | string[]): string[] {
+export function parseUrlList(input?: string | string[] | null): string[] {
+  if (!input) return [];
   if (Array.isArray(input)) {
     return sanitizeUrls(input);
   }
@@ -378,6 +390,94 @@ export function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function hashProfileId(id: string): number {
+  let hash = 2166136261;
+  for (let i = 0; i < id.length; i++) {
+    hash ^= id.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return hash >>> 0;
+}
+
+/**
+ * Resolve a page from the profile's own browser.
+ *
+ * Starts the profile (headless, the default from the caller) when it is not running. The returned
+ * `close()` disconnects the CDP client, closes the tab this call opened, and stops the profile —
+ * but only the parts this call is responsible for: a profile the operator already had open is left
+ * running, and a tab that existed before this run is left open.
+ *
+ * `ownsProfile` in the result tells the caller whether the run started the profile, so the report
+ * cannot claim lifecycle ownership it did not have.
+ */
+export function createProfilePageSupplier(
+  profileId: string,
+  opts: { headless: boolean }
+): () => Promise<{ page: Page; close: () => Promise<void>; ownsProfile: boolean }> {
+  return async () => {
+    // Dynamic imports keep this module importable in unit tests without pulling the launcher in
+    const { resolveLaunchConfig } = await import('../../profiles/profileManager');
+    const { startProfile, stopProfile, isRunning, getRunningWs } = await import('../../launcher/chromium');
+
+    let startedHere = false;
+    let ws: string | undefined;
+
+    if (!isRunning(profileId)) {
+      const launchConfig = resolveLaunchConfig(profileId);
+      const startResult = await startProfile({ ...launchConfig, headless: opts.headless });
+      startedHere = true;
+      ws = startResult.ws.puppeteer;
+    } else {
+      ws = getRunningWs(profileId);
+    }
+
+    if (!ws) {
+      // Nothing was started yet in the running profile case, so there is nothing to undo.
+      throw new Error(`Failed to obtain WebSocket endpoint for profile ${profileId}`);
+    }
+
+    // A failure from here on happens AFTER the profile was started, so it must not escape without
+    // stopping it: the caller never receives a `close()` to call, and the profile would be left
+    // running headless — invisible to the operator, holding its user-data dir and proxy session.
+    let browser: Browser | undefined;
+    try {
+      browser = await puppeteer.connect({ browserWSEndpoint: ws, defaultViewport: null });
+      // NEVER reuse an existing page. A profile the operator has open has their own tabs in it,
+      // and the crawl navigates and closes whatever page it gets: reusing `pages[0]` would drive
+      // their visible tab across twenty sites. A dedicated tab is opened instead and closed after.
+      const page = await browser.newPage();
+
+      const close = async () => {
+        try {
+          await page.close();
+        } catch {
+          // The page may already be gone; the profile teardown below still matters.
+        }
+        try {
+          await browser?.disconnect();
+        } catch {
+          // ignore disconnect errors
+        }
+        if (startedHere) {
+          await stopProfile(profileId);
+        }
+      };
+
+      return { page, close, ownsProfile: startedHere };
+    } catch (err) {
+      try {
+        await browser?.disconnect();
+      } catch {
+        // ignore disconnect errors
+      }
+      if (startedHere) {
+        await stopProfile(profileId).catch(() => undefined);
+      }
+      throw err;
+    }
+  };
+}
+
 /**
  * Core robot execution loop given a page/browser session or CDP endpoint.
  */
@@ -411,19 +511,39 @@ export async function runCookieRobot(
   const runEntry = { runId, profileId: config.profileId, abortRequested: false, abort };
   activeRuns.set(runId, runEntry);
   activeRuns.set(config.profileId, runEntry);
-  // Policy configurations & defaults
-  const maxPages = config.maxPages ?? 20;
-  const dwellMsMin = Math.max(0, config.dwellMsMin ?? 1000);
-  const dwellMsMax = Math.max(dwellMsMin, config.dwellMsMax ?? 4000);
-  const sessionCapMs = config.sessionCapMs ?? 300000; // 5 min default cap
-  const perDomainRateLimitMs = config.perDomainRateLimitMs ?? 2000;
+  // Policy configurations & defaults.
+  //
+  // These arrive from HTTP JSON, where `Number(null)` is 0 and `Number("abc")` is NaN. Both would
+  // survive a bare `??`, and `report.pagesVisited < maxPages` is false for either — the crawl would
+  // launch a browser, visit nothing and report a clean completion with no error. A non-finite or
+  // negative value therefore falls back to the default; only a positive one is honoured.
+  const positiveOr = (value: number | undefined, fallback: number): number =>
+    typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : fallback;
+  const maxPages = Math.max(1, positiveOr(config.maxPages, 20));
+  const dwellMsMin = positiveOr(config.dwellMsMin, 1000);
+  const dwellMsMax = Math.max(dwellMsMin, positiveOr(config.dwellMsMax, 4000));
+  const sessionCapMs = Math.max(1, positiveOr(config.sessionCapMs, 300000)); // 5 min default cap
+  const perDomainRateLimitMs = positiveOr(config.perDomainRateLimitMs, 2000);
   const blocklist = config.blocklist ?? [];
   const clickInternalLinks = config.clickInternalLinks ?? true;
   const internalLinkClickProbability = config.internalLinkClickProbability ?? 0.3;
 
-  const urlList = parseUrlList(config.urls);
+  let urlList: string[] = [];
+  if (config.urls !== undefined && config.urls !== null) {
+    urlList = parseUrlList(config.urls);
+  }
+  // An EMPTY list is treated as "no list supplied", not as "visit nothing". The scheduler builds
+  // its per-profile config with `urls: body.config?.urls || []`, so an operator who omitted `urls`
+  // to use the built-in sites produced an empty array — which used to bypass `selectFarmSites`,
+  // launch a browser and visit zero pages while reporting a clean completion.
+  if (urlList.length === 0 && config.useBuiltInSites !== false) {
+    const seed = config.seed ?? hashProfileId(config.profileId);
+    urlList = selectFarmSites(seed, maxPages).map((site) => site.url);
+  }
+
   const domainLastTouch = new Map<string, number>();
   const touchedDomains = new Set<string>();
+  const consentedDomains = new Set<string>();
 
   let pageInstance: Page | null = null;
   let closeBrowserOrPage: (() => Promise<void>) | null = null;
@@ -434,9 +554,14 @@ export async function runCookieRobot(
       pageInstance = supplied.page;
       closeBrowserOrPage = supplied.close;
     } else {
-      // Connect to profile or launch lightweight browser
-      // If we don't have a launcher in headless test mode, caller supplies customPageSupplier.
-      throw new Error('Browser supplier or launcher connection required');
+      const supplier = createProfilePageSupplier(config.profileId, { headless: config.headless ?? true });
+      const supplied = await supplier();
+      pageInstance = supplied.page;
+      closeBrowserOrPage = supplied.close;
+      // Ownership is whatever the supplier actually did. An already-open profile is neither
+      // started nor stopped by this run, so claiming `managedProfile` would be a lie the operator
+      // would act on (e.g. expecting it to be closed afterwards).
+      report.managedProfile = supplied.ownsProfile;
     }
 
     for (let i = 0; i < urlList.length && report.pagesVisited < maxPages; i++) {
@@ -487,9 +612,60 @@ export async function runCookieRobot(
           timeout: 20000,
         });
 
+        // Challenge detection (M4: minimal inline check)
+        const pageTitle = (typeof pageInstance.title === 'function' ? await pageInstance.title().catch(() => '') : '') || '';
+        const currentUrl = (typeof pageInstance.url === 'function' ? pageInstance.url() : targetUrl) || targetUrl;
+        const checkStr = `${pageTitle} ${currentUrl}`.toLowerCase();
+        const challengeKeywords = [
+          'just a moment',
+          'attention required',
+          'cloudflare',
+          'captcha',
+          'are you human',
+          '/sorry/',
+        ];
+        const isChallenge = challengeKeywords.some((kw) => checkStr.includes(kw));
+        if (isChallenge) {
+          report.errors.push(`Challenge detected on ${targetUrl}: title="${pageTitle}" url="${currentUrl}"`);
+          if (config.stopOnChallenge === true) {
+            break;
+          }
+          continue;
+        }
+
         report.pagesVisited++;
         domainLastTouch.set(hostname, Date.now());
         touchedDomains.add(hostname);
+
+        // Cookie consent handling.
+        // The runner reaches this straight after `domcontentloaded`, and a CMP injects its banner
+        // after that — measured: scanning once here returns {clicked:false} on sites that do show
+        // a banner, while scanning again a few seconds later clicks it. The wait is bounded and
+        // exits as soon as a control is found — and exits early on abort, so a kill switch does
+        // not wait out five seconds per page before the loop notices.
+        if (config.acceptConsent !== false && !consentedDomains.has(hostname)) {
+          let outcome: ConsentOutcome = { clicked: false };
+          try {
+            outcome = await acceptCookieConsent(pageInstance, {
+              waitMs: 5000,
+              shouldStop: () => aborted,
+            });
+          } catch {
+            // ignore consent errors
+          }
+          if (!report.consents) {
+            report.consents = [];
+          }
+          report.consents.push({
+            domain: hostname,
+            clicked: outcome.clicked,
+            label: outcome.label,
+          });
+          consentedDomains.add(hostname);
+        }
+
+        // Stop before spending the dwell on a run the operator has already killed.
+        if (aborted) break;
 
         // Simulate human browsing (scroll + mouse movement)
         await simulateHumanMouseMove(pageInstance);
@@ -550,7 +726,11 @@ export async function runCookieRobot(
     }
     report.errors.push(`Robot execution error: ${msg}`);
   } finally {
+    // BOTH keys must go: the entry is registered under the runId and the profileId, and deleting
+    // only the runId left the finished run reachable by profile id — `abortCookieRobotRun` kept
+    // reporting success for a run that had already completed.
     activeRuns.delete(runId);
+    activeRuns.delete(config.profileId);
     if (closeBrowserOrPage) {
       await closeBrowserOrPage().catch(() => undefined);
     }

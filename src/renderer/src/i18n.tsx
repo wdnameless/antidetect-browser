@@ -787,6 +787,22 @@ const RU: Record<string, string> = {
   'MCP server written to': 'MCP-сервер записан в',
   'Config copied. Point your agent at it.': 'Конфигурация скопирована. Укажите её вашему агенту.',
   'tools': 'инструментов',
+  // Cookie Farm (Task 4)
+  'Warm up profile (cookie farm)': 'Прогрев профиля (фарм куки)',
+  'Profile Warm-up (Cookie Farm)': 'Прогрев профиля (фарм куки)',
+  'Warming up profile (visiting sites, collecting cookies, accepting consent)...': 'Прогрев профиля (посещение сайтов, сбор куки, принятие согласий)...',
+  'Cookie farm completed': 'Прогрев профиля завершён',
+  'Cookie farm failed': 'Сбой прогрева профиля',
+  'Failed to run cookie farm': 'Не удалось запустить прогрев профиля',
+  'Pages Visited': 'Посещено страниц',
+  'Cookies Set': 'Установлено куки',
+  'Domains Touched': 'Затронуто доменов',
+  'Duration': 'Длительность',
+  'Errors': 'Ошибки',
+  'Cookie Consents': 'Согласия на куки',
+  'Accepted': 'Принято',
+  'No consent banner': 'Баннер согласия не найден',
+  'Auto-managed profile': 'Профиль управлялся автоматически',
 };
 
 interface I18nCtx {

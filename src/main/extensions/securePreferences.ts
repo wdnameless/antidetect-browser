@@ -3,10 +3,21 @@ import * as path from 'path';
 import * as crypto from 'crypto';
 import { execSync } from 'child_process';
 
+/**
+ * The machine SID (without the trailing RID), which Chromium mixes into every Secure Preferences
+ * MAC. A wrong value here means the MACs this module writes do not match the ones Chromium
+ * recomputes, so the extension entry is treated as tampered and dropped.
+ *
+ * `whoami` is invoked by ABSOLUTE path. Called bare it resolves through `PATH`, and on a machine
+ * with Git for Windows ahead of `System32` that is Git's own `whoami`, which rejects `/user` and
+ * prints `root` — measured on this host: `which whoami` → `C:\Program Files\Git\usr\bin\whoami.exe`.
+ * The failure was silent, because the fallback below is indistinguishable from success.
+ */
 function getTrimmedSid(): string {
   try {
     if (process.platform === 'win32') {
-      const out = execSync('whoami /user /fo csv', { encoding: 'utf8' });
+      const whoami = path.join(process.env.SystemRoot || process.env.windir || 'C:\\Windows', 'System32', 'whoami.exe');
+      const out = execSync(`"${whoami}" /user /fo csv`, { encoding: 'utf8' });
       // "User Name","SID"\r\n"pc\user","S-1-5-21-..."
       const match = out.match(/S-\d(-\d+)+/);
       if (match) {
@@ -15,7 +26,15 @@ function getTrimmedSid(): string {
         return sid.substring(0, lastHyphen);
       }
     }
-  } catch {}
+  } catch (err) {
+    // Reported rather than swallowed: the fallback below is a fixed placeholder, so a failure here
+    // means every MAC written from it is wrong — and, because the placeholder is a plausible-looking
+    // SID, the damaged result used to be indistinguishable from success.
+    console.warn(
+      '[securePreferences] could not read the machine SID; extension MACs will use a placeholder:',
+      err instanceof Error ? err.message : String(err)
+    );
+  }
   return 'S-1-5-21-123456789-123456789-123456789';
 }
 

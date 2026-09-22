@@ -1,5 +1,55 @@
 # Changelog
 
+## [0.6.27] - 2026-09-22
+
+### Added — the cookie farm: a profile that warms itself in one click
+
+Requested: «Я хочу добавить модуль фарм куки, оно должно быть реализованно в Actions отдельной
+кнопкой, нужно чтобы это автоматически работало мы ходили по разным сайтам где лучше всего
+собираются куки и таки образом прогревать профиль». Built as a T3 lane and audited blind against
+the requirement manifest; the audit passed every criterion.
+
+**The robot could not run at all.** `runCookieRobot()` required a `customPageSupplier` and threw
+`'Browser supplier or launcher connection required'` without one — and no caller anywhere in the
+repository passed it. Both HTTP entry points had therefore failed on every invocation since they
+were added: a warming feature that had never once warmed anything. The runner now resolves the
+profile's own browser: it starts the profile headless when it is idle, connects over CDP, and stops
+it afterwards *only* if this run started it, so a profile the operator already had open is warmed
+in place and left running. `report.managedProfile` says which happened.
+
+**Consent banners were never handled, and the reason was not the obvious one.** Most sites set
+their durable cookies only after consent, so a crawl that ignores banners collects nearly nothing.
+Two independent causes were found by measurement, not by reading:
+
+- *The banner lives in a cross-origin iframe.* The Guardian's is served from
+  `sourcepoint.theguardian.com`; OneTrust and Didomi do the same. `page.$$` and `page.evaluate`
+  see only the top document, so the detector reported a clean `{clicked:false}` on pages that were
+  visibly asking for consent. The search now walks the frame tree — top document first, so inline
+  banners behave exactly as before, then frames whose origin looks like a CMP.
+- *The banner appears after `domcontentloaded`.* Scanning once immediately after navigation missed
+  it even on sites that do show one; the same scan four seconds later clicked it. The runner now
+  polls, bounded and exiting the moment a control is found.
+
+Measured effect, same sites, both arms of the same probe: 172 cookies across 61 domains with
+consent handling, against 35 cookies across 10 without it.
+
+**A built-in list replaces the mandatory `urls` parameter.** 42 sites chosen because they set
+durable cookies, across seven categories. Selection is a pure function of the profile's
+fingerprint seed, so two profiles warm differently while a re-run warms the same way.
+
+**The Actions column gets the button**, next to the preflight shield: one click warms the profile
+and reports pages visited, cookies set, domains touched, duration, errors, and the per-domain
+consent outcome. Public pages only, no login, no form submission; a CAPTCHA or challenge page is
+recorded and abandoned, never bypassed.
+
+### Fixed — a flaky MCP-bundle test could block an entire release
+
+`tests/unit/mcpBundle.test.ts` builds a whole MCP bundle per test, six times over. Each build
+measures ~6.7s alone; under full-suite parallel load one was measured at 22.5s, past the 20s global
+default in `vitest.config.ts`. That fails the CI `test` job — and the `release` job is gated on it
+(`needs: [test]`), so a tree whose product was fine could publish nothing at all. The file now
+carries its own ceiling, sized above the worst measured build.
+
 ## [0.6.26] - 2026-09-22
 
 ### Fixed — the release that shipped without its macOS artefact

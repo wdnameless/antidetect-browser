@@ -35,7 +35,13 @@ afterEach(() => {
   fs.rmSync(tmp, { recursive: true, force: true });
 });
 
-describe('MCP bundle', () => {
+// Every test here builds a whole MCP bundle (measured ~6.7s each, six builds per run). The 20s
+// global default in `vitest.config.ts` is sized for ordinary unit work; under full-suite parallel
+// load one build was measured at 22.5s and tripped it. That flake fails the CI `test` job, and the
+// `release` job is gated on it (`needs: [test]`) — so a passing tree could publish no release at
+// all. The ceiling sits above the worst measured build rather than at the default; the whole file
+// runs in ~40s, so this changes nothing but which side of the timeout a slow machine lands on.
+describe('MCP bundle', { timeout: 60000 }, () => {
   it('writes a runnable server, a zip, and a README', () => {
     const res = buildMcpBundle({
       targetDir: tmp,

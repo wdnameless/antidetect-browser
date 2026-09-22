@@ -68,16 +68,18 @@ describe('Cookie Robot API Routes', () => {
   });
 
   describe('POST /api/cookie-robot/start', () => {
-    it('returns 400 when profileId or urls is missing', async () => {
+    it('returns 400 when profileId is missing, but accepts profileId without urls', async () => {
       const res1 = await requestHelper(server, { method: 'POST', path: '/api/cookie-robot/start', body: {} });
       expect(res1.status).toBe(400);
       expect(res1.body.code).toBe(-1);
 
       const res2 = await requestHelper(server, { method: 'POST', path: '/api/cookie-robot/start', body: { profileId: 'p1' } });
-      expect(res2.status).toBe(400);
+      expect(res2.status).toBe(200);
+      expect(res2.body.code).toBe(0);
 
       const res3 = await requestHelper(server, { method: 'POST', path: '/api/cookie-robot/start', body: { urls: ['https://example.com'] } });
       expect(res3.status).toBe(400);
+      expect(res3.body.code).toBe(-1);
     });
 
     it('starts cookie robot run and returns runId', async () => {

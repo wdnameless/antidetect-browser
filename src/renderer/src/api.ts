@@ -118,6 +118,25 @@ export interface ProxyTestResult {
   error?: string;
 }
 
+export interface CookieFarmConsent {
+  domain: string;
+  clicked: boolean;
+  label?: string;
+}
+
+export interface CookieFarmReport {
+  id: string;
+  profileId: string;
+  pagesVisited: number;
+  cookiesSet: number;
+  domainsTouched: string[];
+  errors: string[];
+  durationMs: number;
+  status: 'completed' | 'aborted' | 'error';
+  consents?: CookieFarmConsent[];
+  managedProfile?: boolean;
+}
+
 export function getApiKey(): string {
   return apiKey;
 }
@@ -1123,6 +1142,16 @@ export const api = {
         body: JSON.stringify({ blockOnFail }),
       }
     ),
+  // ---- Cookie Farm (Task 4) ----
+  runCookieFarm: (profileId: string) =>
+    request<CookieFarmReport>('/api/cookie-robot/run', {
+      method: 'POST',
+      body: JSON.stringify({ profileId }),
+    }),
+  cookieFarmSites: () =>
+    request<{ sites: Array<{ url: string; category: string; weight: number }>; count: number }>(
+      '/api/cookie-robot/sites'
+    ),
   // ---- Task Groups ----
   securitySettingsGet: () =>
     request<{ captureProtection: boolean; autoLockMinutes: number; mcpScope: 'standard' | 'admin' }>(
@@ -1272,4 +1301,13 @@ export function androidStatus(profileId: string): Promise<ApiEnvelope<AndroidIns
 }
 export function androidStreamTicket(profileId: string): Promise<ApiEnvelope<AndroidStreamTicket>> {
   return api.androidStreamTicket(profileId);
+}
+
+export function runCookieFarm(profileId: string): Promise<ApiEnvelope<CookieFarmReport>> {
+  return api.runCookieFarm(profileId);
+}
+export function cookieFarmSites(): Promise<
+  ApiEnvelope<{ sites: Array<{ url: string; category: string; weight: number }>; count: number }>
+> {
+  return api.cookieFarmSites();
 }

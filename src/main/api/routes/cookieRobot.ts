@@ -10,6 +10,7 @@ import {
   isDomainBlocked,
   scheduleCookieRobotTaskGroup,
 } from '../../scripts/modules/cookieRobot';
+import { FARM_SITES } from '../../scripts/modules/cookieFarm/sites';
 
 const router = Router();
 
@@ -19,17 +20,25 @@ const router = Router();
  */
 router.post(['/api/cookie-robot/run', '/api/cookie-robot/start'], async (req: Request, res: Response) => {
   const body = req.body as Partial<CookieRobotConfig>;
-  if (!body || !body.profileId || !body.urls) {
+  if (!body || !body.profileId) {
     return res.status(400).json({
       code: -1,
-      msg: 'profileId and urls are required',
+      msg: 'profileId is required',
+      data: {},
+    });
+  }
+
+  if (body.urls !== undefined && typeof body.urls !== 'string' && !Array.isArray(body.urls)) {
+    return res.status(400).json({
+      code: -1,
+      msg: 'urls must be a string or array of strings',
       data: {},
     });
   }
 
   const config: CookieRobotConfig = {
     profileId: String(body.profileId),
-    urls: body.urls,
+    urls: body.urls !== undefined ? parseUrlList(body.urls) : undefined,
     maxPages: body.maxPages !== undefined ? Number(body.maxPages) : undefined,
     dwellMsMin: body.dwellMsMin !== undefined ? Number(body.dwellMsMin) : undefined,
     dwellMsMax: body.dwellMsMax !== undefined ? Number(body.dwellMsMax) : undefined,
@@ -39,6 +48,10 @@ router.post(['/api/cookie-robot/run', '/api/cookie-robot/start'], async (req: Re
     headless: body.headless !== undefined ? Boolean(body.headless) : undefined,
     clickInternalLinks: body.clickInternalLinks !== undefined ? Boolean(body.clickInternalLinks) : undefined,
     internalLinkClickProbability: body.internalLinkClickProbability !== undefined ? Number(body.internalLinkClickProbability) : undefined,
+    acceptConsent: body.acceptConsent !== undefined ? Boolean(body.acceptConsent) : undefined,
+    useBuiltInSites: body.useBuiltInSites !== undefined ? Boolean(body.useBuiltInSites) : undefined,
+    seed: body.seed !== undefined ? Number(body.seed) : undefined,
+    stopOnChallenge: body.stopOnChallenge !== undefined ? Boolean(body.stopOnChallenge) : undefined,
   };
 
   const asyncMode = req.query.async === 'true' || req.body.async === true || req.path.endsWith('/start');
@@ -103,6 +116,21 @@ router.post(['/api/cookie-robot/stop', '/api/cookie-robot/abort'], (req: Request
     code: 0,
     msg: success ? 'Abort signal sent' : 'Run not found or already completed',
     data: { runId: idToAbort, stopped: success, aborted: success },
+  });
+});
+
+/**
+ * GET /api/cookie-robot/sites
+ * Retrieve built-in curated farm sites list.
+ */
+router.get('/api/cookie-robot/sites', (_req: Request, res: Response) => {
+  return res.json({
+    code: 0,
+    msg: 'ok',
+    data: {
+      sites: FARM_SITES,
+      count: FARM_SITES.length,
+    },
   });
 });
 
@@ -177,6 +205,10 @@ router.post('/api/cookie-robot/schedule', (req: Request, res: Response) => {
     headless: body.config?.headless,
     clickInternalLinks: body.config?.clickInternalLinks,
     internalLinkClickProbability: body.config?.internalLinkClickProbability,
+    acceptConsent: body.config?.acceptConsent !== undefined ? Boolean(body.config.acceptConsent) : undefined,
+    useBuiltInSites: body.config?.useBuiltInSites !== undefined ? Boolean(body.config.useBuiltInSites) : undefined,
+    seed: body.config?.seed !== undefined ? Number(body.config.seed) : undefined,
+    stopOnChallenge: body.config?.stopOnChallenge !== undefined ? Boolean(body.config.stopOnChallenge) : undefined,
   };
 
   try {

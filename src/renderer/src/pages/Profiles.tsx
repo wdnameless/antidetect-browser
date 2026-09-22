@@ -11,6 +11,7 @@ import {
   type TagItem,
   type ProfileTagBinding,
   type SyncSessionInfo,
+  type CookieFarmReport,
 } from '../api';
 import { useI18n } from '../i18n';
 import { computeRunningCount } from '../sidebarLogic';
@@ -234,6 +235,23 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
     loading: false,
     error: null,
   });
+  // ---- Cookie Farm / Profile Warm-up (Task 4) ----
+  const [cookieFarmModal, setCookieFarmModal] = useState<{
+    isOpen: boolean;
+    profileId: string;
+    profileName?: string;
+    report: CookieFarmReport | null;
+    loading: boolean;
+    error: string | null;
+  }>({
+    isOpen: false,
+    profileId: '',
+    profileName: '',
+    report: null,
+    loading: false,
+    error: null,
+  });
+
   const [preflightCache, setPreflightCache] = useState<Record<string, { status: PreflightStatus | 'loading' | 'error'; verdict?: PreflightVerdict }>>({});
   const [blockOnFail, setBlockOnFail] = useState<boolean>(() => {
     try {
@@ -364,6 +382,43 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
       await runPreflight(profileId, profileName, true);
     }
   };
+  const handleRunCookieFarm = async (profileId: string, profileName?: string) => {
+    setBusy(true);
+    setCookieFarmModal({
+      isOpen: true,
+      profileId,
+      profileName: profileName || profileId,
+      report: null,
+      loading: true,
+      error: null,
+    });
+    try {
+      const res = await api.runCookieFarm(profileId);
+      if (res.code === 0) {
+        setCookieFarmModal((m) => ({
+          ...m,
+          loading: false,
+          report: res.data,
+          error: null,
+        }));
+      } else {
+        setCookieFarmModal((m) => ({
+          ...m,
+          loading: false,
+          error: res.msg || t('Cookie farm failed'),
+        }));
+      }
+    } catch (err) {
+      setCookieFarmModal((m) => ({
+        ...m,
+        loading: false,
+        error: (err as Error).message || t('Failed to run cookie farm'),
+      }));
+    } finally {
+      setBusy(false);
+    }
+  };
+
 
   // Debounce server-side search (300 ms after the last keystroke).
   useEffect(() => {
@@ -1667,6 +1722,16 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
                       >
                         <ShieldCheckIcon size={14} />
                       </button>
+                      <button
+                        type="button"
+                        className="btn-icon"
+                        onClick={() => void handleRunCookieFarm(p.user_id, p.name || undefined)}
+                        disabled={busy}
+                        title={t('Warm up profile (cookie farm)')}
+                      >
+                        <CookieIcon size={14} />
+                      </button>
+
 
                       <button
                         type="button"
@@ -3044,6 +3109,171 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
           }}
         />
       ) : null}
+      {cookieFarmModal.isOpen ? (
+        <Modal
+          title={`${t('Profile Warm-up (Cookie Farm)')}: ${cookieFarmModal.profileName || cookieFarmModal.profileId}`}
+          icon={<CookieIcon size={18} />}
+          // The warm-up is a synchronous call held open for up to the session cap, and it keeps the
+          // whole table `busy` while it runs. Dismissing the modal mid-run used to leave the table
+          // disabled for minutes with no indicator and no way back to the report — so while loading
+          // the modal stays put: it is the only progress indicator the operator has.
+          onClose={() => {
+            if (!cookieFarmModal.loading) setCookieFarmModal((prev) => ({ ...prev, isOpen: false }));
+          }}
+          width={640}
+          footer={
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', width: '100%' }}>
+              <button
+                type="button"
+                className="btn"
+                disabled={cookieFarmModal.loading}
+                onClick={() => setCookieFarmModal((prev) => ({ ...prev, isOpen: false }))}
+              >
+                {t('Close')}
+              </button>
+            </div>
+          }
+        >
+          {cookieFarmModal.error ? (
+            <div className="error-banner" style={{ marginBottom: 12 }}>
+              {cookieFarmModal.error}
+            </div>
+          ) : null}
+
+          {cookieFarmModal.loading ? (
+            <div className="preflight-loading-box">
+              <div className="preflight-spinner" />
+              <p>{t('Warming up profile (visiting sites, collecting cookies, accepting consent)...')}</p>
+            </div>
+          ) : null}
+
+          {cookieFarmModal.report ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+              <div className="metrics-row" style={{ marginBottom: 0 }}>
+                <div className="metric-card">
+                  <div className="metric-label">{t('Pages Visited')}</div>
+                  <div className="metric-value">{cookieFarmModal.report.pagesVisited}</div>
+                </div>
+                <div className="metric-card">
+                  <div className="metric-label">{t('Cookies Set')}</div>
+                  <div className="metric-value ok">{cookieFarmModal.report.cookiesSet}</div>
+                </div>
+                <div className="metric-card">
+                  <div className="metric-label">{t('Domains Touched')}</div>
+                  <div className="metric-value">{cookieFarmModal.report.domainsTouched.length}</div>
+                </div>
+                <div className="metric-card">
+                  <div className="metric-label">{t('Duration')}</div>
+                  <div className="metric-value">
+                    {(cookieFarmModal.report.durationMs / 1000).toFixed(1)}s
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
+                <span style={{ color: 'var(--text-muted)' }}>{t('Status')}:</span>
+                <span
+                  className={`preflight-tag ${
+                    cookieFarmModal.report.status === 'completed'
+                      ? 'pass'
+                      : cookieFarmModal.report.status === 'aborted'
+                      ? 'warn'
+                      : 'fail'
+                  }`}
+                  style={{ padding: '2px 8px', borderRadius: 'var(--radius-sm)' }}
+                >
+                  {cookieFarmModal.report.status.toUpperCase()}
+                </span>
+                {cookieFarmModal.report.managedProfile ? (
+                  <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                    ({t('Auto-managed profile')})
+                  </span>
+                ) : null}
+              </div>
+
+              {cookieFarmModal.report.errors && cookieFarmModal.report.errors.length > 0 ? (
+                <div className="pf-section">
+                  <div className="pf-section-label" style={{ color: 'var(--danger)' }}>
+                    {t('Errors')} ({cookieFarmModal.report.errors.length})
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    {cookieFarmModal.report.errors.map((err, idx) => (
+                      <div
+                        key={idx}
+                        className="error-banner"
+                        style={{ fontSize: 12, padding: '6px 10px', margin: 0 }}
+                      >
+                        {err}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+
+              {cookieFarmModal.report.consents && cookieFarmModal.report.consents.length > 0 ? (
+                <div className="pf-section">
+                  <div className="pf-section-label">{t('Cookie Consents')}</div>
+                  <div
+                    style={{
+                      maxHeight: 180,
+                      overflowY: 'auto',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: 4,
+                      background: 'var(--panel)',
+                      borderRadius: 'var(--radius-sm)',
+                      padding: '8px 12px',
+                      border: '1px solid var(--border)',
+                    }}
+                  >
+                    {cookieFarmModal.report.consents.map((c, idx) => (
+                      <div
+                        key={idx}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          fontSize: 12,
+                          padding: '4px 0',
+                          borderBottom:
+                            idx < (cookieFarmModal.report!.consents!.length - 1)
+                              ? '1px solid var(--border)'
+                              : 'none',
+                        }}
+                      >
+                        <span style={{ fontFamily: 'var(--font-mono)' }}>{c.domain}</span>
+                        <span
+                          className={`preflight-tag ${c.clicked ? 'pass' : 'warn'}`}
+                          style={{ fontSize: 10, padding: '1px 6px' }}
+                        >
+                          {c.clicked
+                            ? `${t('Accepted')}${c.label ? `: ${c.label}` : ''}`
+                            : t('No consent banner')}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+
+              {cookieFarmModal.report.domainsTouched &&
+              cookieFarmModal.report.domainsTouched.length > 0 ? (
+                <div className="pf-section">
+                  <div className="pf-section-label">{t('Domains Touched')}</div>
+                  <div className="pf-chip-input" style={{ maxHeight: 120, overflowY: 'auto' }}>
+                    {cookieFarmModal.report.domainsTouched.map((domain, idx) => (
+                      <span key={idx} className="pf-chip" style={{ fontSize: 11, padding: '2px 6px' }}>
+                        {domain}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+        </Modal>
+      ) : null}
+
 
       {noteModalProfile ? (
         <Modal
