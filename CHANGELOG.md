@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.6.26] - 2026-09-22
+
+### Fixed — the release that shipped without its macOS artefact
+
+v0.6.25 published its Windows assets but not its macOS one: the macOS job runs the unit tests
+before it packages, and one of them failed there. `tests/unit/androidPlatform.test.ts` built its
+fixture for `win32` but called `ensureAndroidEngine` without a `platform`, so the resolver ran
+against the HOST. On Windows that is `windows-x86_64`, which the fixture contains; on a macOS
+runner it is `macos-arm64-v8a`, which it does not, so the call failed for a different reason than
+the one the test asserts. Every sibling test in the file already passed the platform explicitly;
+this one now does too.
+
+No product code changed: the diff between v0.6.25 and this release is the test file alone, plus
+the version bump. v0.6.25 remains published, and an installation that already took it is on the
+same product code.
+
 ## [0.6.25] - 2026-09-22
 
 ### Added — an Android profile that runs, and reaches the network through its proxy
