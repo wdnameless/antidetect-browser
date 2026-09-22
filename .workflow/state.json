@@ -1,20 +1,14 @@
 {
   "version": 1,
-  "tier": "T1",
-  "task": "Android emulator integration: fix the four blind-acceptance defects (R08/R09 identity, R10 proxy, R14 API) and acquire the pinned scrcpy stream server",
-  "startedAt": "2026-09-22T08:30:36.228Z",
-  "status": "closed",
+  "tier": "T3",
+  "task": "Cookie farm module: Actions button that runs an automated profile-warming crawl across cookie-rich sites",
+  "startedAt": "2026-09-22T09:04:05.547Z",
+  "status": "open",
   "artifacts": {
     "lane": {
-      "at": "2026-09-22T08:30:36.229Z",
+      "at": "2026-09-22T09:04:05.547Z",
       "path": null,
-      "detail": "T1"
-    },
-    "recon": {
-      "at": "2026-09-22T08:30:49.901Z",
-      "path": null,
-      "detail": "Blind acceptance rejected the android-emulator-integration slice on R08, R09, R10, R14 plus a missing streaming artifact; all five reproduced against source before fixing. Files: src/main/android/{packageManager,streamHost,network,injector,instance}.ts, src/main/api/routes/{android,browser}.ts, tests/unit/{androidProfileRouting (new),androidPlatform,androidFingerprint}.test.ts, openspec/changes/android-emulator-integration/{manifest,recon,interfaces}.md. Acceptance check: tsc -p tsconfig.main.json --noEmit and tsc -p src/renderer/tsconfig.json --noEmit both clean; npx vitest run = 153 files, 1256 passed, 12 skipped, 0 failed (was 1251 passing; +5 new routing tests). Real-artifact proof: scrcpy-server v2.4 downloaded and SHA-256 verified twice = 93c272b7438605c055e127f7444064ed78fa9ca49f81156777fd201e79ce7ba3 (69007 B); google_apis x86_64-34_r14.zip downloaded 1563721130 B and SHA-1 = e0f6c9a0691aa27bd597d0deb1bcfdc943ac8ca7, matching the pinned value."
+      "detail": "T3"
     }
-  },
-  "closedAt": "2026-09-22T08:31:35.275Z"
+  }
 }

@@ -3,11 +3,42 @@ import { migrateProxyHealth } from './migrations/proxyHealth';
 import { migratePreservedBrowserData } from './migrations/preserved-browser-data';
 import { migrateTaskGroups } from './migrations/taskGroups';
 
+/**
+ * Column/table names and DDL fragments that this module is allowed to migrate.
+ *
+ * SQLite cannot bind an identifier as a parameter, so `ALTER TABLE … ADD COLUMN` necessarily
+ * interpolates. Rather than trust every call site to keep passing literals, the values are
+ * checked against these tables at run time: a name that is not here never reaches the SQL
+ * string, whatever a future caller passes.
+ */
+const MIGRATABLE_COLUMNS: Readonly<Record<string, true>> = {
+  private_key: true, timezone: true, latitude: true, longitude: true, browser_type: true,
+  mobile_model_id: true, deleted_at: true, path: true, bookmarks: true, launch_args: true,
+  color: true, do_not_track: true, blocked_ports: true, webrtc_policy: true, notes: true,
+  headless: true, android_config: true,
+};
+const MIGRATABLE_TABLES: Readonly<Record<string, true>> = { proxies: true, profiles: true, groups: true };
+const MIGRATABLE_DDL = /^[A-Z][A-Z0-9]*(?:\([0-9]+\))?(?: (?:NOT NULL|DEFAULT [A-Za-z0-9_.'() -]+))*$/;
+
 /** Add a column to an existing table if it is missing (CREATE TABLE IF NOT EXISTS does not migrate). */
 function ensureColumn(db: Database, table: string, column: string, ddl: string): void {
-  const cols = db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
-  if (!cols.some((c) => c.name === column)) {
-    db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${ddl}`);
+  const safeTable = MIGRATABLE_TABLES[table] ? table : null;
+  const safeColumn = MIGRATABLE_COLUMNS[column] ? column : null;
+  if (!safeTable) {
+    throw new Error(`ensureColumn: refusing unknown table '${table}'`);
+  }
+  if (!safeColumn) {
+    throw new Error(`ensureColumn: refusing unknown column '${column}' (add it to MIGRATABLE_COLUMNS)`);
+  }
+  if (!MIGRATABLE_DDL.test(ddl)) {
+    throw new Error(`ensureColumn: refusing unsupported column definition '${ddl}'`);
+  }
+  const cols = db.prepare(`PRAGMA table_info(${safeTable})`).all() as Array<{ name: string }>;
+  if (!cols.some((c) => c.name === safeColumn)) {
+    // Both identifiers above are allowlisted by MIGRATABLE_TABLES / MIGRATABLE_COLUMNS and the
+    // DDL is shape-checked, so nothing caller-supplied reaches this string. SQLite cannot bind
+    // an identifier as a parameter, which is why interpolation is the only option here.
+    db.exec(`ALTER TABLE ${safeTable} ADD COLUMN ${safeColumn} ${ddl}`); // pi-lens-ignore: sql-injection
   }
 }
 

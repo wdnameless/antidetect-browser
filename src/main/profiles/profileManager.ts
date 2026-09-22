@@ -1309,7 +1309,10 @@ export function updateProfile(
   // literal `'<column> = ?'` string pushed by this function, and each VALUE travels as a bound
   // parameter. There is no path by which a caller can put text into the column list, so this is
   // identifier interpolation of a closed set rather than string-built SQL.
-  db.prepare(`UPDATE profiles SET ${sets.join(', ')} WHERE id = ?`).run(...params);
+    // Every element of `sets` is a literal '<column> = ?' pushed by this function, and every
+    // value travels as a bound parameter, so no caller text reaches the SQL string.
+    // SQLite cannot bind an identifier, which is why the column list is interpolated.
+  db.prepare(`UPDATE profiles SET ${sets.join(', ')} WHERE id = ?`).run(...params); // pi-lens-ignore: sql-injection
   return true;
 }
 
@@ -1353,7 +1356,8 @@ export function updateGroup(id: string, name?: string, bookmarks?: string | null
   }
   if (sets.length === 0) return false;
   params.push(id);
-  const res = db.prepare(`UPDATE groups SET ${sets.join(', ')} WHERE id = ?`).run(...params);
+    // Same closed set as updateProfile: `sets` holds only literals written in this function.
+  const res = db.prepare(`UPDATE groups SET ${sets.join(', ')} WHERE id = ?`).run(...params); // pi-lens-ignore: sql-injection
   return res.changes > 0;
 }
 

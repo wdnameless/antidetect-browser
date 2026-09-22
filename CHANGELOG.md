@@ -1,5 +1,55 @@
 # Changelog
 
+## [0.6.25] - 2026-09-22
+
+### Added — an Android profile that runs, and reaches the network through its proxy
+
+Requested: «я хочу встроить эмулятор Android в наш антидетект браузер, я работаю на Windows».
+The slice was built and then audited blind against the requirement manifest; the audit rejected
+it on four rows plus a missing artifact. Each was reproduced against the source before being
+fixed, and the fixes are what this release ships.
+
+**Identity spoofing never ran.** Every privileged step — IMEI, MAC, the `ro.*` build.prop writes,
+and the removal of the goldfish/QEMU artefacts — was gated on a Magisk/Zygisk module that the
+installed image does not ship, so on a real guest they were all reported `skipped`. `adb root` is
+now attempted first, and the engine installs the rootable `google_apis` image rather than the
+locked `google_apis_playstore` one, whose `adbd` refuses root outright. The injection result
+reports `privilege: 'full' | 'setprop-only'`, so a partial application can no longer pass as a
+complete spoof.
+
+**The guest could reach the internet without its proxy.** `start()` ignored
+`setupGuestNetwork`'s verdict, a proxy-less profile issued no blocking commands at all, and a
+proxied profile was pointed at the remote proxy's port where nothing listened. The verdict is now
+enforced — a guest that cannot be placed behind the proxy never reaches `running` — a blocked
+plan applies an OUTPUT DROP and removes the default routes, and a host-side SOCKS5 bridge on an
+ephemeral loopback port is what the guest actually dials.
+
+**An Android profile started a desktop browser.** `resolveLaunchConfig` reports `chromium` for
+any profile that is not firefox, so `/api/v1/browser/start` — the surface automations already
+call — silently launched Chromium for an Android profile. Android profiles now dispatch to the
+Android runtime on start, stop and both bulk paths.
+
+**The streaming server was never acquired.** `scrcpy-server.jar` was searched for on disk and
+thrown over if absent, so streaming failed on every fresh install. It is now an engine asset,
+pinned by SHA-256 (`93c272b7…7ba3`, 69007 bytes, scrcpy v2.4) and installed through the same
+stream-verify-then-place path as the emulator, with the `app_process` version read from the same
+constant so jar and invocation cannot drift.
+
+Verified: `tsc` clean for main and renderer; the full suite passes; the scrcpy digest was
+reproduced byte-identically across two fetches of the real release asset, and the system-image
+SHA-1 was checked against a full 1563721130-byte download. Booting a guest remains unverified —
+this host has the Windows hypervisor disabled (`-accel-check` reports code 6).
+
+### Added — headless profiles that actually launch without a window
+
+Requested: «чтобы наши профили могли работать в headless режиме, чтобы полностью заменять
+BetterWright для ИИ агентов и автоматизациях». Four breaks sat between the API and the kernel:
+`headless` never reached the launcher (no column, no route field, `resolveLaunchConfig` never set
+it); every WebGL context on the shipped kernel was `null`, because `fingerprint-chromium` does
+not perform the software fallback stock Chrome does; and headless profiles advertised an 800x600
+screen while `outer`/`inner` followed `--window-size`, because the CDP override was applied to a
+page target and then detached.
+
 ## [0.6.24] - 2026-09-22
 
 ### Added — a Note button that reaches the profile's data
