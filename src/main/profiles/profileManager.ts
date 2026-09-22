@@ -468,7 +468,7 @@ export function createProfile(input: CreateProfileInput): string {
        browser_type, user_agent, timezone, geolocation, start_urls, mobile_model_id, launch_args, color, notes,
        do_not_track, blocked_ports, webrtc_policy, headless, status,
        created_at, updated_at
-     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'closed', ?, ?)`
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'closed', ?, ?)`
   ).run(
     profileId,
     input.name ?? null,
