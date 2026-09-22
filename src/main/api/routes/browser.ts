@@ -6,6 +6,7 @@ import * as firefox from '../../launcher/firefox';
 import { checkProxy, type ProxyInput } from '../../proxy/proxyManager';
 import { MOBILE_PRESETS as mobilePresets } from '../../devices/mobilePresets';
 import { SERVER_MODE } from '../../config';
+import * as androidRuntime from '../../android/instance';
 import type { StartResult } from '../../launcher/chromium';
 
 const router = Router();
@@ -30,6 +31,14 @@ function rewriteForRemote(req: Request, profileId: string, result: StartResult):
   };
 }
 
+/** Narrows an unknown thrown value to its string `code`, when it carries one. */
+function errorCodeOf(err: unknown): string | undefined {
+  if (err && typeof err === 'object' && 'code' in err && typeof err.code === 'string') {
+    return err.code;
+  }
+  return undefined;
+}
+
 async function handleStart(req: Request, id: string, res: Response): Promise<void> {
   if (!id) {
     res.json({ code: -1, msg: 'user_id is required', data: {} });
@@ -41,6 +50,31 @@ async function handleStart(req: Request, id: string, res: Response): Promise<voi
     return;
   }
   try {
+    // An Android profile is launched by the Android runtime, not by a browser binary. The
+    // selector is explicit so a desktop profile can never fall into this branch — and so an
+    // Android profile stops silently resolving to chromium, which is what
+    // `resolveLaunchConfig` reports for any type other than firefox.
+    if (profile.browser_type === 'android') {
+      try {
+        const status = await androidRuntime.launchAndroidProfile(id);
+        pm.setStatus(id, 'running');
+        res.json({ code: 0, msg: 'success', data: { browser_type: 'android', ...status } });
+      } catch (err) {
+        const code = errorCodeOf(err);
+        pm.setStatus(id, 'closed');
+        if (code === 'NOT_READY') {
+          res.status(409).json({
+            code: 'NOT_READY',
+            msg: (err as Error).message || 'Android engine is not installed',
+            data: { code: 'NOT_READY' },
+          });
+          return;
+        }
+        res.json({ code: -1, msg: (err as Error).message, data: code ? { code } : {} });
+      }
+      return;
+    }
+
     const cfg = pm.resolveLaunchConfig(id);
     if (cfg.browserType === 'firefox') {
       const result = await firefox.startFirefox(cfg);
@@ -91,6 +125,14 @@ router.post('/api/v2/browser-profile/start', async (req, res) => {
 router.get('/api/v1/browser/stop', async (req, res) => {
   const id = String(req.query.user_id || '');
   const profile = id ? pm.getProfile(id) : undefined;
+  if (profile?.browser_type === 'android') {
+    // Android profiles are stopped by the Android runtime; `launcher.stopProfile` knows nothing
+    // about an emulator process and would report success while leaving it running.
+    await androidRuntime.stopAndroidProfile(id).catch(() => false);
+    pm.setStatus(id, 'closed');
+    res.json({ code: 0, msg: 'success', data: {} });
+    return;
+  }
   if (profile?.browser_type === 'firefox') {
     const result = await firefox.stopFirefox(id);
     if (!result.ok) {
@@ -108,6 +150,14 @@ router.get('/api/v1/browser/stop', async (req, res) => {
 router.post('/api/v1/browser/stop', async (req, res) => {
   const id = String(req.body?.user_id || req.query.user_id || '');
   const profile = id ? pm.getProfile(id) : undefined;
+  if (profile?.browser_type === 'android') {
+    // Android profiles are stopped by the Android runtime; `launcher.stopProfile` knows nothing
+    // about an emulator process and would report success while leaving it running.
+    await androidRuntime.stopAndroidProfile(id).catch(() => false);
+    pm.setStatus(id, 'closed');
+    res.json({ code: 0, msg: 'success', data: {} });
+    return;
+  }
   if (profile?.browser_type === 'firefox') {
     const result = await firefox.stopFirefox(id);
     if (!result.ok) {
@@ -125,6 +175,14 @@ router.post('/api/v1/browser/stop', async (req, res) => {
 router.post('/api/v2/browser-profile/stop', async (req, res) => {
   const id = String(req.body?.user_id || req.query.user_id || '');
   const profile = id ? pm.getProfile(id) : undefined;
+  if (profile?.browser_type === 'android') {
+    // Android profiles are stopped by the Android runtime; `launcher.stopProfile` knows nothing
+    // about an emulator process and would report success while leaving it running.
+    await androidRuntime.stopAndroidProfile(id).catch(() => false);
+    pm.setStatus(id, 'closed');
+    res.json({ code: 0, msg: 'success', data: {} });
+    return;
+  }
   if (profile?.browser_type === 'firefox') {
     const result = await firefox.stopFirefox(id);
     if (!result.ok) {
@@ -186,6 +244,12 @@ router.post('/api/v1/browser-profile/bulk-start', async (req, res) => {
         failed.push({ user_id: id, error: 'profile not found' });
         continue;
       }
+      if (profile.browser_type === 'android') {
+        const status = await androidRuntime.launchAndroidProfile(id);
+        pm.setStatus(id, 'running');
+        succeeded.push({ user_id: id, ws: status.stream });
+        continue;
+      }
       const cfg = pm.resolveLaunchConfig(id);
       if (cfg.browserType === 'firefox') {
         const result = await firefox.startFirefox(cfg);
@@ -223,6 +287,12 @@ router.post('/api/v1/browser-profile/bulk-stop', async (req, res) => {
   for (const id of parsed.data.user_ids) {
     try {
       const profile = pm.getProfile(id);
+      if (profile?.browser_type === 'android') {
+        await androidRuntime.stopAndroidProfile(id);
+        pm.setStatus(id, 'closed');
+        succeeded.push(id);
+        continue;
+      }
       if (profile?.browser_type === 'firefox') {
         const result = await firefox.stopFirefox(id);
         if (!result.ok) {
