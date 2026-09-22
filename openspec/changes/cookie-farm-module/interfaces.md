@@ -72,13 +72,16 @@ export interface CookieRobotReport {
 ```ts
 /**
  * Resolve a page from the profile's own browser.
- * Starts the profile headless when it is not running, and returns `close()` that stops the
- * profile only if this call started it.
+ *
+ * Starts the profile (headless per `opts`) when it is not running, and opens a DEDICATED tab for
+ * the crawl — never `pages[0]`, which for a profile the operator already has open is their own
+ * visible tab. `close()` reverses only what this call did: it closes that tab, disconnects, and
+ * stops the profile only if this call started it.
  */
 export function createProfilePageSupplier(
   profileId: string,
   opts: { headless: boolean }
-): () => Promise<{ page: Page; close: () => Promise<void> }>;
+): () => Promise<{ page: Page; close: () => Promise<void>; ownsProfile: boolean }>;
 ```
 
 ## Zone C — API (`src/main/api/routes/cookieRobot.ts`)
@@ -153,6 +156,38 @@ a detector framework.
 
 **M5 — report `consents` shape** is `Array<{ domain: string; clicked: boolean; label?: string }>`,
 one entry per domain visited, whether or not a control was found.
+
+## Addendum 2 (frozen after the post-delivery adversarial audit)
+
+The first four contracts below were corrected by findings that were reproduced before being acted
+on; each fix is proven by a probe in `.stealth-bench/`.
+
+**A1 — M3 was wrong about ownership, and the supplier reports it.** `managedProfile` MUST be
+`true` only when the run actually started AND stopped the profile. A profile the operator already
+had open is warmed in place and left running, and claiming otherwise is a lie the operator acts on.
+The supplier returns `ownsProfile` and the runner assigns it: `report.managedProfile =
+supplied.ownsProfile`.
+
+**A2 — the supplier MUST open its own tab.** `(await browser.pages())[0]` is the operator's visible
+tab on an already-open profile; the crawl navigated it across every farm site and then closed it.
+
+**A3 — a failure after `startProfile` MUST stop the profile.** If the supplier throws before
+returning `close()`, the caller's `finally` has nothing to call, so the profile would be left
+running headless with its user-data dir and proxy session held.
+
+**A4 — an empty URL list means "use the built-in sites", not "visit nothing".** The scheduler
+passes `urls: body.config?.urls || []`, so an omitted `urls` arrived as `[]` and produced a
+zero-page run that reported `completed`.
+
+**A5 — non-finite numeric config MUST fall back to the default.** `Number(null)` is `0` and
+`Number('abc')` is `NaN`; `??` preserves both, and `report.pagesVisited < NaN` is false, so the
+loop exited before the first page and still reported success.
+
+**A6 — the consent wait MUST poll the kill switch.** `acceptCookieConsent` takes
+`shouldStop?: () => boolean`; without it a `stop` on a 20-page run took minutes to take effect.
+
+**A7 — BOTH `activeRuns` keys MUST be deleted when a run finishes.** The entry is registered under
+`runId` and `profileId`; deleting only the `runId` left a completed run abortable by profile id.
 
 ## Contracts every slice must honour
 
