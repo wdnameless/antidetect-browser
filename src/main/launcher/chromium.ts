@@ -2,6 +2,7 @@ import { spawn, ChildProcess, execFile } from 'child_process';
 import * as path from 'path';
 import * as fs from 'fs';
 import puppeteer from 'puppeteer-core';
+import type { Target } from 'puppeteer-core';
 import { getChromiumPath, getChromedriverPath } from '../config';
 import type { LaunchConfig } from '../profiles/profileManager';
 import { setStatus } from '../profiles/profileManager';
@@ -13,17 +14,16 @@ import {
 import { createSshTunnel, SshTunnel } from '../proxy/sshTunnel';
 import { installProxyAuth } from '../proxy/proxyAuth';
 import { applyDeviceEmulation } from '../proxy/deviceEmulation';
-import { applyStealth, writeStealthExtension, LogicalPlatform } from '../proxy/stealthInjection';
+import { applyStealth, writeStealthExtension } from '../proxy/stealthInjection';
 import { applyGeolocation } from '../proxy/geoEmulation';
 import { injectCookies } from '../proxy/cookieInjector';
 import { detectMachineTimezone } from '../util/ipInfo';
+import { resolveGpuFlags } from '../util/gpuBackend';
 import {
   probeTransportTarget,
   composeTransportFlags,
   registerActiveProfile,
-  unregisterActiveProfile,
   TransportProbeTarget,
-  TransportProbeResult,
   StrictQuicRelayError,
 } from '../proxy/transportPolicy';
 import {
@@ -37,7 +37,6 @@ import { appendProfileArgs, formatBadgeTitlePrefix } from '../profiles/profileMa
 import { planWindowTitle, startWindowTitleKeeper } from './windowTitle';
 import {
   verifyStealthExtensionDirectory,
-  getEphemeralStealthKeyPair,
   StealthExtensionVerificationError,
 } from '../security/extensionVerifier';
 import { getStealthSigningKey } from '../security/stealthKey';
@@ -59,10 +58,15 @@ interface RunningProfile {
   cleanupDropMonitor?: () => void;
   cleanupRelay?: () => void;
   cleanupWindowTitle?: () => void;
+  cleanupScreen?: () => void;
   relayState?: UdpRelayState;
 }
 
 function isStrictQuicRelay(cfg: LaunchConfig): boolean {
+  // SAFETY: `strictQuicRelay` is set by the API layer on the launch config object and is not
+  // declared on `LaunchConfig` (it belongs to the transport-policy slice). The cast reads a
+  // property TypeScript cannot know about; the `typeof` guard is what makes the read sound,
+  // so an absent or non-boolean value resolves to `false` instead of propagating `unknown`.
   const value = (cfg as unknown as Record<string, unknown>).strictQuicRelay;
   return typeof value === 'boolean' ? value : false;
 }
@@ -73,6 +77,69 @@ export interface StartResult {
   webdriver: string;
   pid: number;
   relayState?: UdpRelayState;
+}
+
+/**
+ * Keep `screen.*` matching the profile's declared resolution for the life of the launch.
+ *
+ * `Emulation.setDeviceMetricsOverride` is bound to the CDP session that issued it: detaching
+ * reverts it, and a page created later never had it. Both were measured against the shipped
+ * kernel under `--headless=new --window-size=1920,1080`:
+ *
+ *   (nothing)                          -> screen 800x600,    outer 1920x1080
+ *   override sent, then session closed -> screen 800x600     (reverted)
+ *   override sent, session kept open   -> screen 1920x1080   (correct)
+ *
+ * Headless Chromium invents an 800x600 screen; a real desktop never pairs that with a
+ * 1920x1080 window, so leaving it is a fingerprint tell in every headless profile. The
+ * override therefore has to be re-applied to each page as it appears and its session kept
+ * alive — hence a listener rather than a call.
+ *
+ * Returns a disposer that detaches every session it opened.
+ */
+async function installScreenOverride(
+  wsPuppeteer: string,
+  screen: { width: number; height: number }
+): Promise<() => void> {
+  const sessions: Array<{ detach: () => Promise<void> }> = [];
+  const browser = await puppeteer.connect({ browserWSEndpoint: wsPuppeteer, defaultViewport: null });
+
+  const applyTo = async (target: Target): Promise<void> => {
+    if (target.type() !== 'page') return;
+    try {
+      const session = await target.createCDPSession();
+      await session.send('Emulation.setDeviceMetricsOverride', {
+        width: screen.width,
+        height: screen.height,
+        screenWidth: screen.width,
+        screenHeight: screen.height,
+        deviceScaleFactor: 1,
+        mobile: false,
+      });
+      sessions.push(session);
+    } catch {
+      // A target can vanish between listing and attaching; the next one is unaffected.
+    }
+  };
+
+  for (const target of await browser.targets()) {
+    await applyTo(target);
+  }
+  browser.on('targetcreated', (target) => {
+    void applyTo(target);
+  });
+
+  return () => {
+    browser.removeAllListeners('targetcreated');
+    for (const session of sessions) {
+      void session.detach().catch(() => undefined);
+    }
+    try {
+      browser.disconnect();
+    } catch {
+      // ignore
+    }
+  };
 }
 const running = new Map<string, RunningProfile>();
 
@@ -135,65 +202,35 @@ function killTree(rec: RunningProfile): void {
   }
 }
 
+/**
+ * Run one teardown callback, swallowing whatever it throws.
+ *
+ * Every cleanup hook attached to a launch — auth, emulation, geo, stealth, screen, transport —
+ * is torn down on the same path, and none of them may stop the others: a failure in the
+ * screen-override teardown must not leave the SSH tunnel open. The list is ordered and each
+ * entry is independent, which is why this is a helper rather than a try/finally chain.
+ */
+function runCleanup(hook: (() => void) | undefined): void {
+  if (!hook) return;
+  try {
+    hook();
+  } catch {
+    // ignore
+  }
+}
+
 function cleanup(rec: RunningProfile): void {
   killTree(rec);
-  if (rec.cleanupTransport) {
-    try {
-      rec.cleanupTransport();
-    } catch {
-      // ignore
-    }
-  }
-  if (rec.cleanupDropMonitor) {
-    try {
-      rec.cleanupDropMonitor();
-    } catch {
-      // ignore
-    }
-  }
-  if (rec.cleanupRelay) {
-    try {
-      rec.cleanupRelay();
-    } catch {
-      // ignore
-    }
-  }
-  if (rec.cleanupWindowTitle) {
-    try {
-      rec.cleanupWindowTitle();
-    } catch {
-      // ignore
-    }
-  }
+  runCleanup(rec.cleanupTransport);
+  runCleanup(rec.cleanupDropMonitor);
+  runCleanup(rec.cleanupRelay);
+  runCleanup(rec.cleanupWindowTitle);
   if (rec.tunnel) void rec.tunnel.close();
-  if (rec.cleanupAuth) {
-    try {
-      rec.cleanupAuth();
-    } catch {
-      // ignore
-    }
-  }
-  if (rec.cleanupEmulation) {
-    try {
-      rec.cleanupEmulation();
-    } catch {
-      // ignore
-    }
-  }
-  if (rec.cleanupGeo) {
-    try {
-      rec.cleanupGeo();
-    } catch {
-      // ignore
-    }
-  }
-  if (rec.cleanupStealth) {
-    try {
-      rec.cleanupStealth();
-    } catch {
-      // ignore
-    }
-  }
+  runCleanup(rec.cleanupAuth);
+  runCleanup(rec.cleanupEmulation);
+  runCleanup(rec.cleanupGeo);
+  runCleanup(rec.cleanupStealth);
+  runCleanup(rec.cleanupScreen);
 }
 
 export async function buildChromiumArgs(
@@ -212,6 +249,11 @@ export async function buildChromiumArgs(
   if (cfg.headless) {
     args.push('--headless=new');
   }
+  // GPU backend. Without this the shipped kernel exposes a NULL WebGL context on hosts whose
+  // only GL path is a software rasteriser (RDP sessions, VMs) — see `util/gpuBackend.ts` for
+  // the measurements. This must come before the profile's own extras so an operator can still
+  // override it with `--use-angle=...`/`--use-gl=...` in `launch_args` (Chromium is last-wins).
+  args.push(...(await resolveGpuFlags()));
   if (transportFlags.length > 0) {
     args.push(...transportFlags);
   } else if (proxyServer) {
@@ -529,7 +571,14 @@ export async function startProfile(cfg: LaunchConfig): Promise<StartResult> {
     const probeResult = await probeTransportTarget(target);
     if (probeResult.status === 'REFUSE') {
       const err = new Error(`Proxy transport probe failed at stage ${probeResult.error?.stage}: ${probeResult.error?.message}`);
+      // SAFETY: the transport-policy slice decorates the thrown error with `stage`/`code` so
+      // the API layer can report a machine-readable failure reason. `Error` does not declare
+      // those fields, so the cast is the only way to attach them; both stay optional and are
+      // read back through guards, so an absent value is indistinguishable from an absent key.
+      // SAFETY: same decoration as the line above — one cast per field because TypeScript
+      // narrows each assignment expression independently.
       (err as unknown as { stage?: string; code?: string }).stage = probeResult.error?.stage;
+      // SAFETY: see above — the `code` half of the same error decoration.
       (err as unknown as { stage?: string; code?: string }).code = probeResult.error?.code;
       throw err;
     }
@@ -651,29 +700,24 @@ export async function startProfile(cfg: LaunchConfig): Promise<StartResult> {
       await injectCookies(wsPuppeteer, cfg.cookies);
     }
 
-    // Desktop screen resolution override via CDP (screen.* metrics + viewport).
+    // Screen metrics override via CDP.
+    //
+    // Why this is not a one-shot call: `Emulation.setDeviceMetricsOverride` is scoped to the
+    // CDP session that issued it, and `detach` reverts it. Measured against the shipped kernel
+    // in `--headless=new --window-size=1920,1080`:
+    //
+    //   no override                          -> screen 800x600, outer 1920x1080
+    //   override applied to a page, detached -> screen 800x600   (reverted)
+    //   override applied and kept alive      -> screen 1920x1080 (correct)
+    //   new page opened after the override   -> screen 800x600   (not inherited)
+    //
+    // A virtual 800x600 screen next to a 1920x1080 window is a pairing no real desktop
+    // produces, and it is what headless Chromium reports on its own. The override therefore
+    // has to follow every page for the life of the profile, which is what `installScreenOverride`
+    // does — it is not best-effort cleanup, it is the fix.
+    let cleanupScreen: (() => void) | undefined;
     if (cfg.screenOverride) {
-      try {
-        const sBrowser = await puppeteer.connect({ browserWSEndpoint: wsPuppeteer, defaultViewport: null });
-        try {
-          const targets = await sBrowser.targets();
-          const pageTarget = targets.find((t) => t.type() === 'page');
-          if (pageTarget) {
-            const session = await pageTarget.createCDPSession();
-            await session.send('Emulation.setDeviceMetricsOverride', {
-              width: cfg.screenOverride.width,
-              height: cfg.screenOverride.height,
-              deviceScaleFactor: 1,
-              mobile: false,
-            });
-            await session.detach().catch(() => undefined);
-          }
-        } finally {
-          sBrowser.disconnect();
-        }
-      } catch {
-        // screen override is best-effort; window-size flag already applied
-      }
+      cleanupScreen = await installScreenOverride(wsPuppeteer, cfg.screenOverride);
     }
 
     // Start URLs (v0.2.6): open on start (first in current tab, rest in new tabs).
@@ -705,12 +749,13 @@ export async function startProfile(cfg: LaunchConfig): Promise<StartResult> {
       cleanupGeo,
       cleanupStealth,
       cleanupRelay: relayCleanup,
+      cleanupScreen,
       relayState: profileRelayState,
     };
     // Register the running profile BEFORE wiring transport-loss hooks: the
     // hook itself reads this map (regression fix: a51adf2 dropped the set).
     running.set(cfg.profileId, rec);
-    const unregisterTransport = registerActiveProfile(cfg.profileId, (reason) => {
+    const unregisterTransport = registerActiveProfile(cfg.profileId, (_reason) => {
       // Immediate mid-session termination on transport loss (zero direct fallback)
       const current = running.get(cfg.profileId);
       if (current) {

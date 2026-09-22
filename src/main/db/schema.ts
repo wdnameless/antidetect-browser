@@ -246,4 +246,8 @@ export function migrate(db: Database): void {
   // Android profile settings JSON (e.g. {"apiLevel":34,"screen":"phone","coldBoot":false}).
   // browser_type is the runtime selector ('android'); desktop launch paths remain untouched.
   ensureColumn(db, 'profiles', 'android_config', 'TEXT');
+  // Headless launch (`--headless=new`) for agent/automation profiles. Stored as '1'/'0'
+  // so an existing database migrates without a tri-state; NULL and '0' both mean headed,
+  // which is what every profile created before this column was.
+  ensureColumn(db, 'profiles', 'headless', 'INTEGER');
 }

@@ -5,7 +5,6 @@ import { getDb } from '../db';
 import { PROFILES_DIR } from '../config';
 import { logger } from '../util/logger';
 import { getEnabledExtensionPaths } from '../extensions/extensionManager';
-import { checkProxy, type ProxyCheckResult } from '../proxy/proxyManager';
 import { pickMobilePreset, buildMobileUa, getMobilePreset, type MobilePreset } from '../devices/mobilePresets';
 import { protectSecret, revealSecret } from '../util/secretStore';
 import { deleteEntriesForProfile } from '../vault/accountVault';
@@ -56,6 +55,12 @@ export interface CreateProfileInput {
   blocked_ports?: number[];
   /** WebRTC IP handling policy; null uses Chromium's default. */
   webrtc_policy?: 'default' | 'disable_non_proxied_udp' | 'proxy' | null;
+  /**
+   * Launch without a window (`--headless=new`). Agent/automation profiles want this; a
+   * profile an operator drives by hand does not. Persisted per profile so a script that
+   * starts the same profile twice gets the same display mode both times.
+   */
+  headless?: boolean;
 }
 
 export interface ProfileRow {
@@ -89,6 +94,8 @@ export interface ProfileRow {
   blocked_ports: string | null;
   /** WebRTC IP handling policy; null = Chromium default. */
   webrtc_policy: string | null;
+  /** Headless launch flag: 1 = `--headless=new`, 0/NULL = headed. */
+  headless: number | null;
 }
 
 export interface ProxyRow {
@@ -452,11 +459,14 @@ export function createProfile(input: CreateProfileInput): string {
   const dnt = normalizeDoNotTrack(input.do_not_track);
   const ports = normalizeBlockedPorts(input.blocked_ports);
   const webrtc = normalizeWebrtcPolicy(input.webrtc_policy);
+  // Headless is stored as 1/0 rather than a JSON boolean: the column is INTEGER and an
+  // existing database gets it through `ensureColumn`, so NULL has to keep meaning headed.
+  const headless = input.headless ? 1 : 0;
   db.prepare(
     `INSERT INTO profiles (
        id, name, group_id, proxy_id, fingerprint_id, device_id,
        browser_type, user_agent, timezone, geolocation, start_urls, mobile_model_id, launch_args, color, notes,
-       do_not_track, blocked_ports, webrtc_policy, status,
+       do_not_track, blocked_ports, webrtc_policy, headless, status,
        created_at, updated_at
      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'closed', ?, ?)`
   ).run(
@@ -478,6 +488,7 @@ export function createProfile(input: CreateProfileInput): string {
     dnt,
     ports.length ? JSON.stringify(ports) : null,
     webrtc,
+    headless,
     now,
     now
   );
@@ -801,6 +812,10 @@ export interface TrashItem {
 
 export function listTrash(): TrashItem[] {
   const db = getDb();
+  // SAFETY: the projection above selects exactly the fields `TrashItem` declares, in the same
+  // names. sql.js returns untyped rows, so the assertion is what records that correspondence —
+  // it is sound precisely while the SELECT list and the interface stay in sync, and the
+  // `deleted_at` filter guarantees the non-null type the interface claims.
   return db
     .prepare(
       `SELECT p.id, p.name, g.name AS group_name, p.deleted_at, p.created_at
@@ -1183,6 +1198,8 @@ export function updateProfile(
     do_not_track?: 'off' | 'on' | 'auto' | null;
     blocked_ports?: number[] | null;
     webrtc_policy?: 'default' | 'disable_non_proxied_udp' | 'proxy' | null;
+    /** Launch without a window (`--headless=new`). */
+    headless?: boolean;
   }
 ): boolean {
   const db = getDb();
@@ -1277,6 +1294,10 @@ export function updateProfile(
     sets.push('webrtc_policy = ?');
     params.push(normalizeWebrtcPolicy(updates.webrtc_policy));
   }
+  if (updates.headless !== undefined) {
+    sets.push('headless = ?');
+    params.push(updates.headless ? 1 : 0);
+  }
 
   if (sets.length === 0) return true;
 
@@ -1284,6 +1305,10 @@ export function updateProfile(
   params.push(Date.now());
   params.push(id);
 
+  // The interpolated part is `sets`, and it is not attacker-controlled: every element is a
+  // literal `'<column> = ?'` string pushed by this function, and each VALUE travels as a bound
+  // parameter. There is no path by which a caller can put text into the column list, so this is
+  // identifier interpolation of a closed set rather than string-built SQL.
   db.prepare(`UPDATE profiles SET ${sets.join(', ')} WHERE id = ?`).run(...params);
   return true;
 }
@@ -1755,6 +1780,9 @@ export function resolveLaunchConfig(id: string): LaunchConfig {
     blocked_ports: parseBlockedPortsColumn(profile.blocked_ports),
     webrtc_policy: profile.webrtc_policy ?? null,
     profileName: profile.name ?? null,
+    // Persisted display mode. Absent for every profile stored before the column existed,
+    // which must keep launching a window — `undefined` and `false` both mean headed.
+    headless: profile.headless === 1,
     stealthEngineProfileId:
       (typeof process.env.ANTIDETECT_ENGINE_PROFILE === 'string' &&
         process.env.ANTIDETECT_ENGINE_PROFILE.length > 0)

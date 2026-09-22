@@ -45,6 +45,51 @@ and read the same text back from the server. Both regressions carry a guard:
 `tests/unit/profileVaultLoad.test.ts`, which was confirmed to FAIL when the load is disabled —
 a guard that cannot fail is not a guard.
 
+### Added — headless profiles, and the WebGL context every one of them was missing
+
+Requested: «я хочу чтобы наши профили могли работать в headless режиме, чтобы полностью
+заменять BetterWright для ИИ агентов и автоматизациях».
+
+Headless could not be requested at all. Four separate breaks sat between the API and the
+kernel, and each was measured rather than inferred:
+
+- **`headless` never reached the launcher.** `LaunchConfig` declared the field and
+  `buildChromiumArgs` honoured it (`--headless=new`), but `resolveLaunchConfig()` never set it,
+  no `profiles.headless` column existed, and neither create route accepted the parameter. A
+  profile could therefore never launch without a window. `/api/v1/profiles` additionally dropped
+  `headless` on the floor while `/api/v1/browser-profile/create` validated it — so the route the
+  create form uses silently created headed profiles. Now: the column is migrated in
+  (`ensureColumn`), both create/update schemas accept it, both handlers forward it, and
+  `resolveLaunchConfig` returns it. A per-launch override (`?headless=1`) was added to
+  `browser/start`, so an agent can hide a profile for one run without rewriting it.
+
+- **Every WebGL context on the shipped kernel was `null`.** Measured with a fixed probe across
+  the matrix: stock Chrome reports
+  `ANGLE (Microsoft, Microsoft Basic Render Driver ..., D3D11)` both headful and under
+  `--headless=new`, while `fingerprint-chromium` returns `webgl2: NULL, webgl: NULL` in **both**
+  modes — the kernel does not perform the software fallback stock Chrome performs on its own.
+  No real browser reports a null WebGL context, which made this the loudest single automation
+  tell in the product. Force-forcing the hardware path (`--use-angle=d3d11`) does not fix it;
+  `--ignore-gpu-blocklist` does, and keeps the hardware rasteriser wherever one actually works
+  instead of pinning software. The launcher now passes it (`src/main/util/gpuBackend.ts`), and
+  the reasoning — including why WARP and `--use-angle=swiftshader` were rejected — is recorded
+  there with the measurements.
+
+- **Headless profiles advertised a screen they did not have.** Under `--headless=new`,
+  Chromium invents an 800x600 screen; `--window-size` only moves `outer*`/`inner*`. A profile
+  claiming a 1920x1080 desktop reported `screen 800x600, outer 1920x1080` — a pairing no real
+  desktop produces. The launcher's CDP override was applied to a page target and then detached,
+  and `Emulation.setDeviceMetricsOverride` reverts on detach and is not inherited by later
+  pages; measured, the override was a no-op. It is now installed per page target with its
+  session kept alive for the life of the launch (`installScreenOverride`), which is what makes
+  `screen.*` agree with the window.
+
+Verified end to end against a live service with a real profile: `--headless=new` and
+`--ignore-gpu-blocklist` both present on the child command line, `navigator.webdriver === false`,
+no `cdc_*` properties, the headless UA marker absent, `screen 1920x1080` coherent with
+`outer 1920x1080`, a live WebGL 2.0 context with a hardware renderer string, and the worker
+context agreeing with the page. 1236 unit tests pass.
+
 ### Fixed — the preflight check was unusable: the modal crashed on render, and its styles had no owner
 
 Operator: «точечный preflight чек не работает» — screenshot of the modal showing a title and

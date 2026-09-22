@@ -1,40 +1,20 @@
 {
   "version": 1,
-  "tier": "T2",
-  "task": "Licensing and fork protection: key rotation, AGPL-3.0 dual licence, Rust verification, history-rewrite runbook",
-  "startedAt": "2026-09-20T08:43:10.516Z",
+  "tier": "T1",
+  "task": "Android emulator integration: fix the four blind-acceptance defects (R08/R09 identity, R10 proxy, R14 API) and acquire the pinned scrcpy stream server",
+  "startedAt": "2026-09-22T08:30:36.228Z",
   "status": "closed",
   "artifacts": {
     "lane": {
-      "at": "2026-09-20T08:43:10.516Z",
+      "at": "2026-09-22T08:30:36.229Z",
       "path": null,
-      "detail": "T2"
-    },
-    "manifest": {
-      "at": "2026-09-20T08:43:10.948Z",
-      "path": "openspec/changes/licensing-and-fork-protection/manifest.md",
-      "detail": null
-    },
-    "openspec": {
-      "at": "2026-09-20T08:43:11.129Z",
-      "path": "openspec/changes/licensing-and-fork-protection/proposal.md",
-      "detail": null
-    },
-    "interfaces": {
-      "at": "2026-09-20T08:43:11.337Z",
-      "path": "openspec/changes/licensing-and-fork-protection/interfaces.md",
-      "detail": "Rust verify_license(token)->LicenseVerdict frozen in section C; Node<->Rust channel is settings_dir/license-verdict.json because sidecar.rs passes only env vars; ownership map section G; fingerprint rule in section C corrected in place after it was proved wrong (raw bytes are line-ending dependent)"
-    },
-    "oracle": {
-      "at": "2026-09-20T08:43:11.543Z",
-      "path": ".workflow/oracle-licensing-and-fork-protection.md.verdict",
-      "detail": "ACCEPT from blind oracle, reconciled against re-measurement; verdict committed as fc4d800"
+      "detail": "T1"
     },
     "recon": {
-      "at": "2026-09-20T08:43:16.579Z",
-      "path": ".workflow/recon-licensing-and-fork-protection.md",
-      "detail": "Verified by execution: the committed private key in tests/unit/licenseManager.test.ts matched the pinned build key (bodies_identical true; it signs licences the shipped app accepted); leak spans 202 commits and 24/54 tags; git-filter-repo was absent and the rewrite was rehearsed on a mirror clone; setSecretCipher has zero call sites in src/ so aes: is the only format a packaged build writes; sidecar.rs passes only env vars so the verdict crosses as a file; test baseline 145 files/1174 passed"
+      "at": "2026-09-22T08:30:49.901Z",
+      "path": null,
+      "detail": "Blind acceptance rejected the android-emulator-integration slice on R08, R09, R10, R14 plus a missing streaming artifact; all five reproduced against source before fixing. Files: src/main/android/{packageManager,streamHost,network,injector,instance}.ts, src/main/api/routes/{android,browser}.ts, tests/unit/{androidProfileRouting (new),androidPlatform,androidFingerprint}.test.ts, openspec/changes/android-emulator-integration/{manifest,recon,interfaces}.md. Acceptance check: tsc -p tsconfig.main.json --noEmit and tsc -p src/renderer/tsconfig.json --noEmit both clean; npx vitest run = 153 files, 1256 passed, 12 skipped, 0 failed (was 1251 passing; +5 new routing tests). Real-artifact proof: scrcpy-server v2.4 downloaded and SHA-256 verified twice = 93c272b7438605c055e127f7444064ed78fa9ca49f81156777fd201e79ce7ba3 (69007 B); google_apis x86_64-34_r14.zip downloaded 1563721130 B and SHA-1 = e0f6c9a0691aa27bd597d0deb1bcfdc943ac8ca7, matching the pinned value."
     }
   },
-  "closedAt": "2026-09-20T08:43:21.819Z"
+  "closedAt": "2026-09-22T08:31:35.275Z"
 }

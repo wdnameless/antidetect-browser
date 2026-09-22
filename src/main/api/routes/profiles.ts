@@ -87,26 +87,10 @@ function handleCreateProfileWithOsChip(req: Request, res: Response) {
       proxy_user,
       proxy_pass,
       user_agent,
-      notes,
-      tags: profileTags,
-      options = {},
-      fingerprint = {},
       os = null,
       chip = null,
+      headless = false,
     } = body;
-
-    // Pass through os and chip selection if specified
-    const mergedOptions = {
-      ...options,
-      ...(os ? { os } : {}),
-      ...(chip ? { chip } : {}),
-    };
-
-    const mergedFingerprint = {
-      ...fingerprint,
-      ...(os ? { os, platform: os === 'macos' ? 'macos' : 'windows' } : {}),
-      ...(chip ? { chip } : {}),
-    };
 
     const proxy = (proxy_host && proxy_port) ? {
       type: proxy_type || 'http',
@@ -121,6 +105,9 @@ function handleCreateProfileWithOsChip(req: Request, res: Response) {
       group_id,
       proxy,
       user_agent,
+      // Persisted display mode. Without this the profile was created headed no matter what the
+      // caller asked for, and `/api/v1/profiles` is the route the create form and the agents use.
+      headless: Boolean(headless),
     });
     return res.json({
       code: 0,

@@ -3,7 +3,7 @@ import { z } from 'zod';
 import * as pm from '../../profiles/profileManager';
 import * as launcher from '../../launcher/chromium';
 import * as firefox from '../../launcher/firefox';
-import { checkProxy, type ProxyInput } from '../../proxy/proxyManager';
+import { checkProxy } from '../../proxy/proxyManager';
 import { MOBILE_PRESETS as mobilePresets } from '../../devices/mobilePresets';
 import { SERVER_MODE } from '../../config';
 import * as androidRuntime from '../../android/instance';
@@ -76,6 +76,15 @@ async function handleStart(req: Request, id: string, res: Response): Promise<voi
     }
 
     const cfg = pm.resolveLaunchConfig(id);
+    // A per-launch headless override. The stored value on the profile is the default; an
+    // agent that wants the same profile headed or hidden for one run passes it here rather
+    // than rewriting the profile. Accepted as a boolean or the strings a query parameter
+    // carries ("1"/"true"), because GET /api/v1/browser/start is the documented AdsPower
+    // shape and query strings have no booleans.
+    const requested = req.body?.headless ?? req.query.headless;
+    if (requested !== undefined) {
+      cfg.headless = requested === true || requested === '1' || requested === 'true';
+    }
     if (cfg.browserType === 'firefox') {
       const result = await firefox.startFirefox(cfg);
       if (result.ok) {
@@ -427,6 +436,7 @@ const updateProfileSchema = z.object({
   do_not_track: z.enum(['off', 'on', 'auto']).nullable().optional(),
   blocked_ports: z.array(z.number().int().min(1).max(65535)).nullable().optional(),
   webrtc_policy: z.enum(['default', 'disable_non_proxied_udp', 'proxy']).nullable().optional(),
+  headless: z.boolean().optional(),
 });
 
 router.post('/api/v1/browser-profile/update', (req, res) => {
@@ -451,6 +461,7 @@ router.post('/api/v1/browser-profile/update', (req, res) => {
     do_not_track: parsed.data.do_not_track,
     blocked_ports: parsed.data.blocked_ports,
     webrtc_policy: parsed.data.webrtc_policy,
+    headless: parsed.data.headless,
   });
   res.json(ok ? { code: 0, msg: 'success', data: {} } : { code: -1, msg: 'profile update failed', data: {} });
 });
@@ -582,6 +593,8 @@ const createSchema = z.object({
   blocked_ports: z.array(z.number().int().min(1).max(65535)).optional(),
   webrtc_policy: z.enum(['default', 'disable_non_proxied_udp', 'proxy']).optional(),
   launch_args: z.array(z.string()).optional(),
+  // Persisted display mode: headless profiles are what agent/automation callers launch.
+  headless: z.boolean().optional(),
 });
 
 router.post('/api/v1/browser-profile/create', (req, res) => {
@@ -608,6 +621,7 @@ router.post('/api/v1/browser-profile/create', (req, res) => {
     blocked_ports: parsed.data.blocked_ports,
     webrtc_policy: parsed.data.webrtc_policy,
     launch_args: parsed.data.launch_args,
+    headless: parsed.data.headless,
   };
   try {
     const id = pm.createProfile(input);
