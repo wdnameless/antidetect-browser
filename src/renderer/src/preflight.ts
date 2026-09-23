@@ -133,11 +133,15 @@ export interface PreflightFixItem {
   autoFix?: PreflightAutoFix;
   manualReason?: string;
   manualReasonRu?: string;
+  isBlocking: boolean;
 }
 
 export interface PreflightFixPlan {
   fixableCount: number;
   unfixableCount: number;
+  blockingCount: number;
+  blockingFixableCount: number;
+  blockingUnfixableCount: number;
   items: PreflightFixItem[];
 }
 
@@ -281,13 +285,21 @@ export function computePreflightFixPlan(
   profile?: ProfileDetails | null
 ): PreflightFixPlan {
   if (!verdict) {
-    return { fixableCount: 0, unfixableCount: 0, items: [] };
+    return {
+      fixableCount: 0,
+      unfixableCount: 0,
+      blockingCount: 0,
+      blockingFixableCount: 0,
+      blockingUnfixableCount: 0,
+      items: [],
+    };
   }
 
   const checks = checksOf(verdict).filter((c) => c.status === 'warn' || c.status === 'fail');
   const items: PreflightFixItem[] = [];
 
   for (const check of checks) {
+    const isBlocking = check.status === 'fail';
     const autoFix = resolveCheckAutoFix(check, profile);
     if (autoFix) {
       items.push({
@@ -296,6 +308,7 @@ export function computePreflightFixPlan(
         reasonCode: check.reasonCode,
         detail: check.detail,
         autoFix,
+        isBlocking,
       });
     } else {
       const reasons = resolveCheckManualReason(check);
@@ -306,14 +319,25 @@ export function computePreflightFixPlan(
         detail: check.detail,
         manualReason: reasons.manualReason,
         manualReasonRu: reasons.manualReasonRu,
+        isBlocking,
       });
     }
   }
 
   const fixableCount = items.filter((i) => Boolean(i.autoFix)).length;
   const unfixableCount = items.filter((i) => !i.autoFix).length;
+  const blockingCount = items.filter((i) => i.isBlocking).length;
+  const blockingFixableCount = items.filter((i) => i.isBlocking && Boolean(i.autoFix)).length;
+  const blockingUnfixableCount = items.filter((i) => i.isBlocking && !i.autoFix).length;
 
-  return { fixableCount, unfixableCount, items };
+  return {
+    fixableCount,
+    unfixableCount,
+    blockingCount,
+    blockingFixableCount,
+    blockingUnfixableCount,
+    items,
+  };
 }
 
 async function applySingleFix(
@@ -367,7 +391,7 @@ async function applySingleFix(
         };
       }
       const rawCfg = detailRes.data.fingerprint?.config;
-      const cfg: Record<string, any> = rawCfg && typeof rawCfg === 'object' ? { ...rawCfg } : {};
+      const cfg: Record<string, unknown> = rawCfg && typeof rawCfg === 'object' ? { ...rawCfg } : {};
       const fpRes = await api.profileUpdateFingerprint(profileId, { ...cfg, lang: proposedValue });
       return {
         checkName,

@@ -1,5 +1,56 @@
 # Changelog
 
+## [0.6.32] - 2026-09-23
+
+### Fixed — a blocked launch now explains itself, and Fix no longer misleads
+
+Reported: «Нажимаю запустить профиль, но браузер не запускаетя, так же есть такие ошибки. И фикс не
+работает.»
+
+Both halves were reproduced against a live service, and neither turned out to be a flaw in the guard.
+
+**The launcher is fine.** A profile with no proxy starts cleanly — CDP endpoint returned, stop
+succeeds. The profile in the report carried a dead proxy (`10.250.249.66:8080`), and that is what
+refused the launch: through the guard with HTTP 412 when it is on, and through the transport
+(`tcpConnect timed out after 5000ms`) when it is off. Both refusals were correct.
+
+**But `Fix` repaired the wrong thing and said nothing.** The plan's only auto-fix on that profile was
+the WebRTC policy; the blocker was `proxy-alive`. Measured end to end: the update succeeds, preflight
+re-runs, the verdict is still `fail`, and the launch is still refused. The operator presses Fix, is
+told it worked, and cannot start the profile. "Фикс не работает" was a fair reading of exactly that.
+
+- **The plan now separates blocking from warning.** A check that is refusing the launch is marked
+  `BLOCKING` and shown apart from warnings that merely deserve attention, with a plain statement that
+  the auto-fix will not unblock the launch while a blocker remains.
+- **The summary stays honest after applying.** A remaining blocker is named instead of leaving a
+  green "applied" impression.
+- **A blocked launch names its cause** — the check, its reason code and the concrete error — and
+  offers *Проверить снова* plus *Запустить без прокси*, the latter warning plainly that traffic would
+  go out on the real IP and that this defeats the purpose of an antidetect browser.
+- **A transport refusal is a visibly different event** from a guard block: its own banner, the words
+  "NOT GUARD BLOCKED", the concrete transport error, and the same escape.
+
+Verified in a real browser, both ways: with the guard on, the modal shows `Launch Blocked by
+Preflight Guard`, `BLOCKING proxy-alive / proxy-unreachable` with `connect ETIMEDOUT`, and the
+warning; with the guard off, the same profile shows `Proxy Refused Connection (Transport Failure)`
+marked `NOT GUARD BLOCKED`.
+
+Nothing about the guard's decision changed, and nothing unpairs a proxy automatically — sending a
+profile out on the real IP is the one outcome this product exists to prevent, so it stays an explicit
+choice the operator makes, never a default.
+
+### Fixed — CI published two releases for one tag and left the tag empty
+
+`v0.6.31` published with every job green and `gh release view` reporting **zero assets**, while the
+asset URLs returned 200 and the installer verified. Cause, from the run log: `release-macos` and
+`release` are siblings that both publish to the same tag, neither pinning it. The macOS job created
+the release first; the Windows job was told *"Release 394468367 is not yet discoverable by tag
+v0.6.31, retrying..."*, then created its own and uploaded all five assets there. So the tag resolved
+to the empty release. Every earlier release escaped this only by timing.
+
+The Windows job now waits for macOS, and both pin `tag_name`. The update itself was never affected —
+this was metadata that makes a working release look broken, which is its own kind of damaging.
+
 ## [0.6.31] - 2026-09-23
 
 ### Added — the proxy list shows where each proxy actually exits

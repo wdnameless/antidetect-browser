@@ -220,6 +220,7 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
     verdict: PreflightVerdict | null;
     loading: boolean;
     error: string | null;
+    isBlockedLaunch?: boolean;
   }>({
     isOpen: false,
     profileId: '',
@@ -227,7 +228,13 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
     verdict: null,
     loading: false,
     error: null,
+    isBlockedLaunch: false,
   });
+  const [transportError, setTransportError] = useState<{
+    profileId: string;
+    profileName?: string;
+    message: string;
+  } | null>(null);
   // ---- Cookie Farm / Profile Warm-up (Task 4) ----
   const [cookieFarmModal, setCookieFarmModal] = useState<{
     isOpen: boolean;
@@ -1128,9 +1135,23 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
     }
   };
 
+  const isProxyTransportError = (msg?: string): boolean => {
+    if (!msg) return false;
+    const lower = msg.toLowerCase();
+    return (
+      lower.includes('proxy transport probe failed') ||
+      lower.includes('tcpconnect') ||
+      lower.includes('probe failed at stage') ||
+      lower.includes('proxy connection') ||
+      lower.includes('econnrefused') ||
+      lower.includes('etimedout')
+    );
+  };
+
   const start = async (id: string, profileName?: string, skipPreflightGuard = false) => {
     setBusy(true);
     setError('');
+    setTransportError(null);
     try {
       // If blockOnFail is enabled, run startWithPreflight guard check unless overridden
       if (blockOnFail && !skipPreflightGuard) {
@@ -1159,6 +1180,7 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
               verdict: freshVerdict,
               loading: false,
               error: null,
+              isBlockedLaunch: true,
             });
           } else {
             await inspectPreflight(id, profileName);
@@ -1171,10 +1193,27 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
         setEndpoint({ id, ws: res.data.ws.puppeteer });
         await loadProfiles();
       } else {
-        setError(res.msg);
+        if (isProxyTransportError(res.msg)) {
+          setTransportError({
+            profileId: id,
+            profileName: profileName || id,
+            message: res.msg,
+          });
+        } else {
+          setError(res.msg);
+        }
       }
     } catch (err) {
-      setError((err as Error).message);
+      const msg = (err as Error).message;
+      if (isProxyTransportError(msg)) {
+        setTransportError({
+          profileId: id,
+          profileName: profileName || id,
+          message: msg,
+        });
+      } else {
+        setError(msg);
+      }
     } finally {
       setBusy(false);
     }
@@ -1683,6 +1722,149 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
         </div>
       </div>
 
+      {transportError && (
+        <div
+          className="transport-refusal-banner"
+          style={{
+            background: 'var(--surface-2)',
+            border: '1px solid var(--danger)',
+            borderLeft: '4px solid var(--danger)',
+            borderRadius: 'var(--radius-md)',
+            padding: '14px 18px',
+            margin: '0 0 16px 0',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 10,
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ fontSize: 16 }}>🔌</span>
+              <span style={{ fontWeight: 700, fontSize: 13.5, color: 'var(--danger)' }}>
+                {t('Proxy Refused Connection (Transport Failure)')}
+              </span>
+              <span
+                className="preflight-tag fail"
+                style={{ fontSize: 10, padding: '1px 6px' }}
+              >
+                {t('NOT GUARD BLOCKED')}
+              </span>
+            </div>
+            <button
+              type="button"
+              className="btn btn-sm"
+              onClick={() => setTransportError(null)}
+              style={{ fontSize: 11, padding: '2px 8px' }}
+            >
+              {t('Dismiss')}
+            </button>
+          </div>
+
+          <div style={{ fontSize: 12.5, color: 'var(--text-secondary)' }}>
+            {t(
+              'The launch was NOT blocked by Preflight Guard. The proxy server itself timed out or refused the connection during transport probing.'
+            )}
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)' }}>
+              {t('Transport Error Details:')}
+            </span>
+            <code
+              className="preflight-code"
+              style={{
+                padding: '6px 10px',
+                background: 'var(--control-bg)',
+                borderRadius: 'var(--radius-sm)',
+                fontSize: 12,
+                color: 'var(--text)',
+                wordBreak: 'break-all',
+              }}
+            >
+              {transportError.message}
+            </code>
+          </div>
+
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              padding: '6px 10px',
+              borderRadius: 'var(--radius-sm)',
+              background: 'var(--warn-bg)',
+              color: 'var(--warn)',
+              fontSize: 11.5,
+            }}
+          >
+            <span>💡</span>
+            <span>
+              {t(
+                'Pointer: The proxy needs fixing. Check host, port, credentials, or server status in profile settings.'
+              )}
+            </span>
+          </div>
+
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              fontSize: 11.5,
+              color: 'var(--warn)',
+            }}
+          >
+            <span>⚠️</span>
+            <span>
+              {t(
+                'Warning: Launching without proxy will route traffic through your real IP address.'
+              )}
+            </span>
+          </div>
+
+          <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+            <button
+              type="button"
+              className="btn btn-secondary btn-sm"
+              onClick={async () => {
+                const p = profiles.find((item) => item.user_id === transportError.profileId);
+                if (p) {
+                  await openEditModal(p);
+                }
+              }}
+            >
+              {t('Edit Proxy Settings')}
+            </button>
+            <button
+              type="button"
+              className="btn btn-danger btn-sm"
+              onClick={async () => {
+                const id = transportError.profileId;
+                const name = transportError.profileName;
+                setTransportError(null);
+                await api.profileUpdate({ user_id: id, proxy_id: null, proxy: null });
+                await loadProfiles();
+                await start(id, name, true);
+              }}
+              title={t('Remove proxy from profile and launch directly using real IP')}
+            >
+              {t('Launch without proxy')}
+            </button>
+            <button
+              type="button"
+              className="btn btn-secondary btn-sm"
+              onClick={async () => {
+                const id = transportError.profileId;
+                const name = transportError.profileName;
+                setTransportError(null);
+                await start(id, name, false);
+              }}
+            >
+              {t('Retry Launch')}
+            </button>
+          </div>
+        </div>
+      )}
       {error ? <div className="error-banner">{error}</div> : null}
 
       {endpoint ? (
@@ -3252,17 +3434,21 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
       {preflightModal.isOpen ? (
         <PreflightModal
           isOpen={preflightModal.isOpen}
-          onClose={() => setPreflightModal((prev) => ({ ...prev, isOpen: false }))}
+          onClose={() => setPreflightModal((prev) => ({ ...prev, isOpen: false, isBlockedLaunch: false }))}
           profileId={preflightModal.profileId}
           profileName={preflightModal.profileName}
           verdict={preflightModal.verdict}
           loading={preflightModal.loading}
           error={preflightModal.error}
+          isBlockedLaunch={preflightModal.isBlockedLaunch}
           onRecheck={async (id: string) => {
             await runPreflight(id, preflightModal.profileName, true);
             void loadProfiles();
           }}
           onStartProfile={async (id: string) => {
+            await start(id, preflightModal.profileName, true);
+          }}
+          onStartWithoutProxy={async (id: string) => {
             await start(id, preflightModal.profileName, true);
           }}
         />

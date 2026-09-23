@@ -94,8 +94,10 @@ export interface PreflightModalProps {
   verdict: PreflightVerdict | null;
   loading: boolean;
   error?: string | null;
+  isBlockedLaunch?: boolean;
   onRecheck?: (profileId: string) => Promise<void> | void;
   onStartProfile?: (profileId: string) => Promise<void> | void;
+  onStartWithoutProxy?: (profileId: string) => Promise<void> | void;
 }
 
 export function PreflightModal({
@@ -106,8 +108,10 @@ export function PreflightModal({
   verdict,
   loading,
   error,
+  isBlockedLaunch,
   onRecheck,
   onStartProfile,
+  onStartWithoutProxy,
 }: PreflightModalProps) {
   const [expandedCheck, setExpandedCheck] = useState<string | null>(null);
   const [profileDetails, setProfileDetails] = useState<ProfileDetails | null>(null);
@@ -117,6 +121,14 @@ export function PreflightModal({
   const { t: translate, lang } = useI18n();
   const t = (key: string, ru?: string) => (lang === 'ru' && ru ? ru : translate(key));
 
+  const renderBlockingBadge = (isBlocking: boolean) => (
+    <span
+      className={`preflight-tag ${isBlocking ? 'fail' : 'warn'}`}
+      style={{ fontSize: 9.5, padding: '1px 5px' }}
+    >
+      {isBlocking ? t('BLOCKING', 'БЛОКИРУЕТ') : t('WARNING', 'ПРЕДУПРЕЖДЕНИЕ')}
+    </span>
+  );
   useEffect(() => {
     setFixOutcomes(null);
   }, [profileId]);
@@ -209,7 +221,124 @@ export function PreflightModal({
           </div>
         )}
 
-        {/* Fix execution outcomes banner */}
+        {/* Blocked launch explicit explanation & options (Requirement C) */}
+        {(isBlockedLaunch || verdict?.overall === 'fail') && !loading && checks.some((c) => c.status === 'fail') && (
+          <div
+            style={{
+              background: 'var(--surface-2)',
+              border: '1px solid var(--danger)',
+              borderLeft: '4px solid var(--danger)',
+              borderRadius: 'var(--radius-md)',
+              padding: '12px 14px',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 10,
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontSize: 16 }}>🛡️</span>
+                <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--danger)' }}>
+                  {t('Launch Blocked by Preflight Guard', 'Запуск заблокирован защитой Preflight Guard')}
+                </span>
+              </div>
+              <span className="preflight-tag fail" style={{ fontSize: 10, padding: '1px 6px' }}>
+                {t('BLOCKING', 'БЛОКИРУЕТ')}
+              </span>
+            </div>
+
+            <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
+              {t(
+                'The preflight launch guard stopped this profile because one or more diagnostic checks failed:',
+                'Защита перед запуском остановила профиль из-за провала диагностических проверок:'
+              )}
+            </div>
+
+            {/* List of blocking checks */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {checks
+                .filter((c) => c.status === 'fail')
+                .map((c) => (
+                  <div
+                    key={c.name}
+                    style={{
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: 2,
+                      padding: '6px 10px',
+                      borderRadius: 'var(--radius-sm)',
+                      background: 'var(--control-bg)',
+                      borderLeft: '2px solid var(--danger)',
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <span style={{ fontWeight: 600, fontSize: 12, color: 'var(--text)' }}>{c.name}</span>
+                      {c.reasonCode && <code className="preflight-code" style={{ fontSize: 11 }}>{c.reasonCode}</code>}
+                    </div>
+                    {c.detail && (
+                      <span style={{ fontSize: 11.5, color: 'var(--text-secondary)' }}>{c.detail}</span>
+                    )}
+                  </div>
+                ))}
+            </div>
+
+            {/* Warning that real IP will be used */}
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'flex-start',
+                gap: 8,
+                padding: '8px 10px',
+                borderRadius: 'var(--radius-sm)',
+                background: 'var(--warn-bg)',
+                color: 'var(--warn)',
+                fontSize: 11.5,
+              }}
+            >
+              <span>⚠️</span>
+              <span>
+                {t(
+                  'Warning: Launching without proxy will route traffic through your real IP address. This exposes your identity and defeats the purpose of an antidetect browser.',
+                  'Внимание: запуск без прокси направит трафик через ваш реальный IP-адрес. Это раскрывает вашу личность в сети и противоречит цели использования антидетект-браузера.'
+                )}
+              </span>
+            </div>
+
+            {/* Options */}
+            <div style={{ display: 'flex', gap: 8, marginTop: 2 }}>
+              {onRecheck && (
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  onClick={() => void onRecheck(profileId)}
+                  disabled={loading || isFixing}
+                >
+                  <RefreshIcon size={12} />
+                  <span>{t('Re-run Checks', 'Проверить снова')}</span>
+                </button>
+              )}
+              {(onStartWithoutProxy || onStartProfile) && (
+                <button
+                  type="button"
+                  className="btn btn-danger btn-sm"
+                  onClick={() => {
+                    onClose();
+                    void (onStartWithoutProxy ? onStartWithoutProxy(profileId) : onStartProfile!(profileId));
+                  }}
+                  disabled={loading || isFixing}
+                  title={t(
+                    'Bypass preflight guard and launch directly using real IP',
+                    'Обойти защиту и запустить напрямую с реальным IP'
+                  )}
+                >
+                  {t('Launch without proxy', 'Запустить без прокси')}
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Fix execution outcomes banner (Requirement B) */}
         {fixOutcomes && fixOutcomes.length > 0 && !loading && (
           <div
             style={{
@@ -219,7 +348,9 @@ export function PreflightModal({
               display: 'flex',
               flexDirection: 'column',
               gap: 8,
-              borderLeft: '3px solid var(--accent)',
+              borderLeft: checks.some((c) => c.status === 'fail')
+                ? '3px solid var(--danger)'
+                : '3px solid var(--ok)',
             }}
           >
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -235,6 +366,62 @@ export function PreflightModal({
                 {t('Dismiss', 'Скрыть')}
               </button>
             </div>
+
+            {/* Honest post-fix summary banner */}
+            {(() => {
+              const appliedCount = fixOutcomes.filter((o) => o.status === 'applied').length;
+              const remainingBlocking = checks.filter((c) => c.status === 'fail');
+              if (remainingBlocking.length > 0) {
+                return (
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'flex-start',
+                      gap: 8,
+                      padding: '8px 10px',
+                      borderRadius: 'var(--radius-sm)',
+                      background: 'var(--danger-bg)',
+                      color: 'var(--danger)',
+                      fontSize: 12,
+                      fontWeight: 500,
+                    }}
+                  >
+                    <span style={{ fontWeight: 700 }}>⚠️</span>
+                    <div>
+                      <span>
+                        {lang === 'ru'
+                          ? `Применено: ${appliedCount}. Остаётся блокирующим: ${remainingBlocking.map((c) => `${c.name} — ${c.detail || c.reasonCode || 'требуются ручные действия'}`).join('; ')}`
+                          : `Applied: ${appliedCount}. Still blocking: ${remainingBlocking.map((c) => `${c.name} — ${c.detail || c.reasonCode || 'manual action required'}`).join('; ')}`}
+                      </span>
+                    </div>
+                  </div>
+                );
+              }
+              return (
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8,
+                    padding: '8px 10px',
+                    borderRadius: 'var(--radius-sm)',
+                    background: 'var(--ok-bg)',
+                    color: 'var(--ok)',
+                    fontSize: 12,
+                    fontWeight: 500,
+                  }}
+                >
+                  <span>✓</span>
+                  <div>
+                    <span>
+                      {lang === 'ru'
+                        ? `Применено: ${appliedCount}. Все блокирующие проблемы устранены.`
+                        : `Applied: ${appliedCount}. All blocking issues resolved.`}
+                    </span>
+                  </div>
+                </div>
+              );
+            })()}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               {fixOutcomes.map((out, idx) => (
                 <div
@@ -308,6 +495,14 @@ export function PreflightModal({
                 <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text)' }}>
                   {t('Remediation & Fix Plan', 'План исправления проблем')}
                 </span>
+                {plan.blockingCount > 0 && (
+                  <span
+                    className="preflight-tag fail"
+                    style={{ fontSize: 10, padding: '1px 6px' }}
+                  >
+                    {plan.blockingCount} {t('blocking', 'блокирует запуск')}
+                  </span>
+                )}
                 {plan.fixableCount > 0 && (
                   <span
                     style={{
@@ -330,6 +525,28 @@ export function PreflightModal({
               )}
             </div>
 
+            {/* Notice if auto-fix will not solve blocking items (Requirement A) */}
+            {plan.fixableCount > 0 && plan.blockingUnfixableCount > 0 && (
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  padding: '6px 10px',
+                  borderRadius: 'var(--radius-sm)',
+                  background: 'var(--warn-bg)',
+                  color: 'var(--warn)',
+                  fontSize: 11.5,
+                }}
+              >
+                <span>⚠️</span>
+                <span>
+                  {lang === 'ru'
+                    ? `Авто-исправление не разблокирует запуск: ${plan.blockingUnfixableCount} блокирующая проверка требует ручных действий.`
+                    : `Auto-fix will not unblock launch: ${plan.blockingUnfixableCount} blocking check(s) require manual action.`}
+                </span>
+              </div>
+            )}
             {/* Fixable items */}
             {plan.fixableCount > 0 && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
@@ -349,6 +566,7 @@ export function PreflightModal({
                       }}
                     >
                       <span style={{ color: 'var(--ok)', fontWeight: 700, fontSize: 11 }}>⚡</span>
+                      {renderBlockingBadge(item.isBlocking)}
                       <span style={{ fontWeight: 600, color: 'var(--text)' }}>
                         {lang === 'ru' && item.autoFix!.labelRu ? item.autoFix!.labelRu : item.autoFix!.label}:
                       </span>
@@ -392,11 +610,12 @@ export function PreflightModal({
                         padding: '4px 8px',
                         borderRadius: 'var(--radius-sm)',
                         background: 'var(--control-bg)',
+                        borderLeft: item.isBlocking ? '2px solid var(--danger)' : '2px solid var(--border)',
                       }}
                     >
-                      <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>ℹ</span>
+                      {renderBlockingBadge(item.isBlocking)}
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 1, flex: 1 }}>
-                        <span style={{ fontWeight: 600, color: 'var(--text-secondary)' }}>
+                        <span style={{ fontWeight: 600, color: item.isBlocking ? 'var(--danger)' : 'var(--text-secondary)' }}>
                           {item.checkName}
                         </span>
                         <span style={{ color: 'var(--text-muted)' }}>
@@ -493,7 +712,20 @@ export function PreflightModal({
           >
             {t('Close', 'Закрыть')}
           </button>
-          <div style={{ display: 'flex', gap: 8 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            {verdict?.overall === 'fail' && (
+              <span
+                style={{
+                  fontSize: 11,
+                  color: 'var(--warn)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 4,
+                }}
+              >
+                {t('⚠️ Real IP will be exposed', '⚠️ Будет использован реальный IP')}
+              </span>
+            )}
             {plan.fixableCount > 0 && (
               <button
                 type="button"
@@ -533,6 +765,14 @@ export function PreflightModal({
                   void onStartProfile(profileId);
                 }}
                 disabled={loading || isFixing}
+                title={
+                  verdict?.overall === 'fail'
+                    ? t(
+                        'Warning: Launching without proxy will route traffic through your real IP address. This exposes your identity and defeats the purpose of an antidetect browser.',
+                        'Внимание: запуск без прокси направит трафик через ваш реальный IP-адрес. Это раскрывает вашу личность в сети и противоречит цели использования антидетект-браузера.'
+                      )
+                    : undefined
+                }
               >
                 {verdict?.overall === 'fail'
                   ? t('Launch Anyway', 'Запустить всё равно')
