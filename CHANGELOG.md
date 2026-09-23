@@ -1,5 +1,42 @@
 # Changelog
 
+## [0.6.30] - 2026-09-23
+
+### Fixed — the warm-up modal could not be closed, showed no progress, and could not be cancelled
+
+Reported with a screenshot: «Не нажимается close и очень долго уже крутиться и нет прогресса, не
+понятно фарит он куки или нет» — Close does not work, it spins for a long time, and there is no
+progress so it is impossible to tell whether anything is happening.
+
+Two causes, and the first was mine.
+
+**Close was disabled during the run.** Introduced in 0.6.27, where I made the modal the only
+progress indicator and then removed the exit from it: `disabled={loading}` plus an `onClose` that
+returned early while loading. A crawl runs for minutes (measured: ~3 minutes for 20 pages), so the
+operator was left trapped in a modal. Close is now always enabled and simply dismisses the modal —
+the crawl continues in the background, and pressing the profile's cookie button reopens the dialog
+with live progress for the run already in flight instead of starting a second one.
+
+**The run was one blocking request with nothing reported until it ended.** The modal could not
+distinguish progress from a hang, and offered no way to stop. There is now a read-only
+`GET /api/cookie-robot/progress` endpoint, the runner keeps a live record while it crawls, and the
+modal polls it once a second to show pages visited out of the maximum, cookies collected so far,
+domains touched, consent banners accepted, and the site currently being visited — plus a Stop button
+that aborts the run.
+
+**A completed run could be shown as a failure.** The runner flipped `active` to false *before*
+writing the report row, and the UI fetches the report the instant it sees the run is no longer
+active — a race the poll lost on every short run. The result was a red banner reading "Cookie farm
+completed" over an empty body: success presented in the error slot, with no metrics. The report is
+now persisted before `active` clears, and the fallback message no longer claims "completed" from
+inside an error banner.
+
+### Fixed — the warm-up modal could not be cancelled at all
+
+`POST /api/cookie-robot/stop` existed on the server and the UI never called it, so a run that was
+going wrong could only be waited out. The modal now offers Stop, which aborts the crawl and reports
+it as aborted.
+
 ## [0.6.29] - 2026-09-23
 
 ### Fixed — the last three findings from the preflight sweep

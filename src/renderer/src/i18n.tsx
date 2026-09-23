@@ -792,6 +792,7 @@ const RU: Record<string, string> = {
   'Profile Warm-up (Cookie Farm)': 'Прогрев профиля (фарм куки)',
   'Warming up profile (visiting sites, collecting cookies, accepting consent)...': 'Прогрев профиля (посещение сайтов, сбор куки, принятие согласий)...',
   'Cookie farm completed': 'Прогрев профиля завершён',
+  'Warm-up finished. The run report was not available yet.': 'Прогрев завершён. Отчёт о прогоне пока недоступен.',
   'Cookie farm failed': 'Сбой прогрева профиля',
   'Failed to run cookie farm': 'Не удалось запустить прогрев профиля',
   'Pages Visited': 'Посещено страниц',
@@ -803,6 +804,11 @@ const RU: Record<string, string> = {
   'Accepted': 'Принято',
   'No consent banner': 'Баннер согласия не найден',
   'Auto-managed profile': 'Профиль управлялся автоматически',
+  'Stopping...': 'Остановка...',
+  'Current Site': 'Текущий сайт',
+  'Consents Accepted': 'Принято согласий',
+  'Crawl running in background': 'Сбор продолжается в фоновом режиме',
+  'Failed to stop cookie farm': 'Не удалось остановить прогрев профиля',
 };
 
 interface I18nCtx {
@@ -979,6 +985,12 @@ const EN: Record<string, string> = {
   'Silent popups shown in the corner of the app. Disabling them does not affect Telegram.': 'Silent popups shown in the corner of the app. Disabling them does not affect Telegram.',
   'Settings saved successfully': 'Settings saved successfully',
   'Save failed': 'Save failed',
+  'Stop': 'Stop',
+  'Stopping...': 'Stopping...',
+  'Current Site': 'Current Site',
+  'Consents Accepted': 'Consents Accepted',
+  'Crawl running in background': 'Crawl running in background',
+  'Failed to stop cookie farm': 'Failed to stop cookie farm',
 };
 
 const Ctx = createContext<I18nCtx>({ lang: 'en', setLang: () => undefined, t: (s) => EN[s] ?? s });

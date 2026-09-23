@@ -48,8 +48,38 @@ export interface CookieRobotHandle {
   done: Promise<CookieRobotReport>;
 }
 
-// Active kill switches keyed by runId and profileId
-const activeRuns = new Map<string, { runId: string; profileId: string; abortRequested: boolean; abort: () => void }>();
+export interface CookieRobotProgress {
+  active: boolean;
+  runId: string;
+  profileId: string;
+  status: 'running' | 'completed' | 'aborted' | 'error';
+  pagesVisited: number;
+  maxPages: number;
+  cookiesSet: number;
+  domainsTouched: string[];
+  currentDomain: string | null;
+  consentsAccepted: number;
+  startedAt: number;
+  elapsedMs: number;
+}
+
+type ActiveRunProgress = Omit<CookieRobotProgress, 'elapsedMs'>;
+
+interface ActiveRunEntry {
+  runId: string;
+  profileId: string;
+  abortRequested: boolean;
+  abort: () => void;
+  progress: ActiveRunProgress;
+}
+
+// Active kill switches and live progress keyed by runId and profileId
+const activeRuns = new Map<string, ActiveRunEntry>();
+
+function positiveOr(value: number | undefined, fallback: number): number {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : fallback;
+}
+
 // In-memory or fallback reports store (plus SQLite if available)
 const reportsStore = new Map<string, CookieRobotReport>();
 
@@ -155,6 +185,37 @@ export function abortCookieRobotRun(runIdOrProfileId: string): boolean {
   return found;
 }
 export const abortCookieRobot = abortCookieRobotRun;
+
+export function getCookieRobotProgress(runIdOrProfileId: string): CookieRobotProgress | null {
+  if (!runIdOrProfileId) return null;
+  let entry = activeRuns.get(runIdOrProfileId);
+  if (!entry) {
+    for (const run of activeRuns.values()) {
+      if (run.runId === runIdOrProfileId || run.profileId === runIdOrProfileId) {
+        entry = run;
+        break;
+      }
+    }
+  }
+  if (!entry || !entry.progress) {
+    return null;
+  }
+  const p = entry.progress;
+  return {
+    active: p.active,
+    runId: p.runId,
+    profileId: p.profileId,
+    status: p.status,
+    pagesVisited: p.pagesVisited,
+    maxPages: p.maxPages,
+    cookiesSet: p.cookiesSet,
+    domainsTouched: Array.from(p.domainsTouched),
+    currentDomain: p.currentDomain,
+    consentsAccepted: p.consentsAccepted,
+    startedAt: p.startedAt,
+    elapsedMs: Math.max(0, Date.now() - p.startedAt),
+  };
+}
 
 /**
  * Parses URL list from string (text lines or JSON array) or array.
@@ -487,7 +548,7 @@ export async function runCookieRobot(
   runIdOverride?: string
 ): Promise<CookieRobotReport> {
   const runId = runIdOverride || randomUUID();
-  let aborted = false;
+  let aborted = Boolean(runIdOverride && activeRuns.get(runIdOverride)?.abortRequested);
   const startedAt = Date.now();
   const report: CookieRobotReport = {
     id: runId,
@@ -503,22 +564,6 @@ export async function runCookieRobot(
     dwells: [],
   };
 
-  const abort = () => {
-    aborted = true;
-    report.status = 'aborted';
-  };
-
-  const runEntry = { runId, profileId: config.profileId, abortRequested: false, abort };
-  activeRuns.set(runId, runEntry);
-  activeRuns.set(config.profileId, runEntry);
-  // Policy configurations & defaults.
-  //
-  // These arrive from HTTP JSON, where `Number(null)` is 0 and `Number("abc")` is NaN. Both would
-  // survive a bare `??`, and `report.pagesVisited < maxPages` is false for either — the crawl would
-  // launch a browser, visit nothing and report a clean completion with no error. A non-finite or
-  // negative value therefore falls back to the default; only a positive one is honoured.
-  const positiveOr = (value: number | undefined, fallback: number): number =>
-    typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : fallback;
   const maxPages = Math.max(1, positiveOr(config.maxPages, 20));
   const dwellMsMin = positiveOr(config.dwellMsMin, 1000);
   const dwellMsMax = Math.max(dwellMsMin, positiveOr(config.dwellMsMax, 4000));
@@ -527,6 +572,30 @@ export async function runCookieRobot(
   const blocklist = config.blocklist ?? [];
   const clickInternalLinks = config.clickInternalLinks ?? true;
   const internalLinkClickProbability = config.internalLinkClickProbability ?? 0.3;
+
+  const progress: ActiveRunProgress = {
+    active: true,
+    runId,
+    profileId: config.profileId,
+    status: aborted ? 'aborted' : 'running',
+    pagesVisited: 0,
+    maxPages,
+    cookiesSet: 0,
+    domainsTouched: [],
+    currentDomain: null,
+    consentsAccepted: 0,
+    startedAt,
+  };
+
+  const abort = () => {
+    aborted = true;
+    report.status = 'aborted';
+    progress.status = 'aborted';
+  };
+
+  const runEntry: ActiveRunEntry = { runId, profileId: config.profileId, abortRequested: aborted, abort, progress };
+  activeRuns.set(runId, runEntry);
+  activeRuns.set(config.profileId, runEntry);
 
   let urlList: string[] = [];
   if (config.urls !== undefined && config.urls !== null) {
@@ -563,6 +632,23 @@ export async function runCookieRobot(
       // would act on (e.g. expecting it to be closed afterwards).
       report.managedProfile = supplied.ownsProfile;
     }
+
+    let consentsAcceptedCount = 0;
+    const syncNavProgress = async (domain: string) => {
+      try {
+        const cookies = await pageInstance?.cookies();
+        if (cookies) {
+          report.cookiesSet = cookies.length;
+        }
+      } catch {
+        // ignore cookie retrieval errors
+      }
+      progress.pagesVisited = report.pagesVisited;
+      progress.cookiesSet = report.cookiesSet;
+      progress.domainsTouched = Array.from(touchedDomains);
+      progress.currentDomain = domain;
+    };
+
 
     for (let i = 0; i < urlList.length && report.pagesVisited < maxPages; i++) {
       // Check kill switch before starting next page load
@@ -637,6 +723,8 @@ export async function runCookieRobot(
         domainLastTouch.set(hostname, Date.now());
         touchedDomains.add(hostname);
 
+        await syncNavProgress(hostname);
+
         // Cookie consent handling.
         // The runner reaches this straight after `domcontentloaded`, and a CMP injects its banner
         // after that — measured: scanning once here returns {clicked:false} on sites that do show
@@ -662,6 +750,17 @@ export async function runCookieRobot(
             label: outcome.label,
           });
           consentedDomains.add(hostname);
+          if (outcome.clicked) {
+            consentsAcceptedCount++;
+            try {
+              const cookies = await pageInstance.cookies();
+              report.cookiesSet = cookies.length;
+              progress.cookiesSet = report.cookiesSet;
+            } catch {
+              // ignore cookie retrieval errors
+            }
+          }
+          progress.consentsAccepted = consentsAcceptedCount;
         }
 
         // Stop before spending the dwell on a run the operator has already killed.
@@ -695,6 +794,9 @@ export async function runCookieRobot(
               }).catch(() => undefined);
 
               report.pagesVisited++;
+              const internalHost = new URL(internalLink).hostname;
+              touchedDomains.add(internalHost);
+              await syncNavProgress(internalHost);
               await simulateHumanMouseMove(pageInstance);
               await simulateHumanScroll(pageInstance, 1);
             }
@@ -710,6 +812,7 @@ export async function runCookieRobot(
         try {
           const cookies = await pageInstance.cookies();
           report.cookiesSet = cookies.length;
+          progress.cookiesSet = report.cookiesSet;
         } catch {
           // Ignore cookie retrieval errors
         }
@@ -723,9 +826,33 @@ export async function runCookieRobot(
     const msg = err instanceof Error ? err.message : String(err);
     if (!aborted) {
       report.status = 'error';
+      progress.status = 'error';
     }
     report.errors.push(`Robot execution error: ${msg}`);
   } finally {
+    // The report must be persisted BEFORE `active` flips to false. The UI polls progress and, the
+    // moment it sees `active: false`, fetches the report for that run — if the row is not written
+    // yet the fetch finds nothing and the modal falls back to a bare "completed" banner with no
+    // metrics, which reads as a failure to the operator. Ordering this the other way was a race the
+    // poll lost every time on a short run.
+    report.finishedAt = Date.now();
+    report.durationMs = report.finishedAt - startedAt;
+    report.domainsTouched = Array.from(touchedDomains);
+    if (aborted) {
+      report.status = 'aborted';
+    }
+    saveReport(report);
+
+    progress.active = false;
+    progress.currentDomain = null;
+    if (aborted) {
+      progress.status = 'aborted';
+    } else if (report.status === 'error') {
+      progress.status = 'error';
+    } else {
+      progress.status = 'completed';
+    }
+
     // BOTH keys must go: the entry is registered under the runId and the profileId, and deleting
     // only the runId left the finished run reachable by profile id — `abortCookieRobotRun` kept
     // reporting success for a run that had already completed.
@@ -734,13 +861,6 @@ export async function runCookieRobot(
     if (closeBrowserOrPage) {
       await closeBrowserOrPage().catch(() => undefined);
     }
-    report.finishedAt = Date.now();
-    report.durationMs = report.finishedAt - startedAt;
-    report.domainsTouched = Array.from(touchedDomains);
-    if (aborted) {
-      report.status = 'aborted';
-    }
-    saveReport(report);
   }
 
   return report;
@@ -767,18 +887,38 @@ export function invokeCookieRobotTask(
   const taskUuid = randomUUID();
   let cancelled = false;
 
-  const abortController = {
+  const initialMaxPages = Math.max(1, positiveOr(config.maxPages, 20));
+  const progress: ActiveRunProgress = {
+    active: true,
+    runId: taskUuid,
+    profileId: config.profileId,
+    status: 'running',
+    pagesVisited: 0,
+    maxPages: initialMaxPages,
+    cookiesSet: 0,
+    domainsTouched: [],
+    currentDomain: null,
+    consentsAccepted: 0,
+    startedAt: Date.now(),
+  };
+
+  const abortController: ActiveRunEntry = {
     runId: taskUuid,
     profileId: config.profileId,
     abortRequested: false,
     abort: () => {
       cancelled = true;
-      if (activeRuns.has(taskUuid)) {
-        activeRuns.get(taskUuid)?.abort();
+      abortController.abortRequested = true;
+      progress.status = 'aborted';
+      const current = activeRuns.get(taskUuid);
+      if (current && current !== abortController) {
+        current.abort();
       }
     },
+    progress,
   };
   activeRuns.set(taskUuid, abortController);
+  activeRuns.set(config.profileId, abortController);
 
   const donePromise = (async () => {
     if (cancelled) {
@@ -796,6 +936,9 @@ export function invokeCookieRobotTask(
         finishedAt: now,
       };
       saveReport(report);
+      progress.active = false;
+      progress.status = 'aborted';
+      activeRuns.delete(config.profileId);
       activeRuns.delete(taskUuid);
       return report;
     }

@@ -137,6 +137,21 @@ export interface CookieFarmReport {
   managedProfile?: boolean;
 }
 
+export interface CookieFarmProgress {
+  active: boolean;
+  runId?: string;
+  profileId?: string;
+  status?: 'running' | 'completed' | 'aborted' | 'error';
+  pagesVisited?: number;
+  maxPages?: number;
+  cookiesSet?: number;
+  domainsTouched?: string[];
+  currentDomain?: string | null;
+  consentsAccepted?: number;
+  startedAt?: number;
+  elapsedMs?: number;
+}
+
 export function getApiKey(): string {
   return apiKey;
 }
@@ -1148,6 +1163,29 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ profileId }),
     }),
+  startCookieFarm: (profileId: string) =>
+    request<{ runId: string; taskUuid: string; profileId: string }>('/api/cookie-robot/run?async=true', {
+      method: 'POST',
+      body: JSON.stringify({ profileId, async: true }),
+    }),
+  stopCookieFarm: (params: { runId?: string; profileId?: string }) =>
+    request<{ runId: string; stopped: boolean; aborted: boolean }>('/api/cookie-robot/stop', {
+      method: 'POST',
+      body: JSON.stringify(params),
+    }),
+  cookieFarmProgress: (params: { runId?: string; profileId?: string }) => {
+    const qs = new URLSearchParams();
+    if (params.runId) qs.set('runId', params.runId);
+    if (params.profileId) qs.set('profileId', params.profileId);
+    const q = qs.toString();
+    return request<CookieFarmProgress>(`/api/cookie-robot/progress${q ? `?${q}` : ''}`);
+  },
+  cookieFarmReport: (runId: string) =>
+    request<CookieFarmReport>(`/api/cookie-robot/reports/${encodeURIComponent(runId)}`),
+  cookieFarmReports: (profileId?: string) =>
+    request<CookieFarmReport[]>(
+      `/api/cookie-robot/reports${profileId ? `?profileId=${encodeURIComponent(profileId)}` : ''}`
+    ),
   cookieFarmSites: () =>
     request<{ sites: Array<{ url: string; category: string; weight: number }>; count: number }>(
       '/api/cookie-robot/sites'
@@ -1305,6 +1343,29 @@ export function androidStreamTicket(profileId: string): Promise<ApiEnvelope<Andr
 
 export function runCookieFarm(profileId: string): Promise<ApiEnvelope<CookieFarmReport>> {
   return api.runCookieFarm(profileId);
+}
+export function startCookieFarm(
+  profileId: string
+): Promise<ApiEnvelope<{ runId: string; taskUuid: string; profileId: string }>> {
+  return api.startCookieFarm(profileId);
+}
+export function stopCookieFarm(params: {
+  runId?: string;
+  profileId?: string;
+}): Promise<ApiEnvelope<{ runId: string; stopped: boolean; aborted: boolean }>> {
+  return api.stopCookieFarm(params);
+}
+export function cookieFarmProgress(params: {
+  runId?: string;
+  profileId?: string;
+}): Promise<ApiEnvelope<CookieFarmProgress>> {
+  return api.cookieFarmProgress(params);
+}
+export function cookieFarmReport(runId: string): Promise<ApiEnvelope<CookieFarmReport>> {
+  return api.cookieFarmReport(runId);
+}
+export function cookieFarmReports(profileId?: string): Promise<ApiEnvelope<CookieFarmReport[]>> {
+  return api.cookieFarmReports(profileId);
 }
 export function cookieFarmSites(): Promise<
   ApiEnvelope<{ sites: Array<{ url: string; category: string; weight: number }>; count: number }>

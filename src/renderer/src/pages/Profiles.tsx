@@ -1,4 +1,4 @@
-﻿import { useCallback, useEffect, useMemo, useState } from 'react';
+﻿import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { EmptyState } from '../components/EmptyState';
 import {
   api,
@@ -12,6 +12,7 @@ import {
   type ProfileTagBinding,
   type SyncSessionInfo,
   type CookieFarmReport,
+  type CookieFarmProgress,
 } from '../api';
 import { useI18n } from '../i18n';
 import { computeRunningCount } from '../sidebarLogic';
@@ -232,17 +233,31 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
     isOpen: boolean;
     profileId: string;
     profileName?: string;
+    runId?: string;
+    progress: CookieFarmProgress | null;
     report: CookieFarmReport | null;
     loading: boolean;
+    stopping: boolean;
     error: string | null;
   }>({
     isOpen: false,
     profileId: '',
     profileName: '',
+    runId: undefined,
+    progress: null,
     report: null,
     loading: false,
+    stopping: false,
     error: null,
   });
+  const activeFarmRunsRef = useRef<Map<string, string>>(new Map());
+  // Mirrors `cookieFarmModal` for the poll loop, which must read the CURRENT run/profile without
+  // listing them as effect dependencies — depending on the run id made the effect tear itself down
+  // the moment it learned that id. See the note on the polling effect.
+  const farmModalRef = useRef(cookieFarmModal);
+  useEffect(() => {
+    farmModalRef.current = cookieFarmModal;
+  }, [cookieFarmModal]);
 
   const [preflightCache, setPreflightCache] = useState<Record<string, { status: PreflightStatus | 'loading' | 'error'; verdict?: PreflightVerdict }>>({});
   const [blockOnFail, setBlockOnFail] = useState<boolean>(() => {
@@ -375,41 +390,191 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
     }
   };
   const handleRunCookieFarm = async (profileId: string, profileName?: string) => {
-    setBusy(true);
+    const knownRunId = activeFarmRunsRef.current.get(profileId);
     setCookieFarmModal({
       isOpen: true,
       profileId,
       profileName: profileName || profileId,
+      runId: knownRunId,
+      progress: null,
       report: null,
       loading: true,
+      stopping: false,
       error: null,
     });
+
     try {
-      const res = await api.runCookieFarm(profileId);
-      if (res.code === 0) {
-        setCookieFarmModal((m) => ({
-          ...m,
-          loading: false,
-          report: res.data,
+      const checkRes = await api.cookieFarmProgress({ profileId, runId: knownRunId });
+      if (checkRes.code === 0 && checkRes.data?.active) {
+        const activeRunId = checkRes.data.runId || knownRunId;
+        if (activeRunId) {
+          activeFarmRunsRef.current.set(profileId, activeRunId);
+        }
+        setCookieFarmModal((prev) => ({
+          ...prev,
+          runId: activeRunId,
+          progress: checkRes.data,
+          loading: true,
+          error: null,
+        }));
+        return;
+      }
+
+      const startRes = await api.startCookieFarm(profileId);
+      if (startRes.code === 0 && startRes.data?.runId) {
+        const newRunId = startRes.data.runId;
+        activeFarmRunsRef.current.set(profileId, newRunId);
+        setCookieFarmModal((prev) => ({
+          ...prev,
+          runId: newRunId,
+          loading: true,
           error: null,
         }));
       } else {
-        setCookieFarmModal((m) => ({
-          ...m,
+        setCookieFarmModal((prev) => ({
+          ...prev,
           loading: false,
-          error: res.msg || t('Cookie farm failed'),
+          error: startRes.msg || t('Cookie farm failed'),
         }));
       }
     } catch (err) {
-      setCookieFarmModal((m) => ({
-        ...m,
+      setCookieFarmModal((prev) => ({
+        ...prev,
         loading: false,
         error: (err as Error).message || t('Failed to run cookie farm'),
       }));
-    } finally {
-      setBusy(false);
     }
   };
+
+  const handleStopCookieFarm = async () => {
+    const runId = cookieFarmModal.runId;
+    const profileId = cookieFarmModal.profileId;
+    if (!runId && !profileId) return;
+
+    setCookieFarmModal((prev) => ({ ...prev, stopping: true }));
+    try {
+      await api.stopCookieFarm({ runId, profileId });
+    } catch (err) {
+      setCookieFarmModal((prev) => ({
+        ...prev,
+        stopping: false,
+        error: (err as Error).message || t('Failed to stop cookie farm'),
+      }));
+    }
+  };
+
+  useEffect(() => {
+    if (!cookieFarmModal.isOpen || !cookieFarmModal.loading || !cookieFarmModal.profileId) {
+      return;
+    }
+
+    let isSubscribed = true;
+
+    const poll = async () => {
+      try {
+        // Read the run id from the REF, not from state. While it came from `cookieFarmModal.runId`
+        // it had to be a dependency of this effect — and the first poll is what LEARNS that id, so
+        // every learn tore the effect down, cleared the interval, and dropped the in-flight result
+        // via the cleanup's `isSubscribed = false`. The live view was therefore almost never
+        // entered: the modal sat on the spinner and then jumped straight to a terminal state.
+        // A ref keeps the id available without re-running the effect.
+        const runId = activeFarmRunsRef.current.get(farmModalRef.current.profileId) ?? farmModalRef.current.runId;
+        const res = await api.cookieFarmProgress({
+          runId,
+          profileId: farmModalRef.current.profileId,
+        });
+
+        if (!isSubscribed) return;
+
+        if (res.code === 0 && res.data?.active) {
+          const activeRunId = res.data.runId || runId;
+          if (activeRunId) {
+            activeFarmRunsRef.current.set(farmModalRef.current.profileId, activeRunId);
+          }
+          setCookieFarmModal((prev) => ({
+            ...prev,
+            runId: activeRunId || prev.runId,
+            progress: res.data,
+          }));
+        } else if (res.code === 0 && !res.data?.active) {
+          // No run id yet means the start request is still in flight — the modal opens and begins
+          // polling BEFORE `startCookieFarm` has answered, so this tick legitimately sees nothing
+          // running. Treating that as "finished" was the defect: the live view was killed on the
+          // first tick and the operator got a terminal banner instead of progress. Keep waiting.
+          if (!runId) return;
+
+          activeFarmRunsRef.current.delete(farmModalRef.current.profileId);
+          const targetRunId = runId || res.data?.runId;
+          let finalReport: CookieFarmReport | null = null;
+
+          if (targetRunId) {
+            try {
+              const repRes = await api.cookieFarmReport(targetRunId);
+              if (repRes.code === 0 && repRes.data) {
+                finalReport = repRes.data;
+              }
+            } catch {
+              // ignore and fallback
+            }
+          }
+
+          if (!finalReport) {
+            try {
+              const listRes = await api.cookieFarmReports(farmModalRef.current.profileId);
+              if (listRes.code === 0 && Array.isArray(listRes.data) && listRes.data.length > 0) {
+                finalReport = listRes.data[0];
+              }
+            } catch {
+              // ignore
+            }
+          }
+
+          if (finalReport) {
+            setCookieFarmModal((prev) => ({
+              ...prev,
+              loading: false,
+              stopping: false,
+              progress: null,
+              report: finalReport,
+              error: null,
+            }));
+          } else {
+            // No report came back for a run that is no longer active. That is NOT an error — the
+            // crawl ran — but it is also not a success summary, so say what actually happened
+            // rather than painting "completed" red in the error slot, which is what an operator
+            // reads as a failure. A short retry covers the write-behind race.
+            let retried: CookieFarmReport | null = null;
+            if (targetRunId) {
+              await new Promise((r) => setTimeout(r, 600));
+              try {
+                const again = await api.cookieFarmReport(targetRunId);
+                if (again.code === 0 && again.data) retried = again.data;
+              } catch {
+                // fall through to the notice below
+              }
+            }
+            setCookieFarmModal((prev) => ({
+              ...prev,
+              loading: false,
+              stopping: false,
+              progress: null,
+              report: retried,
+              error: retried ? null : t('Warm-up finished. The run report was not available yet.'),
+            }));
+          }
+        }
+      } catch {
+        // network poll failure: keep modal open and retry on next tick
+      }
+    };
+
+    void poll();
+    const interval = setInterval(poll, 1000);
+    return () => {
+      isSubscribed = false;
+      clearInterval(interval);
+    };
+  }, [cookieFarmModal.isOpen, cookieFarmModal.loading, cookieFarmModal.profileId, t]);
 
 
   // Debounce server-side search (300 ms after the last keystroke).
@@ -3105,20 +3270,27 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
         <Modal
           title={`${t('Profile Warm-up (Cookie Farm)')}: ${cookieFarmModal.profileName || cookieFarmModal.profileId}`}
           icon={<CookieIcon size={18} />}
-          // The warm-up is a synchronous call held open for up to the session cap, and it keeps the
-          // whole table `busy` while it runs. Dismissing the modal mid-run used to leave the table
-          // disabled for minutes with no indicator and no way back to the report — so while loading
-          // the modal stays put: it is the only progress indicator the operator has.
+          // Close is always enabled: dismissing the modal does not abort the background run.
+          // Stop sends the abort signal to cancel the crawl.
           onClose={() => {
-            if (!cookieFarmModal.loading) setCookieFarmModal((prev) => ({ ...prev, isOpen: false }));
+            setCookieFarmModal((prev) => ({ ...prev, isOpen: false }));
           }}
           width={640}
           footer={
             <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', width: '100%' }}>
+              {cookieFarmModal.loading ? (
+                <button
+                  type="button"
+                  className="btn danger"
+                  disabled={cookieFarmModal.stopping}
+                  onClick={() => void handleStopCookieFarm()}
+                >
+                  {cookieFarmModal.stopping ? t('Stopping...') : t('Stop')}
+                </button>
+              ) : null}
               <button
                 type="button"
                 className="btn"
-                disabled={cookieFarmModal.loading}
                 onClick={() => setCookieFarmModal((prev) => ({ ...prev, isOpen: false }))}
               >
                 {t('Close')}
@@ -3132,10 +3304,92 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
             </div>
           ) : null}
 
-          {cookieFarmModal.loading ? (
-            <div className="preflight-loading-box">
-              <div className="preflight-spinner" />
-              <p>{t('Warming up profile (visiting sites, collecting cookies, accepting consent)...')}</p>
+          {cookieFarmModal.loading && !cookieFarmModal.report ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+              <div className="preflight-loading-box" style={{ margin: 0, padding: '12px 16px' }}>
+                <div className="preflight-spinner" />
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                  <p style={{ margin: 0, fontWeight: 500 }}>
+                    {t('Warming up profile (visiting sites, collecting cookies, accepting consent)...')}
+                  </p>
+                  <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                    {t('Crawl running in background')}
+                  </span>
+                </div>
+              </div>
+
+              <div className="metrics-row" style={{ marginBottom: 0 }}>
+                <div className="metric-card">
+                  <div className="metric-label">{t('Pages Visited')}</div>
+                  <div className="metric-value">
+                    {cookieFarmModal.progress
+                      ? `${cookieFarmModal.progress.pagesVisited ?? 0} / ${cookieFarmModal.progress.maxPages ?? '…'}`
+                      : '0 / …'}
+                  </div>
+                </div>
+                <div className="metric-card">
+                  <div className="metric-label">{t('Cookies Set')}</div>
+                  <div className="metric-value ok">
+                    {cookieFarmModal.progress?.cookiesSet ?? 0}
+                  </div>
+                </div>
+                <div className="metric-card">
+                  <div className="metric-label">{t('Domains Touched')}</div>
+                  <div className="metric-value">
+                    {cookieFarmModal.progress?.domainsTouched?.length ?? 0}
+                  </div>
+                </div>
+                <div className="metric-card">
+                  <div className="metric-label">{t('Consents Accepted')}</div>
+                  <div className="metric-value">
+                    {cookieFarmModal.progress?.consentsAccepted ?? 0}
+                  </div>
+                </div>
+              </div>
+
+              <div className="pf-section">
+                <div className="pf-section-label">{t('Current Site')}</div>
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8,
+                    padding: '8px 12px',
+                    background: 'var(--panel)',
+                    borderRadius: 'var(--radius-sm)',
+                    border: '1px solid var(--border)',
+                    fontSize: 12,
+                  }}
+                >
+                  <span
+                    style={{
+                      display: 'inline-block',
+                      width: 8,
+                      height: 8,
+                      borderRadius: 'var(--radius-full)',
+                      background: 'var(--accent)',
+                      flexShrink: 0,
+                    }}
+                  />
+                  <span style={{ fontFamily: 'var(--font-mono)' }}>
+                    {cookieFarmModal.progress?.currentDomain || t('Warming up profile (visiting sites, collecting cookies, accepting consent)...')}
+                  </span>
+                </div>
+              </div>
+
+              {cookieFarmModal.progress?.domainsTouched &&
+              cookieFarmModal.progress.domainsTouched.length > 0 ? (
+                <div className="pf-section">
+                  <div className="pf-section-label">{t('Domains Touched')}</div>
+                  <div className="pf-chip-input" style={{ maxHeight: 100, overflowY: 'auto' }}>
+                    {cookieFarmModal.progress.domainsTouched.map((domain, idx) => (
+                      <span key={idx} className="pf-chip" style={{ fontSize: 11, padding: '2px 6px' }}>
+                        {domain}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
             </div>
           ) : null}
 

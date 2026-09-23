@@ -4,6 +4,7 @@ import {
   runCookieRobot,
   invokeCookieRobotTask,
   abortCookieRobotRun,
+  getCookieRobotProgress,
   getReport,
   listReports,
   parseUrlList,
@@ -116,6 +117,31 @@ router.post(['/api/cookie-robot/stop', '/api/cookie-robot/abort'], (req: Request
     code: 0,
     msg: success ? 'Abort signal sent' : 'Run not found or already completed',
     data: { runId: idToAbort, stopped: success, aborted: success },
+  });
+});
+
+/**
+ * GET /api/cookie-robot/progress
+ * Retrieve live progress of a running cookie robot.
+ */
+router.get('/api/cookie-robot/progress', (req: Request, res: Response) => {
+  const runId = typeof req.query.runId === 'string' ? req.query.runId.trim() : (Array.isArray(req.query.runId) && typeof req.query.runId[0] === 'string' ? req.query.runId[0].trim() : '');
+  const profileId = typeof req.query.profileId === 'string' ? req.query.profileId.trim() : (Array.isArray(req.query.profileId) && typeof req.query.profileId[0] === 'string' ? req.query.profileId[0].trim() : '');
+
+  const progress = (runId ? getCookieRobotProgress(runId) : null) || (profileId ? getCookieRobotProgress(profileId) : null);
+
+  if (!progress || !progress.active) {
+    return res.json({
+      code: 0,
+      msg: 'ok',
+      data: { active: false },
+    });
+  }
+
+  return res.json({
+    code: 0,
+    msg: 'ok',
+    data: progress,
   });
 });
 
