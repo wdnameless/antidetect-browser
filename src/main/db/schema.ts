@@ -12,7 +12,7 @@ import { migrateTaskGroups } from './migrations/taskGroups';
  * string, whatever a future caller passes.
  */
 const MIGRATABLE_COLUMNS: Readonly<Record<string, true>> = {
-  private_key: true, timezone: true, latitude: true, longitude: true, browser_type: true,
+  private_key: true, timezone: true, latitude: true, longitude: true, city: true, browser_type: true,
   mobile_model_id: true, deleted_at: true, path: true, bookmarks: true, launch_args: true,
   color: true, do_not_track: true, blocked_ports: true, webrtc_policy: true, notes: true,
   headless: true, android_config: true,
@@ -60,6 +60,7 @@ export function migrate(db: Database): void {
       password    TEXT,
       private_key TEXT,
       country     TEXT,
+      city        TEXT,
       timezone    TEXT,
       status      TEXT DEFAULT 'unknown',
       created_at  INTEGER NOT NULL
@@ -238,6 +239,7 @@ export function migrate(db: Database): void {
   ensureColumn(db, 'proxies', 'timezone', 'TEXT');
   ensureColumn(db, 'proxies', 'latitude', 'REAL');
   ensureColumn(db, 'proxies', 'longitude', 'REAL');
+  ensureColumn(db, 'proxies', 'city', 'TEXT');
   ensureColumn(db, 'profiles', 'browser_type', 'TEXT DEFAULT \'chromium\'');
   ensureColumn(db, 'profiles', 'mobile_model_id', 'TEXT');
   // Trash (soft delete): NULL = live profile, timestamp = moved to trash.

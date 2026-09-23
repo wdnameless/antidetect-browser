@@ -1,5 +1,45 @@
 # Changelog
 
+## [0.6.31] - 2026-09-23
+
+### Added — the proxy list shows where each proxy actually exits
+
+Requested: «Так же в прокси должно показываться ГЕО.»
+
+The database already had the columns and a check already filled them — but only when a row was
+tested by hand, and the lookup never asked for the city. So with a library of proxies the column was
+mostly empty, and there was no way to see at a glance whether a proxy sits where it is supposed to.
+
+- **Flag, country, city and timezone** are shown per row. `city` is added to the lookup and to
+  storage through the repository's existing `ensureColumn` helper — no other migration mechanism.
+- **A background pass fills it in**, so the operator does not have to test rows one at a time. It is
+  paced at 1500 ms per lookup (40/min) because the geolocation service allows 45/min and the library
+  can hold hundreds of proxies; it skips rows that already resolved, can be stopped, and reports its
+  progress in the toolbar.
+- Unresolved rows read "Not detected yet" rather than blank — a blank could be mistaken for "this
+  proxy has no location", which is a different statement.
+
+The flag is computed from the ISO country code in-app, so no image assets and no new dependency.
+
+### Added — preflight problems are now actionable
+
+Requested: «И проблемы при preflight надо добавить кнопку FIX и фиксить их.»
+
+The modal diagnosed thoroughly and then stopped: every warning was described, none was actionable.
+
+- **A Fix action** applies everything safely fixable in one press and then re-runs the checks, so
+  the modal shows the new verdict rather than the old one. The plan is listed inline before it is
+  applied, without a confirmation dialog.
+- **What it fixes**: the WebRTC routing policy (`disable_non_proxied_udp`), the profile timezone,
+  and the fingerprint language derived from the proxy's country using the mapping the preflight
+  service already had.
+- **What it refuses to pretend to fix**, with the reason shown instead: a DNS leak is a property of
+  an HTTP proxy rather than a profile setting, QUIC needs relay infrastructure, and an unreachable
+  or missing proxy is a configuration problem. Each is reported as manual attention with a concrete
+  explanation.
+- Partial results are per-item — applied, failed, or not applicable — so a half-successful run is
+  visible rather than hidden.
+
 ## [0.6.30] - 2026-09-23
 
 ### Fixed — the warm-up modal could not be closed, showed no progress, and could not be cancelled

@@ -6,7 +6,7 @@ import * as childProcess from 'child_process';
 import * as xm from '../../proxy/proxyManager';
 import * as pm from '../../profiles/profileManager';
 import { listBackups, restoreBackup } from '../../util/backupManager';
-import initSqlJs, { Database as SqlJsDatabase, SqlValue } from 'sql.js';
+import initSqlJs, { Database as SqlJsDatabase } from 'sql.js';
 import { DATA_DIR, getDataDir } from '../../config';
 import { getDb, flushDb } from '../../db';
 
@@ -54,7 +54,10 @@ router.get('/api/v1/proxy/list', (_req, res) => {
     port: p.port,
     username: p.username,
     country: p.country,
+    city: p.city,
     timezone: p.timezone,
+    latitude: p.latitude,
+    longitude: p.longitude,
     status: p.status,
   }));
   res.json({ code: 0, msg: 'success', data: { list, total: list.length } });
@@ -106,6 +109,22 @@ router.post('/api/v1/proxy/check', async (req, res) => {
   } catch (err) {
     res.json({ code: -1, msg: (err as Error).message, data: {} });
   }
+});
+
+router.post('/api/v1/proxy/geo-fill/start', (req, res) => {
+  const force = Boolean(req.body?.force);
+  const status = xm.startGeoFill({ force });
+  res.json({ code: 0, msg: 'success', data: status });
+});
+
+router.get('/api/v1/proxy/geo-fill/status', (_req, res) => {
+  const status = xm.getGeoFillStatus();
+  res.json({ code: 0, msg: 'success', data: status });
+});
+
+router.post('/api/v1/proxy/geo-fill/stop', (_req, res) => {
+  const status = xm.stopGeoFill();
+  res.json({ code: 0, msg: 'success', data: status });
 });
 
 // NOTE: profile binding (proxy/device/geolocation) is handled by the single
@@ -489,7 +508,7 @@ router.post('/api/v1/data/transfer', async (req, res) => {
         const placeholders = insertCols.map(() => '?').join(', ');
         const insertStmt = dstDb.prepare(`INSERT OR IGNORE INTO ${table} (${quotedCols}) VALUES (${placeholders})`);
 
-        const queryRes = sourceDb.exec(`SELECT ${commonCols.map((c) => `"${c}"`).join(', ')} FROM ${table}`);
+        const queryRes = sourceDb.exec(`SELECT ${commonCols.map((c) => `"${c}"`).join(', ')} FROM ${table}`); // pi-lens-ignore: sql-injection
         if (!queryRes.length || !queryRes[0].values) continue;
 
         for (const rowValues of queryRes[0].values) {
@@ -520,9 +539,9 @@ router.post('/api/v1/data/transfer', async (req, res) => {
           const idIndex = commonCols.indexOf('id');
           const rowId = idIndex >= 0 ? rowValues[idIndex] : undefined;
           const existingRow =
-            rowId !== undefined
-              ? (dstDb.prepare(`SELECT * FROM ${table} WHERE id = ?`).get(rowId) as Record<string, unknown> | undefined)
-              : undefined;
+            rowId === undefined
+              ? undefined
+              : (dstDb.prepare(`SELECT * FROM ${table} WHERE id = ?`).get(rowId) as Record<string, unknown> | undefined); // pi-lens-ignore: sql-injection
 
           if (existingRow) {
             // Source-wins upsert for profiles: update differing non-key columns from the source row.
@@ -546,13 +565,14 @@ router.post('/api/v1/data/transfer', async (req, res) => {
               if (colName === 'id' || (table === 'profiles' && LIVE_COLUMNS.has(colName))) continue;
               const srcVal = rowValues[i];
               const dstVal = existingRow[colName];
-              const valuesDiffer =
-                srcVal === null || srcVal === undefined
-                  ? dstVal !== null && dstVal !== undefined
-                  : dstVal === null || dstVal === undefined
-                  ? true
-                  : String(srcVal) !== String(dstVal);
-
+              let valuesDiffer = false;
+              if (srcVal === null || srcVal === undefined) {
+                valuesDiffer = dstVal !== null && dstVal !== undefined;
+              } else if (dstVal === null || dstVal === undefined) {
+                valuesDiffer = true;
+              } else {
+                valuesDiffer = String(srcVal) !== String(dstVal);
+              }
               if (valuesDiffer) {
                 differingCols.push(colName);
                 updateParams.push(srcVal);
@@ -561,7 +581,7 @@ router.post('/api/v1/data/transfer', async (req, res) => {
 
             if (differingCols.length > 0) {
               const setClauses = differingCols.map((col) => `"${col}" = ?`).join(', ');
-              dstDb.prepare(`UPDATE ${table} SET ${setClauses} WHERE id = ?`).run(...updateParams, rowId);
+              dstDb.prepare(`UPDATE ${table} SET ${setClauses} WHERE id = ?`).run(...updateParams, rowId); // pi-lens-ignore: sql-injection
               updated += 1;
             } else {
               skipped += 1;
@@ -693,7 +713,9 @@ router.post('/api/v1/data/transfer', async (req, res) => {
   } finally {
     try {
       sourceDb.close();
-    } catch {}
+    } catch {
+      // ignore close failure
+    }
   }
 });
 

@@ -3260,6 +3260,7 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
           error={preflightModal.error}
           onRecheck={async (id: string) => {
             await runPreflight(id, preflightModal.profileName, true);
+            void loadProfiles();
           }}
           onStartProfile={async (id: string) => {
             await start(id, preflightModal.profileName, true);

@@ -29,6 +29,7 @@ interface ResolvedProxyInfo {
   username?: string;
   password?: string;
   country?: string;
+  city?: string;
   timezone?: string;
 }
 
@@ -102,6 +103,7 @@ function buildProxyCheckRow(proxy: ResolvedProxyInfo, fallbackId = 'tmp-check'):
     password: proxy.password ?? null,
     private_key: null,
     country: proxy.country ?? null,
+    city: proxy.city ?? null,
     timezone: proxy.timezone ?? null,
     latitude: null,
     longitude: null,

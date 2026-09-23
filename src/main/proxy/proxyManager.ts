@@ -30,6 +30,7 @@ export interface ProxyRow {
   password: string | null;
   private_key: string | null;
   country: string | null;
+  city: string | null;
   timezone: string | null;
   latitude: number | null;
   longitude: number | null;
@@ -41,6 +42,7 @@ export interface ProxyCheckResult {
   ok: boolean;
   ip?: string;
   country?: string;
+  city?: string;
   timezone?: string;
   latitude?: number;
   longitude?: number;
@@ -48,7 +50,7 @@ export interface ProxyCheckResult {
   error?: string;
 }
 
-const CHECK_URL = 'http://ip-api.com/json/?fields=status,query,country,timezone,lat,lon';
+const CHECK_URL = 'http://ip-api.com/json/?fields=status,query,country,city,timezone,lat,lon';
 
 function toProxyRow(row: unknown): ProxyRow {
   return row as ProxyRow;
@@ -58,8 +60,8 @@ export function createProxy(input: ProxyInput): string {
   const db = getDb();
   const id = 'x_' + randomUUID();
   db.prepare(
-    `INSERT INTO proxies (id, type, host, port, username, password, private_key, country, timezone, status, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    `INSERT INTO proxies (id, type, host, port, username, password, private_key, country, city, timezone, status, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   ).run(
     id,
     input.type,
@@ -68,6 +70,7 @@ export function createProxy(input: ProxyInput): string {
     input.username ?? null,
     protectSecret(input.password),
     protectSecret(input.privateKey),
+    null,
     null,
     null,
     'unknown',
@@ -118,10 +121,11 @@ export function deleteProxy(id: string): boolean {
 
 export function setProxyResult(id: string, result: ProxyCheckResult): void {
   getDb()
-    .prepare('UPDATE proxies SET status = ?, country = ?, timezone = ?, latitude = ?, longitude = ? WHERE id = ?')
+    .prepare('UPDATE proxies SET status = ?, country = ?, city = ?, timezone = ?, latitude = ?, longitude = ? WHERE id = ?')
     .run(
       result.ok ? 'ok' : 'fail',
       result.country ?? null,
+      result.city ?? null,
       result.timezone ?? null,
       result.latitude ?? null,
       result.longitude ?? null,
@@ -147,13 +151,16 @@ export async function checkProxy(proxy: ProxyRow): Promise<ProxyCheckResult> {
         password: revealSecret(proxy.password),
         privateKey: revealSecret(proxy.private_key),
       });
+      // SAFETY: SocksProxyAgent implements http.Agent interface compatible with node-fetch
       agent = new SocksProxyAgent(`socks5://127.0.0.1:${tunnel.port}`) as unknown as http.Agent;
     } else if (proxy.type === 'socks5') {
       const auth = proxy.username ? `${encodeURIComponent(proxy.username)}:${encodeURIComponent(revealSecret(proxy.password) ?? '')}@` : '';
+      // SAFETY: SocksProxyAgent implements http.Agent interface compatible with node-fetch
       agent = new SocksProxyAgent(`socks5://${auth}${proxy.host}:${proxy.port}`) as unknown as http.Agent;
     } else {
       // http / https
       const auth = proxy.username ? `${encodeURIComponent(proxy.username)}:${encodeURIComponent(revealSecret(proxy.password) ?? '')}@` : '';
+      // SAFETY: HttpProxyAgent implements http.Agent interface compatible with node-fetch
       agent = new HttpProxyAgent(`http://${auth}${proxy.host}:${proxy.port}`) as unknown as http.Agent;
     }
 
@@ -162,6 +169,7 @@ export async function checkProxy(proxy: ProxyRow): Promise<ProxyCheckResult> {
       status?: string;
       query?: string;
       country?: string;
+      city?: string;
       timezone?: string;
       lat?: number;
       lon?: number;
@@ -174,6 +182,7 @@ export async function checkProxy(proxy: ProxyRow): Promise<ProxyCheckResult> {
       ok: true,
       ip: body.query,
       country: body.country,
+      city: body.city,
       timezone: body.timezone,
       latitude: body.lat,
       longitude: body.lon,
@@ -184,6 +193,125 @@ export async function checkProxy(proxy: ProxyRow): Promise<ProxyCheckResult> {
   } finally {
     if (tunnel) await tunnel.close();
   }
+}
+
+export interface GeoFillStatus {
+  running: boolean;
+  total: number;
+  completed: number;
+  succeeded: number;
+  failed: number;
+  current_proxy_id: string | null;
+  started_at: number | null;
+  pacing_ms: number;
+}
+
+const GEO_FILL_PACING_MS = 1500; // 1500ms delay = 40 req/min (strictly under ip-api 45 req/min free limit)
+
+function delay(ms: number): Promise<void> {
+  const { promise, resolve } = Promise.withResolvers<void>();
+  setTimeout(resolve, ms);
+  return promise;
+}
+let geoFillActive = false;
+let geoFillAbort = false;
+let geoFillStatus: GeoFillStatus = {
+  running: false,
+  total: 0,
+  completed: 0,
+  succeeded: 0,
+  failed: 0,
+  current_proxy_id: null,
+  started_at: null,
+  pacing_ms: GEO_FILL_PACING_MS,
+};
+
+export function getGeoFillStatus(): GeoFillStatus {
+  return { ...geoFillStatus };
+}
+
+export function stopGeoFill(): GeoFillStatus {
+  if (geoFillActive) {
+    geoFillAbort = true;
+  }
+  return { ...geoFillStatus, running: false };
+}
+
+export function startGeoFill(options?: { force?: boolean }): GeoFillStatus {
+  if (geoFillActive) {
+    return { ...geoFillStatus };
+  }
+
+  const db = getDb();
+  const query = options?.force
+    ? 'SELECT * FROM proxies WHERE (country IS NULL OR country = \'\' OR city IS NULL) ORDER BY created_at DESC'
+    : 'SELECT * FROM proxies WHERE (country IS NULL OR country = \'\' OR city IS NULL) AND status != \'fail\' ORDER BY created_at DESC';
+  const candidates = db.prepare(query).all() as ProxyRow[];
+
+  if (candidates.length === 0) {
+    geoFillStatus = {
+      running: false,
+      total: 0,
+      completed: 0,
+      succeeded: 0,
+      failed: 0,
+      current_proxy_id: null,
+      started_at: null,
+      pacing_ms: GEO_FILL_PACING_MS,
+    };
+    return { ...geoFillStatus };
+  }
+
+  geoFillActive = true;
+  geoFillAbort = false;
+  geoFillStatus = {
+    running: true,
+    total: candidates.length,
+    completed: 0,
+    succeeded: 0,
+    failed: 0,
+    current_proxy_id: null,
+    started_at: Date.now(),
+    pacing_ms: GEO_FILL_PACING_MS,
+  };
+
+  void (async () => {
+    try {
+      for (const proxy of candidates) {
+        if (geoFillAbort) break;
+
+        const current = getProxy(proxy.id);
+        if (!current || (current.country && current.city)) {
+          geoFillStatus.completed++;
+          continue;
+        }
+
+        geoFillStatus.current_proxy_id = proxy.id;
+        try {
+          const res = await checkProxy(current);
+          setProxyResult(proxy.id, res);
+          if (res.ok) {
+            geoFillStatus.succeeded++;
+          } else {
+            geoFillStatus.failed++;
+          }
+        } catch {
+          geoFillStatus.failed++;
+        }
+        geoFillStatus.completed++;
+
+        if (!geoFillAbort && geoFillStatus.completed < geoFillStatus.total) {
+          await delay(GEO_FILL_PACING_MS);
+        }
+      }
+    } finally {
+      geoFillActive = false;
+      geoFillStatus.running = false;
+      geoFillStatus.current_proxy_id = null;
+    }
+  })();
+
+  return { ...geoFillStatus };
 }
 
 export {

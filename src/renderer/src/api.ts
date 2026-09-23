@@ -77,10 +77,23 @@ export interface ProxyItem {
   port: number;
   username: string | null;
   country: string | null;
+  city?: string | null;
   timezone: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
   status: string;
 }
 
+export interface GeoFillStatus {
+  running: boolean;
+  total: number;
+  completed: number;
+  succeeded: number;
+  failed: number;
+  current_proxy_id: string | null;
+  started_at: number | null;
+  pacing_ms: number;
+}
 export interface DeviceItem {
   device_id: string;
   name: string;
@@ -781,7 +794,7 @@ export const api = {
   proxyTest: (body: { type: string; host: string; port: number; username?: string; password?: string }) =>
     request<ProxyTestResult>('/api/v1/proxy/test', { method: 'POST', body: JSON.stringify(body) }),
   proxyCheck: (proxy_id: string) =>
-    request<{ ok: boolean; ip?: string; country?: string; timezone?: string; latencyMs?: number; error?: string }>(
+    request<{ ok: boolean; ip?: string; country?: string; city?: string; timezone?: string; latencyMs?: number; error?: string }>(
       '/api/v1/proxy/check',
       { method: 'POST', body: JSON.stringify({ proxy_id }) }
     ),
@@ -789,6 +802,17 @@ export const api = {
     request<Record<string, never>>('/api/v1/proxy/delete', {
       method: 'POST',
       body: JSON.stringify({ proxy_id }),
+    }),
+  proxyGeoFillStart: (options?: { force?: boolean }) =>
+    request<GeoFillStatus>('/api/v1/proxy/geo-fill/start', {
+      method: 'POST',
+      body: JSON.stringify(options ?? {}),
+    }),
+  proxyGeoFillStatus: () =>
+    request<GeoFillStatus>('/api/v1/proxy/geo-fill/status'),
+  proxyGeoFillStop: () =>
+    request<GeoFillStatus>('/api/v1/proxy/geo-fill/stop', {
+      method: 'POST',
     }),
   deviceList: () => request<{ list: DeviceItem[]; total: number }>('/api/v1/device/list'),
   mobilePresets: () =>

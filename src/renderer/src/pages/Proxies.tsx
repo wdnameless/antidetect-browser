@@ -1,9 +1,22 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { api, type ProxyItem } from '../api';
-import { ProxiesIcon, PlusIcon, TrashIcon, RefreshIcon, CheckIcon } from '../icons';
+import { api, type ProxyItem, type GeoFillStatus } from '../api';
+import { ProxiesIcon, PlusIcon, TrashIcon, RefreshIcon } from '../icons';
 import { EmptyState } from '../components/EmptyState';
 import { useColumnResize } from '../useColumnResize';
 import { useI18n } from '../i18n';
+
+/**
+ * Flag emoji for an ISO country code, computed rather than stored: the regional-indicator symbols
+ * are derived from the letters, so no image assets and no dependency are needed. Returns an empty
+ * string for anything that is not a two-letter code, so a malformed value renders as nothing rather
+ * than as a broken box.
+ */
+function flagOf(country: string | null | undefined): string {
+  if (!country) return '';
+  const code = country.trim().toUpperCase();
+  if (!/^[A-Z]{2}$/.test(code)) return '';
+  return String.fromCodePoint(...[...code].map((ch) => 0x1f1e6 + ch.charCodeAt(0) - 65));
+}
 
 export function Proxies() {
   const { t } = useI18n();
@@ -18,6 +31,7 @@ export function Proxies() {
   const [pass, setPass] = useState('');
   const [privateKey, setPrivateKey] = useState('');
   const [checkResult, setCheckResult] = useState<Record<string, { ok: boolean; ip?: string; latencyMs?: number; error?: string }>>({});
+  const [geoFill, setGeoFill] = useState<GeoFillStatus | null>(null);
 
   /**
    * Resizable columns, same contract as the profiles table: shares of the container rather than
@@ -47,6 +61,50 @@ export function Proxies() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  // The geo pass is long by design: 142 proxies at 1500ms pacing is ~4 minutes, so the UI tracks it
+  // instead of blocking on it. Polling stops as soon as the pass reports itself finished.
+  useEffect(() => {
+    let cancelled = false;
+    const tick = async () => {
+      try {
+        const res = await api.proxyGeoFillStatus();
+        if (cancelled || res.code !== 0) return;
+        setGeoFill(res.data);
+        if (!res.data.running) {
+          await load();
+        }
+      } catch {
+        // A status poll failing is not worth surfacing; the next tick retries.
+      }
+    };
+    void tick();
+    const timer = setInterval(tick, 2000);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [load]);
+
+  const startGeoFill = async () => {
+    setError('');
+    try {
+      const res = await api.proxyGeoFillStart();
+      if (res.code === 0) setGeoFill(res.data);
+      else setError(res.msg);
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  };
+
+  const stopGeoFill = async () => {
+    try {
+      const res = await api.proxyGeoFillStop();
+      if (res.code === 0) setGeoFill(res.data);
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  };
 
   const create = async () => {
     setBusy(true);
@@ -179,7 +237,25 @@ export function Proxies() {
           <ProxiesIcon size={20} style={{ color: 'var(--text-secondary)' }} />
           <span className="hint" style={{ margin: 0 }}>({t('proxies configured')}: {proxies.length})</span>
         </div>
-        <div style={{ display: 'flex', gap: 8 }}>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          {/* Geo is filled in the background because the free lookup service allows 45 requests a
+              minute and this library holds 142 proxies — the pass is paced, and this shows where it
+              is rather than pretending it is instant. */}
+          {geoFill?.running ? (
+            <>
+              <span className="hint" style={{ margin: 0 }}>
+                {t('Auto-detecting geo…')} {geoFill.completed}/{geoFill.total}
+              </span>
+              <button className="btn" onClick={() => void stopGeoFill()}>
+                {t('Stop Auto-detect')}
+              </button>
+            </>
+          ) : (
+            <button className="btn" onClick={() => void startGeoFill()} title={t('Auto-detect Geo')}>
+              <RefreshIcon size={14} />
+              <span>{t('Auto-detect Geo')}</span>
+            </button>
+          )}
           <button className="btn" onClick={() => setShowImport(true)}>
             {t('Import List')}
           </button>
@@ -423,12 +499,18 @@ export function Proxies() {
                           <span className="row-dense__status" style={{ fontSize: 12, color: res.ok ? 'var(--ok)' : 'var(--danger)' }}>
                             {res.ok ? `✓ ${res.ip} (${res.latencyMs}ms)` : `✕ ${res.error || 'Failed'}`}
                           </span>
-                        ) : p.country ? (
+                        ) : p.country || p.city ? (
                           <span style={{ fontSize: 12.5, color: 'var(--text-secondary)' }}>
-                            {p.country} ({p.timezone || 'UTC'})
+                            {/* Flag, country, city and timezone — the operator needs to see where the
+                                proxy actually exits, not just that something was stored. */}
+                            {flagOf(p.country) ? `${flagOf(p.country)} ` : ''}
+                            {[p.country, p.city].filter(Boolean).join(' · ')}
+                            {p.timezone ? ` · ${p.timezone}` : ''}
                           </span>
                         ) : (
-                          <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{t('Not tested')}</span>
+                          <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                            {geoFill?.running ? t('Detecting…') : t('Not detected yet')}
+                          </span>
                         )}
                       </div>
                     </td>

@@ -648,6 +648,7 @@ router.post('/api/v1/proxy/test', async (req, res) => {
       password: parsed.data.password ?? null,
       private_key: parsed.data.privateKey ?? null,
       country: null,
+      city: null,
       timezone: null,
       latitude: null,
       longitude: null,
