@@ -151,6 +151,12 @@ export interface StealthConfig {
   webglVendor?: string;
   webglRenderer?: string;
   fontList?: string[];
+  /**
+   * Surfaces the kernel already spoofs natively for this launch, so the JavaScript layer stands
+   * down on them instead of overwriting the engine on the main thread only. See
+   * `StealthOptions.engineCovers` for the measurements that motivated it.
+   */
+  engineCovers?: { canvas?: boolean; deviceMemory?: boolean; clientHints?: boolean; webgl?: boolean };
 }
 
 export interface SshTunnelConfig {
@@ -1422,12 +1428,18 @@ export function listProfiles(
     clauses.push('EXISTS (SELECT 1 FROM profile_tags pt WHERE pt.profile_id = p.id AND pt.tag_id = ?)');
     params.push(tagId);
   }
-  const where = clauses.length > 0 ? ` WHERE ${clauses.join(' AND ')}` : '';
+  // Only the SHAPE is interpolated: every clause above is a hardcoded literal ending in `?`, and
+  // every value travels in `params`. The repo uses this marker for exactly this pattern, see
+  // `src/main/db/schema.ts:41`. Annotated rather than restructured because the scanner cannot tell
+  // an allow-listed shape from attacker-controlled text, and an unannotated hit blocks the whole
+  // file on every subsequent edit.
+  const where = clauses.length > 0 ? ` WHERE ${clauses.join(' AND ')}` : ''; // pi-lens-ignore: sql-injection
 
-  const total = (db.prepare(`SELECT COUNT(*) AS c FROM profiles p
+  const total = (db.prepare( // pi-lens-ignore: sql-injection
+    `SELECT COUNT(*) AS c FROM profiles p
         LEFT JOIN proxies px ON px.id = p.proxy_id
         LEFT JOIN devices dev ON dev.id = p.device_id${where}`).get(...params) as { c: number }).c;
-  const rows = db
+  const rows = db // pi-lens-ignore: sql-injection
     .prepare(
       `SELECT p.id, p.name, p.status, p.group_id, p.color,
               px.type AS proxy_type, px.host AS proxy_host, px.port AS proxy_port, px.country AS proxy_country,
@@ -1463,14 +1475,20 @@ export function listProfiles(
     if (typeof chromiumLauncher.isRunning === 'function') {
       isRunningFn = chromiumLauncher.isRunning;
     }
-  } catch {}
+  } catch {
+    // Optional dependency: this module is absent in some build modes, and the caller tolerates a
+    // missing liveness probe by reporting the stored status. Swallowed deliberately — but only
+    // for that reason, so a failure is still diagnosable from the fallback it produces.
+  }
   try {
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const firefoxLauncher = require('../launcher/firefox') as { isRunning?: (id: string) => boolean };
     if (typeof firefoxLauncher.isRunning === 'function') {
       isFirefoxRunningFn = firefoxLauncher.isRunning;
     }
-  } catch {}
+  } catch {
+    // Same as above: the Firefox launcher is optional and its absence is not an error.
+  }
 
   const list: ProfileListItem[] = rows.map((r) => {
     const liveRunning = isRunningFn(r.id) || isFirefoxRunningFn(r.id);

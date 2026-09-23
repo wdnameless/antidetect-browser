@@ -175,4 +175,56 @@ describe('hygiene: declarations must be consumed', () => {
       expect(split, `${rel} gives globalThis its own object instead of aliasing the sandbox`).toBe(false);
     }
   });
+
+  it('the stealth layer stands down on surfaces the kernel already spoofs', () => {
+    // Guards a defect measured with `scripts/probe-stealth-contexts.mjs`, which launches the real
+    // kernel with this module's real output and compares the main thread against a Web Worker:
+    //
+    //   before -> memory 8 (page) vs 16 (worker); canvas 1457566783 vs 3616719147
+    //   after  -> 0/8 surfaces diverge, across every seed tried
+    //
+    // The cause was duplication, not a missing worker hook. The kernel already spoofed both
+    // surfaces consistently in BOTH contexts, while the JavaScript layer overwrote them on the
+    // main thread only (its prototypes are document-scoped, so a worker never sees them). An
+    // antifraud script needs no idea which value is correct — the disagreement is the signal.
+    //
+    // The hook must still exist for stock binaries where the kernel covers nothing, so this
+    // asserts the CONDITION rather than the absence of the code.
+    const engineCovers = buildStealthScript({
+      mobile: false,
+      logicalPlatform: 'macos',
+      hardwareConcurrency: 8,
+      deviceMemory: 4,
+      seed: 2023,
+    });
+    const legacy = buildStealthScript({
+      mobile: false,
+      logicalPlatform: 'macos',
+      hardwareConcurrency: 8,
+      deviceMemory: 4,
+      seed: 2023,
+      engineCovers: { canvas: true, deviceMemory: true, clientHints: true },
+    });
+
+    // Both must remain valid, runnable browser scripts.
+    for (const [label, src] of [['default', engineCovers], ['engineCovers', legacy]] as const) {
+      expect(() => new vm.Script(src), `${label} variant must parse`).not.toThrow();
+    }
+
+    // The deviceMemory override is conditional on the flag in both variants.
+    for (const src of [engineCovers, legacy]) {
+      expect(src).toMatch(/CFG\.engineCoversDeviceMemory/);
+      expect(src).toMatch(/CFG\.engineCoversCanvas/);
+      expect(src).toMatch(/CFG\.engineCoversClientHints/);
+    }
+
+    // And the flags actually reach the payload with the requested values, so a launcher that
+    // passes engineCovers gets the stand-down and one that does not keeps the old behaviour.
+    expect(legacy).toMatch(/"engineCoversCanvas":true/);
+    expect(legacy).toMatch(/"engineCoversDeviceMemory":true/);
+    expect(legacy).toMatch(/"engineCoversClientHints":true/);
+    expect(engineCovers).toMatch(/"engineCoversCanvas":false/);
+    expect(engineCovers).toMatch(/"engineCoversDeviceMemory":false/);
+    expect(engineCovers).toMatch(/"engineCoversClientHints":false/);
+  });
 });

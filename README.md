@@ -40,6 +40,7 @@ API не управляет страницами сам. Он **запускае
 - [`docs/ADSPOWER_ANALYSIS.md`](docs/ADSPOWER_ANALYSIS.md) — разбор функционала AdsPower и технических подходов.
 - [`docs/DECISIONS.md`](docs/DECISIONS.md) — зафиксированные архитектурные решения (ADR).
 - [`docs/KERNEL.md`](docs/KERNEL.md) — браузерное ядро fingerprint-chromium: флаги, интеграция, ограничения.
+- [`docs/STEALTH_PARITY.md`](docs/STEALTH_PARITY.md) — **согласованность стелса между контекстами**: замеренные расхождения main thread ↔ Web Worker, их причина и что закрыто, а что нет.
 - [`docs/PHASE0.md`](docs/PHASE0.md) — текущая фаза: задачи, критерии готовности, верификация.
 - [`docs/MCP.md`](docs/MCP.md) — **MCP-сервер для ИИ-агентов**: как получить готовый сервер одной кнопкой, конфиг для агента, все 47 инструментов и их уровни доступа.
 - [`docs/RELEASE.md`](docs/RELEASE.md) — **что сделать в репозитории для релизов**: секреты подписи, тег, проверка автообновлений.

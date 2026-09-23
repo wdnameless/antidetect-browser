@@ -7,7 +7,6 @@ import {
   getSyntheticVoicePool,
   getSyntheticMediaDevices,
   resolveSensorConfig,
-  SensorProfile,
   SubSeeds,
   SyntheticMediaDevice,
   SyntheticVoice,
@@ -37,6 +36,22 @@ export interface StealthOptions {
   chip?: string;
   architecture?: string;
   fontList?: string[];
+  /**
+   * Surfaces the KERNEL already spoofs natively for this launch.
+   *
+   * Measured reason this exists: our own probe compared the main thread against a Worker and
+   * found the page reporting `deviceMemory 8` while the worker reported `16`, and two different
+   * canvas hashes for one claimed device (1457566783 vs 3616719147). The cause was duplication,
+   * not a missing worker hook — the kernel already spoofed both surfaces, consistently in both
+   * contexts, and the JavaScript layer overwrote them on the main thread only. An antifraud
+   * script does not need to know which value is "right": the disagreement itself is the signal.
+   *
+   * With the kernel's canvas the hash is already unique per profile AND identical across
+   * contexts (measured across four seeds), so the JavaScript noise adds nothing but divergence.
+   * When the launcher runs a stock binary the kernel covers nothing and this stays falsy, which
+   * is why the JavaScript path is retained rather than deleted.
+   */
+  engineCovers?: { canvas?: boolean; deviceMemory?: boolean; clientHints?: boolean; webgl?: boolean };
   webgpu?: {
     vendor?: string;
     architecture?: string;
@@ -87,6 +102,21 @@ function defaultPlatformVersion(lp: LogicalPlatform): string {
     case 'linux': return '6.5.0';
     case 'android': return '14.0.0';
     case 'ios': return '17.5.0';
+  }
+}
+
+/**
+ * Default device model reported to Client Hints for a platform that has one.
+ *
+ * Extracted from a nested ternary that read `android ? 'Pixel 8' : ios ? 'iPhone' : ''`, which is
+ * parsed right-to-left and invites the reader to conclude the empty string applies to every
+ * non-Apple platform. Desktop platforms genuinely have no model, so '' is correct for them.
+ */
+function defaultModelFor(lp: LogicalPlatform): string {
+  switch (lp) {
+    case 'android': return 'Pixel 8';
+    case 'ios': return 'iPhone';
+    default: return '';
   }
 }
 
@@ -365,13 +395,21 @@ export function buildStealthScript(opts: StealthOptions): string {
     platformVersion: opts.platformVersion ?? (hwVector ? hwVector.platformVersion : defaultPlatformVersion(opts.logicalPlatform)),
     architecture: getArchitecture(opts.logicalPlatform, opts.chip, opts.architecture),
     bitness: '64',
-    model: opts.model ?? (opts.logicalPlatform === 'android' ? 'Pixel 8' : opts.logicalPlatform === 'ios' ? 'iPhone' : ''),
+    // Flattened from a nested ternary: `android ? 'Pixel 8' : ios ? 'iPhone' : ''` is read
+    // right-to-left and is easy to misread as assigning '' to everything non-Apple.
+    model: opts.model ?? defaultModelFor(opts.logicalPlatform),
     brands: BRANDS,
     fullVersionList: FULL_VERSION_LIST,
     hardwareConcurrency: opts.hardwareConcurrency ?? (hwVector ? hwVector.cpuCores : null),
     deviceMemory: opts.deviceMemory ?? (hwVector ? hwVector.ramGB : null),
     maxTouchPoints: opts.maxTouchPoints ?? null,
     canvasNoise: opts.canvasNoise ?? true,
+    // Whether the kernel handles a surface natively for this launch. When it does, the JavaScript
+    // layer stands down so the two cannot disagree (see StealthOptions.engineCovers).
+    engineCoversCanvas: opts.engineCovers?.canvas ?? false,
+    engineCoversDeviceMemory: opts.engineCovers?.deviceMemory ?? false,
+    engineCoversClientHints: opts.engineCovers?.clientHints ?? false,
+    engineCoversWebgl: opts.engineCovers?.webgl ?? false,
     audioNoise: opts.audioNoise ?? true,
     rectsNoise: opts.rectsNoise ?? true,
     webglNoise: opts.webglNoise ?? true,
@@ -521,7 +559,19 @@ export function buildStealthScript(opts: StealthOptions): string {
     toJSON: toJSONFn,
   };
 
-  if (typeof Navigator !== 'undefined') {
+  // Same stand-down as canvas and deviceMemory, for the same measured reason.
+  //
+  // The kernel fills every SYNC Client Hints field identically on the page and inside a worker
+  // (measured: with NT_NO_EXT=1 the two contexts agree; the JS layer is what introduced the gap).
+  // This hook then overwrote the page's object with values a worker never receives, because
+  // Navigator inside a worker is a different object. Result: the page reported
+  // {arch:arm,bits:64,pv:14.5.0} while the worker reported {} — one claimed device, two answers,
+  // exactly the pattern the other stand-downs in this module were added for.
+  //
+  // getHighEntropyValues is left hooked: it is an async method the kernel also answers, but the JS
+  // version is what the page's other surfaces were made consistent with. Kept when the kernel is
+  // absent, where it is the only source of these values.
+  if (typeof Navigator !== 'undefined' && !CFG.engineCoversClientHints) {
     hookGetter(Navigator.prototype, 'userAgentData', function () { return uaData; });
   }
 
@@ -595,9 +645,14 @@ export function buildStealthScript(opts: StealthOptions): string {
     }
 
     // TODO(engine-parity): Navigator.prototype.deviceMemory
+    //
+    // Skipped when the kernel already spoofs it: there is no --fingerprint-device-memory switch
+    // (measured — the kernel ignores one and picks 4/8/16/32/64 from the seed itself), so a value
+    // chosen here can only ever DISAGREE with the engine. Measured: 251 of 400 seeds (63%) get a
+    // ramGB that differs from the engine's, and the page/worker pair then reports 8 vs 16.
     if (isMobile) {
       hookGetter(Navigator.prototype, 'deviceMemory', function () { return undefined; });
-    } else if (CFG.deviceMemory !== null) {
+    } else if (CFG.deviceMemory !== null && !CFG.engineCoversDeviceMemory) {
       hookGetter(Navigator.prototype, 'deviceMemory', function () { return CFG.deviceMemory; });
     }
 
@@ -915,7 +970,14 @@ export function buildStealthScript(opts: StealthOptions): string {
   }
 
   // --- Canvas 2D Noise Injection ---
-  if (CFG.canvasNoise && typeof CanvasRenderingContext2D !== 'undefined') {
+  //
+  // Skipped when the kernel already spoofs canvas. Measured: with the kernel alone the hash is
+  // unique per profile AND identical on the page and in a worker (four seeds produced four
+  // distinct hashes, each stable across contexts). Layering this noise on top changed only the
+  // MAIN thread, because these prototypes are document-scoped and workers never see them — so
+  // the page and the worker reported 1457566783 vs 3616719147 for one claimed device. An
+  // antifraud script does not need to know the correct value; the disagreement is the signal.
+  if (CFG.canvasNoise && typeof CanvasRenderingContext2D !== 'undefined' && !CFG.engineCoversCanvas) {
     // TODO(engine-parity): CanvasRenderingContext2D.prototype.getImageData
     const origGetImageData = CanvasRenderingContext2D.prototype.getImageData;
     hookMethod(CanvasRenderingContext2D.prototype, 'getImageData', function getImageData(sx, sy, sw, sh) {
@@ -980,7 +1042,15 @@ export function buildStealthScript(opts: StealthOptions): string {
   }
 
   // --- WebGL / WebGL2 Noise & Vendor Spoofing ---
-  if (CFG.webglNoise) {
+  //
+  // Third surface with the same stand-down, and this one was found by an independent reviewer
+  // running the probe with the launcher's GPU flags, which the probe had been omitting — without
+  // them the kernel exposes no WebGL context at all and the comparison silently read 'no-gl' on
+  // both sides, i.e. it agreed because nothing was measured. With the flags: kernel-only gives
+  // identical strings in both contexts, while the JavaScript layer makes the page report 'no-gl'
+  // against the worker's spoofed
+  // 'Google Inc. (Apple)|ANGLE (...)'.
+  if (CFG.webglNoise && !CFG.engineCoversWebgl) {
     const UNMASKED_VENDOR_WEBGL = 0x9245;
     const UNMASKED_RENDERER_WEBGL = 0x9246;
 
