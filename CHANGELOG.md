@@ -1,5 +1,33 @@
 # Changelog
 
+## [0.6.29] - 2026-09-23
+
+### Fixed — the last three findings from the preflight sweep
+
+«Все фикси». The sweep produced nine findings; six shipped in 0.6.28. These are the remainder, each
+re-verified against the source before being touched.
+
+**A blocked launch could show a stale PASS.** When the launch guard refused a profile, the code threw
+away the fresh failing verdict that the response already carried and asked the inspector instead —
+and the inspector returns its **local cache** first. So an operator who had run a preflight earlier
+and then changed the proxy would see the modal open on "Overall Result: PASS" with green ticks while
+the banner said the launch was blocked. Two contradicting statements about one profile, and the
+failing one was the true one. The guard's verdict is now the one displayed, and the cache is updated
+from it, so the modal and the banner agree.
+
+**The proxy was probed twice, concurrently.** The liveness check and the egress-geo check each called
+the proxy check with the same arguments, in parallel. That was not merely duplicated work: on a
+**rotating** proxy the two calls exit through different IPs, so the geo check compared the profile's
+declared country against an IP the liveness check never observed — the same proxy described two
+different ways within one run. It also opened two SSH tunnels on dynamic ports and doubled public
+GeoIP lookups against their rate limit. The run now performs one probe and shares its result, while
+each check keeps its own verdict: an unresolvable proxy still fails, a proxy-less profile still
+passes without a probe, and a failed lookup still warns rather than fails.
+
+**The primary network probe reported no latency.** The proxy check's measured latency went into the
+human-readable detail line only, so the one probe whose latency actually matters showed no badge
+while every lesser check showed one. It now populates `durationMs`, which is what the modal renders.
+
 ## [0.6.28] - 2026-09-22
 
 ### Added — the preflight verdict is visible in the row again

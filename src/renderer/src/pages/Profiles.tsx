@@ -974,7 +974,23 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
           const errMsg = guardRes.msg || 'Launch blocked by preflight check failure';
           setError(errMsg);
           // Automatically trigger inspection modal to show details and remediation hints
-          await inspectPreflight(id, profileName);
+          const freshVerdict = guardRes.data?.verdict;
+          if (freshVerdict) {
+            setPreflightCache((prev) => ({
+              ...prev,
+              [id]: { status: freshVerdict.overall, verdict: freshVerdict },
+            }));
+            setPreflightModal({
+              isOpen: true,
+              profileId: id,
+              profileName: profileName || id,
+              verdict: freshVerdict,
+              loading: false,
+              error: null,
+            });
+          } else {
+            await inspectPreflight(id, profileName);
+          }
           return;
         }
       }

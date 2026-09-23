@@ -92,9 +92,28 @@ export function resolveProfileData(profileId: string): ProfileResolvedData | nul
   };
 }
 
+function buildProxyCheckRow(proxy: ResolvedProxyInfo, fallbackId = 'tmp-check'): proxyManager.ProxyRow {
+  return {
+    id: proxy.id || fallbackId,
+    type: proxy.type,
+    host: proxy.host,
+    port: proxy.port,
+    username: proxy.username ?? null,
+    password: proxy.password ?? null,
+    private_key: null,
+    country: proxy.country ?? null,
+    timezone: proxy.timezone ?? null,
+    latitude: null,
+    longitude: null,
+    status: 'active',
+    created_at: Date.now(),
+  };
+}
+
 export async function checkProxyAlive(
   proxy?: ResolvedProxyInfo,
-  proxyMissing?: boolean
+  proxyMissing?: boolean,
+  cachedResult?: proxyManager.ProxyCheckResult
 ): Promise<CheckVerdict> {
   if (proxyMissing) {
     return {
@@ -113,27 +132,13 @@ export async function checkProxyAlive(
   }
 
   try {
-    const checkRow: proxyManager.ProxyRow = {
-      id: proxy.id || 'tmp-check',
-      type: proxy.type,
-      host: proxy.host,
-      port: proxy.port,
-      username: proxy.username ?? null,
-      password: proxy.password ?? null,
-      private_key: null,
-      country: proxy.country ?? null,
-      timezone: proxy.timezone ?? null,
-      latitude: null,
-      longitude: null,
-      status: 'active',
-      created_at: Date.now(),
-    };
-    const result = await proxyManager.checkProxy(checkRow);
+    const result = cachedResult ?? (await proxyManager.checkProxy(buildProxyCheckRow(proxy, 'tmp-check')));
     if (result.ok) {
       return {
         status: 'pass',
         reasonCode: PREFLIGHT_REASON.OK,
         detail: `Proxy responded with latency ${result.latencyMs ?? 0}ms (egress: ${result.ip ?? 'unknown'})`,
+        ...(result.latencyMs !== undefined ? { durationMs: result.latencyMs } : {}),
       };
     }
     return {
@@ -150,9 +155,11 @@ export async function checkProxyAlive(
   }
 }
 
+
 export async function checkEgressIpGeo(
   proxy?: ResolvedProxyInfo,
-  proxyMissing?: boolean
+  proxyMissing?: boolean,
+  cachedResult?: proxyManager.ProxyCheckResult
 ): Promise<CheckVerdict> {
   if (proxyMissing) {
     return {
@@ -171,27 +178,14 @@ export async function checkEgressIpGeo(
   }
 
   try {
-    const checkRow: proxyManager.ProxyRow = {
-      id: proxy.id || 'tmp-geo',
-      type: proxy.type,
-      host: proxy.host,
-      port: proxy.port,
-      username: proxy.username ?? null,
-      password: proxy.password ?? null,
-      private_key: null,
-      country: proxy.country ?? null,
-      timezone: proxy.timezone ?? null,
-      latitude: null,
-      longitude: null,
-      status: 'active',
-      created_at: Date.now(),
-    };
-    const result = await proxyManager.checkProxy(checkRow);
+    const result = cachedResult ?? (await proxyManager.checkProxy(buildProxyCheckRow(proxy, 'tmp-geo')));
+    const durationMs = result.latencyMs !== undefined ? result.latencyMs : undefined;
     if (!result.ok) {
       return {
         status: 'warn',
         reasonCode: PREFLIGHT_REASON.GEO_LOOKUP_FAILED,
         detail: `Could not determine egress geo: ${result.error || 'unknown error'}`,
+        ...(durationMs !== undefined ? { durationMs } : {}),
       };
     }
 
@@ -203,6 +197,7 @@ export async function checkEgressIpGeo(
           status: 'warn',
           reasonCode: PREFLIGHT_REASON.EGRESS_GEO_MISMATCH,
           detail: `Expected proxy country '${declared}' but detected '${detected}'`,
+          ...(durationMs !== undefined ? { durationMs } : {}),
         };
       }
     }
@@ -211,6 +206,7 @@ export async function checkEgressIpGeo(
       status: 'pass',
       reasonCode: PREFLIGHT_REASON.OK,
       detail: `Egress country '${result.country || 'unknown'}' matches proxy expectation`,
+      ...(durationMs !== undefined ? { durationMs } : {}),
     };
   } catch (err: unknown) {
     return {
@@ -220,6 +216,7 @@ export async function checkEgressIpGeo(
     };
   }
 }
+
 
 export async function checkTimezoneMatch(
   profileTimezone: string | null | undefined,
@@ -495,14 +492,26 @@ export async function runPreflight(profileId: string): Promise<PreflightVerdict>
   const proxy = data?.proxy;
   const proxyMissing = Boolean(data?.proxyMissing);
 
+  let sharedProxyResult: proxyManager.ProxyCheckResult | undefined;
+  if (!proxyMissing && proxy) {
+    try {
+      sharedProxyResult = await proxyManager.checkProxy(buildProxyCheckRow(proxy, 'tmp-check'));
+    } catch (err: unknown) {
+      sharedProxyResult = {
+        ok: false,
+        error: err instanceof Error ? err.message : String(err),
+      };
+    }
+  }
+
   const [
     proxyAlive,
     egressGeo,
     timezoneMatch,
     quicRelay,
   ] = await Promise.all([
-    checkProxyAlive(proxy, proxyMissing),
-    checkEgressIpGeo(proxy, proxyMissing),
+    checkProxyAlive(proxy, proxyMissing, sharedProxyResult),
+    checkEgressIpGeo(proxy, proxyMissing, sharedProxyResult),
     checkTimezoneMatch(data?.timezone, proxy),
     checkQuicRelayState(profileId, proxy),
   ]);
