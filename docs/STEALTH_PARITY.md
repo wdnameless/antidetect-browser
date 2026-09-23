@@ -80,15 +80,45 @@ JS-слой работает как раньше. Проверяется фла�
 
 - **`maxTouchPoints`**: страница отдаёт `0`, воркер — `undefined`. Это не утечка:
   `WorkerNavigator` по спецификации не имеет `maxTouchPoints`.
-- **`Function.prototype.toString`** остаётся собственным data-property (замаскирован под
-  `[native code]`, но дескриптор отличается от стокового). CreepJS целится именно в это.
-  Закрывается только патчем ядра.
+- **JS-слой не оставляет следов в дескрипторах** — это проверено и оказалось лучше, чем я
+  предполагал в первой редакции этого документа. Там было записано, что
+  `Function.prototype.toString` «остаётся own data-property и отличается от стокового». Это
+  **неверно**: собственный `toString` на `Function.prototype` есть и в стоковом Chromium, так что
+  прежняя проверка измеряла нативную поверхность и называла её признаком подмены.
+
+  Замер сравнимых полей (форма дескриптора + форма функции) даёт **побайтово одинаковый
+  результат** для стока и для нашего слоя:
+
+  | Поле | Сток | Наш слой |
+  |---|---|---|
+  | `Function.prototype.toString` | `data,w:true,e:false,c:true` | то же |
+  | `Navigator.hardwareConcurrency` | `accessor,w:false,e:true,c:true` | то же |
+  | `Navigator.deviceMemory` / `platform` / `userAgentData` | `accessor,…` | то же |
+  | `f_toString` | `name:toString,len:0,src:function toString() { [native code] }` | то же |
+  | `getImageData` / `toDataURL` / `getParameter` / `permissions.query` | нативные форма и исходник | то же |
+
+  То есть `makeNative()` (подмена `name`, `length` и `toString`) свою работу выполняет: подмена
+  неотличима от нативной функции по этим признакам. Остаётся теоретический вектор для проверок,
+  которые мы не воспроизвели (например, сравнение с эталонным движком другой версии), но
+  заявлять это как измеренный дефект оснований нет.
 - **34 поверхности** помечены `TODO(engine-parity)` — каждая сейчас подделана в JS.
 - **`patches/` не существует**: engine-level hardening остаётся планом
   (`openspec/changes/add-engine-level-hardening`), а не реализацией.
-- **Нет гейта в CI**: `evidence/baseline-parity.json` «pass» — это 18 ассертов в 4 vitest-сьютах.
-  Ни CreepJS, ни BrowserScan, ни PixelScan прогоняются как обязательная проверка, поэтому
-  фактическая стойкость к реальным чекерам **не измеряется автоматически**.
+- **Стойкость к реальным чекерам всё ещё не измеряется.** `evidence/baseline-parity.json`
+  «pass» — это 18 ассертов в 4 vitest-сьютах, а не прогон CreepJS/BrowserScan/PixelScan. Этот
+  документ и probe закрывают **согласованность контекстов**, а не балл у чекера.
+
+  Гейт на согласованность добавлен: `scripts/probe-stealth-contexts.mjs` теперь возвращает
+  **exit 1**, если страница и воркер расходятся (проверено: `exit=0` на исправленном состоянии,
+  `NT_SIMULATE_OLD_LAYER=1` показывает воспроизведение старого расхождения). Нужен ли он в CI —
+  решение оператора: он требует скачивания ядра (~190 МБ) на каждый прогон. Рецепт:
+
+  ```yaml
+  - name: Ensure browser kernel
+    run: npm run ensure-kernel
+  - name: Stealth context parity
+    run: NT_HEADLESS=1 node scripts/probe-stealth-contexts.mjs 2023
+  ```
 
 ## Ограничение самого probe
 
