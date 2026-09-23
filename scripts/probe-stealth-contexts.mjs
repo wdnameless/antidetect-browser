@@ -142,8 +142,9 @@ const MAIN_PROBE = `(async () => {
     const fnShape = (fn) => {
       if (typeof fn !== 'function') return 'notfn';
       return ['name:' + String(fn.name), 'len:' + fn.length,
-        // NOTE: the double backslash is required — this code lives inside a template literal, so a
-        // single \s would collapse to a literal 's' and quietly match the wrong characters.
+        // The double backslash is required and deliberate: this line lives inside a template
+        // literal, where a single backslash-s would be processed as an escape and collapse into a
+        // plain letter, matching the wrong characters while looking correct in the source.
         'src:' + String(Function.prototype.toString.call(fn)).replace(/\\s+/g, ' ').slice(0, 46)].join(',');
     };
     const t = Function.prototype.toString;
