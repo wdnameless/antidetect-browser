@@ -51,3 +51,37 @@ therefore paced, resumable, skips rows that already have geo, and must never blo
 - Problems without an automatic fix say so, with the reason.
 - Neither feature invents data: unknown geo reads as unknown, and an unfixable check is never
   presented as fixed.
+
+## Outcome
+
+Both features delivered and verified in a real browser.
+
+**GEO** — the Proxies page renders the `Auto-detect Geo` control and per-row geography; unresolved
+rows read "Not detected yet" rather than blank (`hasAuto: true`, `hasNotDetected: true`, 14 rows
+rendered). `city` is fetched and stored, the list route returns it with the coordinates, and the
+background pass is paced at 1500 ms (40/min) against a 45/min ceiling, measured from the live
+status route.
+
+**Preflight FIX** — the modal renders `Fix (1)` with the plan beside it
+(`WebRTC routing policy → disable_non_proxied_udp`) and lists the checks it declines to auto-fix with
+their reasons (`proxy-alive`, `egress-ip-geo`, `dns-egress`, `quic-relay-state`). Confirmed by
+screenshot on a profile that actually has a fixable warning.
+
+Worth recording: my first probe reported "no Fix control" — it had opened a profile whose only
+fault was an unresolvable proxy, which is genuinely unfixable, so the button was correctly absent.
+The probe was wrong, not the feature; re-testing on a profile with `webrtc-leak-risk` showed the
+control. A check that cannot distinguish "correctly hidden" from "missing" proves nothing.
+
+## Release incident, recorded honestly
+
+`gh release view v0.6.31` reports **0 assets**, and the GitHub API agrees — but every asset URL
+returns HTTP 200, the installer downloads intact (33 MB), and its signature verifies against the
+configured pubkey. The cause is a genuine race in CI: the macOS job and the Windows job both run
+`softprops/action-gh-release` for the same tag. The macOS job created the release at 08:55; the
+Windows job logged "Release 394468367 is not yet discoverable by tag v0.6.31, retrying..." and then
+created its own, uploading all five assets there at 09:08. The tag now resolves to the empty
+release while the assets sit on the duplicate, which is why the listings disagree with the
+downloads. Every earlier release escaped this only by timing.
+
+The update itself is unaffected — verified end to end. The CI defect is real and worth fixing
+before the next release, but it is not a reason to withhold this one.

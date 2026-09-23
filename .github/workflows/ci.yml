@@ -171,6 +171,10 @@ jobs:
       - name: Publish the macOS asset
         uses: softprops/action-gh-release@v2
         with:
+          # Explicit, so the action attaches to THIS tag's release instead of inferring one and
+          # possibly creating a second release object for the same tag — the race that left v0.6.31
+          # with two releases, the empty one winning the tag.
+          tag_name: ${{ github.ref_name }}
           files: |
             dist-release/*macos-arm64*
           fail_on_unmatched_files: false
@@ -197,7 +201,14 @@ jobs:
     #   - os: macos-14
     #     platform: mac
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [test, sdk]
+    # `release-macos` is a prerequisite, not a sibling. Both jobs publish to the SAME tag via
+    # `action-gh-release`, and running them in parallel raced: on v0.6.31 the macOS job created the
+    # release first, the Windows job was told "Release 394468367 is not yet discoverable by tag
+    # v0.6.31, retrying...", then created its OWN release object and uploaded all five assets there.
+    # The tag ended up resolving to the empty release, so `gh release view` and the API both
+    # reported 0 assets while the asset URLs still served the files from the duplicate. Every
+    # earlier release escaped this only by timing.
+    needs: [test, sdk, release-macos]
     strategy:
       fail-fast: false
       matrix:
@@ -342,6 +353,9 @@ jobs:
       - name: Publish release assets
         uses: softprops/action-gh-release@v2
         with:
+          # Same reason as the macOS job: pin the tag so this attaches to the existing release
+          # rather than racing to create another one.
+          tag_name: ${{ github.ref_name }}
           files: |
             src-tauri/target/release/bundle/nsis/*.exe
             dist-release/latest.json
