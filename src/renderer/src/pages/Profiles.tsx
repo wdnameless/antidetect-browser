@@ -973,8 +973,15 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
         if (guardRes.code !== 0 || !guardRes.data?.allowed) {
           const errMsg = guardRes.msg || 'Launch blocked by preflight check failure';
           setError(errMsg);
-          // Automatically trigger inspection modal to show details and remediation hints
-          const freshVerdict = guardRes.data?.verdict;
+          // Show the verdict the guard just produced. The blocked response puts the verdict in
+          // `data` ITSELF (routes/preflight.ts returns `data: guard.verdict` with HTTP 412), not
+          // under `data.verdict` — reading the nested key silently found nothing and fell through
+          // to the cache, which is the stale-PASS defect this is meant to close.
+          const blocked = guardRes.data as
+            | (PreflightVerdict & { allowed?: boolean })
+            | undefined;
+          const freshVerdict: PreflightVerdict | undefined =
+            blocked && typeof blocked.overall === 'string' ? blocked : undefined;
           if (freshVerdict) {
             setPreflightCache((prev) => ({
               ...prev,

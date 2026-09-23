@@ -1,10 +1,10 @@
 {
   "bomFormat": "CycloneDX",
   "specVersion": "1.4",
-  "serialNumber": "urn:uuid:1a0cc1fb5e4",
+  "serialNumber": "urn:uuid:1a0cc25ebc3",
   "version": 1,
   "metadata": {
-    "timestamp": "2026-09-23T02:37:05.380Z",
+    "timestamp": "2026-09-23T02:43:52.387Z",
     "tools": [
       {
         "vendor": "antidetect",

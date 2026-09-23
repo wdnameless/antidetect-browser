@@ -492,17 +492,18 @@ export async function runPreflight(profileId: string): Promise<PreflightVerdict>
   const proxy = data?.proxy;
   const proxyMissing = Boolean(data?.proxyMissing);
 
-  let sharedProxyResult: proxyManager.ProxyCheckResult | undefined;
-  if (!proxyMissing && proxy) {
-    try {
-      sharedProxyResult = await proxyManager.checkProxy(buildProxyCheckRow(proxy, 'tmp-check'));
-    } catch (err: unknown) {
-      sharedProxyResult = {
-        ok: false,
-        error: err instanceof Error ? err.message : String(err),
-      };
-    }
-  }
+  // ONE probe for the whole run, shared by both checks below. A second concurrent probe is not
+  // just wasted work: on a rotating proxy it exits through a different IP, so the geo check would
+  // compare the profile's declared country against an address the liveness check never observed.
+  const sharedProxyResult: proxyManager.ProxyCheckResult | undefined =
+    !proxyMissing && proxy
+      ? await proxyManager
+          .checkProxy(buildProxyCheckRow(proxy, 'tmp-check'))
+          .catch((err: unknown): proxyManager.ProxyCheckResult => ({
+            ok: false,
+            error: err instanceof Error ? err.message : String(err),
+          }))
+      : undefined;
 
   const [
     proxyAlive,

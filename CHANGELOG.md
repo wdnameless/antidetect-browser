@@ -15,6 +15,13 @@ the banner said the launch was blocked. Two contradicting statements about one p
 failing one was the true one. The guard's verdict is now the one displayed, and the cache is updated
 from it, so the modal and the banner agree.
 
+Proving this needed both states in sequence, which is why a single check could not catch it: warm the
+cache with a PASS, break the profile's proxy, then launch with the guard on. The first attempt at the
+fix read the verdict from `data.verdict`, but the blocked response puts it directly in `data` — so it
+silently found nothing and fell back to the cache, leaving the original defect in place. Caught by
+running the sequence in a real browser rather than trusting the typecheck; reproduced as
+`Check` → `✕ FAIL 2` in the modal with the guard banner visible.
+
 **The proxy was probed twice, concurrently.** The liveness check and the egress-geo check each called
 the proxy check with the same arguments, in parallel. That was not merely duplicated work: on a
 **rotating** proxy the two calls exit through different IPs, so the geo check compared the profile's
