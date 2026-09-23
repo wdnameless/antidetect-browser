@@ -90,6 +90,30 @@ describe('hygiene: declarations must be consumed', () => {
     expect(leaked, 'TypeScript-only syntax inside the browser-injected template').toEqual([]);
   });
 
+  it('no backtick appears inside the injected stealth template', () => {
+    // This failure has now cost four round-trips. The payload is returned as a TEMPLATE LITERAL,
+    // so a backtick anywhere inside it — including inside a comment — terminates the string early
+    // and the module stops compiling with a misleading error (`TS1005: ';' expected` pointing at
+    // a line that looks fine). Prose is a natural place to reach for backticks when quoting a
+    // filename or a property path, which is exactly how it kept happening.
+    //
+    // Checked structurally, before the parser, so the failure names the offending line.
+    const source = SOURCES.get(path.join(SRC, 'main', 'proxy', 'stealthInjection.ts'));
+    expect(source, 'stealthInjection.ts must exist').toBeDefined();
+    const start = source!.indexOf('return `(() => {');
+    const end = source!.indexOf('})();`;', start);
+    expect(start, 'the payload template must still be found').toBeGreaterThan(-1);
+    expect(end, 'the payload template must still be closed').toBeGreaterThan(start);
+
+    const payload = source!.slice(start + 'return `'.length, end);
+    const offenders = payload
+      .split('\n')
+      .map((line, i) => ({ line: start + 1 + i, text: line }))
+      .filter((entry) => entry.text.includes('`'))
+      .map((entry) => `${entry.line}: ${entry.text.trim().slice(0, 80)}`);
+    expect(offenders, 'a backtick inside the payload ends the template early').toEqual([]);
+  });
+
   it('the generated stealth script is parseable JavaScript', () => {
     // The structural check above catches the tokens; this catches anything else
     // that makes the emitted script unparseable (e.g. an unbalanced brace), which

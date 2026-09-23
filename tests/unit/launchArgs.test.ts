@@ -2,7 +2,6 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import {
   appendProfileArgs,
   validateLaunchArgs,
-  DENIED_LAUNCH_ARGS,
   createProfile,
   updateProfile,
   getProfileDetails,
@@ -10,6 +9,7 @@ import {
 } from '../../src/main/profiles/profileManager';
 import { buildChromiumArgs } from '../../src/main/launcher/chromium';
 import { initDb, closeDb } from '../../src/main/db';
+import { seedDevices } from '../../src/main/devices/deviceManager';
 import type { LaunchConfig } from '../../src/main/profiles/profileManager';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -257,5 +257,60 @@ describe('stealth-engine-profile switch (add-engine-level-hardening 4.1)', () =>
     expect(args.some((a) => a.startsWith('--stealth-engine-profile'))).toBe(false);
     expect(fs.existsSync(path.join(tmpDir2, 'stealth-engine-profile.json'))).toBe(false);
     fs.rmSync(tmpDir2, { recursive: true, force: true });
+  });
+});
+
+describe('mobile profiles must not present as Windows', () => {
+  beforeEach(async () => {
+    await initDb(':memory:');
+  });
+
+  afterEach(() => {
+    closeDb();
+  });
+
+  // The seeded Android/iPhone presets carry `platform: 'windows'` — a carry-over from the
+  // desktop presets they were copied from. That value reaches `--fingerprint-platform` and is
+  // what the kernel reports inside a WORKER, a context the injected JS layer cannot patch. The
+  // page meanwhile says `Linux armv81` (Chrome's frozen Android value), so a phone profile
+  // described itself as two different operating systems. Measured before the fix:
+  //   page Linux armv81 / worker Win32.
+  const MOBILE_CASES = [
+    // The kernel understands only windows|linux|macos, so each mobile platform maps to the
+    // closest one it can express: Android -> linux, iOS -> macos. Neither may stay Windows.
+    { deviceId: 'dev_android', logical: 'android', expected: 'linux' },
+    { deviceId: 'dev_iphone', logical: 'ios', expected: 'macos' },
+  ] as const;
+
+  for (const { deviceId, logical, expected } of MOBILE_CASES) {
+    it(`${deviceId} does not pass --fingerprint-platform=windows to the kernel`, async () => {
+      seedDevices();
+      const id = createProfile({ name: `${logical} profile`, device_id: deviceId });
+      const cfg = resolveLaunchConfig(id);
+
+      expect(cfg.fingerprint?.platform).not.toBe('windows');
+      expect(cfg.fingerprint?.platform).toBe(expected);
+
+      // End-to-end: the resolved platform must reach the actual kernel switch, since THAT is what
+      // the engine and any worker context report. A correct LaunchConfig that never becomes argv
+      // would fix nothing.
+      const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mobile-platform-'));
+      const args = await buildChromiumArgs({ ...cfg, userDataDir: tmpDir });
+      expect(args).toContain(`--fingerprint-platform=${expected}`);
+      expect(args).not.toContain('--fingerprint-platform=windows');
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    });
+  }
+
+  it('leaves a desktop profile on its own platform', () => {
+    // Deliberately NOT dev_win10: `'windows'` is also the fallback default, so that assertion
+    // would pass even if this branch never ran. dev_macos returns `'macos'`, a value only the
+    // device row can produce — so the test fails if the mobile mapping ever leaks to desktops
+    // (macOS would become `'linux'`).
+    seedDevices();
+    const id = createProfile({ name: 'desktop profile', device_id: 'dev_macos' });
+    const cfg = resolveLaunchConfig(id);
+    expect(cfg.fingerprint?.platform).toBe('macos');
+    expect(cfg.fingerprint?.platform).not.toBe('linux');
   });
 });

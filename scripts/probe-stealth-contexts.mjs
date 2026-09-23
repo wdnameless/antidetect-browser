@@ -57,10 +57,15 @@ if (!fs.existsSync(EXE)) {
 // down on the surfaces the engine already spoofs. Set NT_SIMULATE_OLD_LAYER=1 to reproduce the
 // pre-fix behaviour (JavaScript overrides canvas and deviceMemory on the main thread only).
 const simulateOld = process.env.NT_SIMULATE_OLD_LAYER === '1';
+const useMobile = process.env.NT_MOBILE === '1';
+// The kernel understands only windows|linux|macos (docs/KERNEL.md), so an android/ios profile has
+// no kernel counterpart. Mapping it to 'linux' is the closest honest value; passing 'macos' while
+// the JS layer claims Android measured a mismatch that existed only inside this harness.
+const kernelPlatform = useMobile ? 'linux' : 'macos';
 const stealthOpts = {
+  mobile: useMobile,
   engineCovers: simulateOld ? undefined : { canvas: true, deviceMemory: true, clientHints: true, webgl: true },
-  mobile: false,
-  logicalPlatform: 'macos',
+  logicalPlatform: useMobile ? 'android' : 'macos',
   platformVersion: '14.5.0',
   hardwareConcurrency: 10,
   deviceMemory: 8,
@@ -114,6 +119,7 @@ const MAIN_PROBE = `(async () => {
     webgl: null, audio: null, rects: null,
     uaDataSync: null, uaDataHigh: null,
     pluginsN: null, mimeN: null, fontsCheck: null, uaDataFull: null, connDown: null,
+    audioHash: null, notifPermM: null, battM: null, mediaN: null, permState: null, screenOrient: null, webauthn: null,
     lies: null,
   };
   try {
@@ -174,6 +180,44 @@ const MAIN_PROBE = `(async () => {
     o.uaDataFull = d ? JSON.stringify({ brands: (d.brands||[]).map(b=>b.brand+'/'+b.version).join('|'), mobile: d.mobile, platform: d.platform, pv: d.platformVersion, arch: d.architecture, bits: d.bitness, model: d.model }) : 'absent';
   } catch (err) { o.uaDataFull = 'n/a'; }
   try { o.connDown = navigator.connection ? String(navigator.connection.downlink) : 'absent'; } catch (err) { o.connDown = 'n/a'; }
+  try { o.connDown2 = navigator.connection ? String(navigator.connection.downlink) : 'absent'; } catch (err) { o.connDown2 = 'n/a'; }
+  try {
+    // Identity stability: a getter that rebuilds its object returns a different reference each
+    // read, which no real browser does.
+    const a = navigator.connection, b = navigator.connection;
+    o.connIdentity = (a === b) ? 'stable' : 'NEW OBJECT EACH READ';
+    // Where does the property actually live, and is our getter installed?
+    o.connWhere = {
+      ownOnInstance: Object.prototype.hasOwnProperty.call(navigator, 'connection'),
+      descOnProto: (() => { const d = Object.getOwnPropertyDescriptor(Navigator.prototype, 'connection'); return d ? (d.get ? 'accessor' : 'data') : 'absent'; })(),
+      getterSource: (() => {
+        const d = Object.getOwnPropertyDescriptor(Navigator.prototype, 'connection');
+        return d && d.get ? String(Function.prototype.toString.call(d.get)).slice(0, 54) : 'n/a';
+      })(),
+      readValue: navigator.connection ? String(navigator.connection.downlink) : 'absent',
+    };
+  } catch (err) { o.connIdentity = 'n/a'; o.connWhere = 'err:' + err.message; }
+  try {
+    const AC = window.OfflineAudioContext || window.webkitOfflineAudioContext;
+    if (AC) {
+      const ctx = new AC(1, 44100, 44100);
+      const osc = ctx.createOscillator(); osc.type = 'triangle'; osc.frequency.value = 10000;
+      const comp = ctx.createDynamicsCompressor();
+      osc.connect(comp); comp.connect(ctx.destination); osc.start(0);
+      const buf = await ctx.startRendering();
+      const d = buf.getChannelData(0); let sum = 0;
+      for (let i = 4500; i < 5000; i++) sum += Math.abs(d[i]);
+      o.audioHash = String(sum);
+    } else { o.audioHash = 'absent'; }
+  } catch (err) { o.audioHash = 'err'; }
+  try { o.notifPermM = (await navigator.permissions.query({ name: 'notifications' })).state; } catch (err) { o.notifPermM = 'n/a'; }
+  try { o.battM = navigator.getBattery ? 'present' : 'absent'; } catch (err) { o.battM = 'n/a'; }
+  try { o.mediaN = (await navigator.mediaDevices.enumerateDevices()).length; } catch (err) { o.mediaN = 'n/a'; }
+  try { o.permState = (await navigator.permissions.query({ name: 'geolocation' })).state; } catch (err) { o.permState = 'n/a'; }
+  try { o.screenOrient = screen.orientation ? screen.orientation.type : 'absent'; } catch (err) { o.screenOrient = 'n/a'; }
+  try {
+    o.webauthn = await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable() ? 'true' : 'false';
+  } catch (err) { o.webauthn = 'n/a'; }
   // Same fields the WORKER probe reads, so the two are actually comparable.
   try {
     const d = navigator.userAgentData;
@@ -234,6 +278,9 @@ const WORKER_BODY = `(${function () {
       tz: Intl.DateTimeFormat().resolvedOptions().timeZone,
       gpu: null, canvas: null,
       uaDataSync: null, uaDataHigh: null,
+      avail: null,
+      connDown: null, mediaNW: null, notifPermW: null, permStateW: null, screenOrientW: null,
+      webauthnW: null, battW: null, fontsCheck: null, pluginsNW: null, mimeNW: null,
       hasDocument: typeof document !== 'undefined',
       plugins: null, mimeCount: null, notifPerm: null, batt: null,
       mediaCount: null, connType: null, voices: null, webgpuVendor: null,
@@ -270,6 +317,32 @@ const WORKER_BODY = `(${function () {
         o.webgpuVendor = ad ? 'adapter' : 'null';
       } else { o.webgpuVendor = 'absent'; }
     } catch (err) { o.webgpuVendor = 'err:' + err.message; }
+    // Which constructors exist in a worker? The worker payload must hook the prototype of
+    // `self.navigator`, because `Navigator` itself is not a global here.
+    o.avail = {
+      Navigator: typeof Navigator, WorkerNavigator: typeof WorkerNavigator,
+      navProtoName: Object.getPrototypeOf(self.navigator).constructor.name,
+      OffscreenCanvas: typeof OffscreenCanvas,
+      OffscreenCanvasRenderingContext2D: typeof OffscreenCanvasRenderingContext2D,
+      WebGLRenderingContext: typeof WebGLRenderingContext,
+      OffscreenAudioContext: typeof OffscreenAudioContext,
+      OfflineAudioContext: typeof OfflineAudioContext,
+      fonts: typeof self.fonts,
+      Blob: typeof Blob, Worker: typeof Worker,
+      importScripts: typeof importScripts,
+      URL: typeof URL, Request: typeof Request, Response: typeof Response,
+      SharedWorker: typeof SharedWorker,
+    };
+    try { o.connDown = self.navigator.connection ? String(self.navigator.connection.downlink) : 'absent'; } catch { o.connDown = 'n/a'; }
+    try { o.mediaNW = String((await self.navigator.mediaDevices.enumerateDevices()).length); } catch (err) { o.mediaNW = 'throws:' + err.name; }
+    try { o.notifPermM = (await self.navigator.permissions.query({ name: 'notifications' })).state; } catch (err) { o.notifPermW = 'n/a'; }
+    try { o.permState = (await self.navigator.permissions.query({ name: 'geolocation' })).state; } catch (err) { o.permStateW = 'n/a'; }
+    try { o.screenOrientW = typeof self.screen !== 'undefined' && self.screen.orientation ? self.screen.orientation.type : 'no-screen'; } catch { o.screenOrientW = 'n/a'; }
+    try { o.webauthnW = typeof PublicKeyCredential !== 'undefined' ? 'available' : 'no-pkc'; } catch { o.webauthnW = 'n/a'; }
+    try { o.battW = self.navigator.getBattery ? 'present' : 'absent'; } catch { o.battW = 'n/a'; }
+    try { o.fontsCheck = typeof self.fonts !== 'undefined' ? 'present' : 'no-self.fonts'; } catch { o.fontsCheckW = 'n/a'; }
+    try { o.pluginsNW = self.navigator.plugins ? String(self.navigator.plugins.length) : 'absent'; } catch { o.pluginsNW = 'n/a'; }
+    try { o.mimeNW = self.navigator.mimeTypes ? String(self.navigator.mimeTypes.length) : 'absent'; } catch { o.mimeNW = 'n/a'; }
     try {
       const c = new OffscreenCanvas(200, 50);
       const ctx = c.getContext('2d'); draw(ctx);
@@ -332,7 +405,7 @@ const useKernel = process.env.NT_NO_KERNEL !== '1';
 // file: NT_EXTRA_FLAGS="--fingerprint-device-memory=4" node scripts/probe-stealth-contexts.mjs
 const extraFlags = (process.env.NT_EXTRA_FLAGS ?? '').split(' ').filter(Boolean);
 const args = [
-  ...(useKernel ? [`--fingerprint=${SEED}`, '--fingerprint-platform=macos', `--fingerprint-hardware-concurrency=${stealthOpts.hardwareConcurrency}`] : []),
+  ...(useKernel ? [`--fingerprint=${SEED}`, `--fingerprint-platform=${kernelPlatform}`, `--fingerprint-hardware-concurrency=${stealthOpts.hardwareConcurrency}`] : []),
   ...extraFlags,
   ...(useExt ? [`--load-extension=${extDir}`, `--disable-extensions-except=${extDir}`] : []),
   `--user-data-dir=${userDataDir}`,
@@ -447,11 +520,17 @@ await new Promise((r) => setTimeout(r, 400));
 try { fs.rmSync(userDataDir, { recursive: true, force: true }); } catch {}
 
 const KEYS = ['ua', 'platform', 'cores', 'memory', 'langs', 'tz', 'gpu', 'uaDataSync', 'uaDataHigh', 'webglUnmasked', 'canvas', 'webgl', 'rects', 'audio'];
+// `connDown` (NetworkInformation.downlink) is deliberately NOT in KEYS, and this is the second
+// surface where naive equality was wrong. Measured on a FULLY STOCK browser — no kernel, no
+// stealth layer — the page and the worker report 1.45 vs 1.5 for it: the value drifts between the
+// two reads by itself. An equality gate would fail on an unmodified build, and a gate that fails
+// on a correct build gets switched off. It is still printed in the OVERLAP section as information.
 const WORKER_ONLY = ['plugins', 'mimeCount', 'notifPerm', 'batt', 'mediaCount', 'connType', 'voices', 'webgpuVendor'];
 // Surfaces a worker cannot reach at all. Comparing them with a run that omits the JS layer
 // (NT_NO_EXT=1) shows whether the JavaScript side is DUPLICATING something the kernel already
 // spoofs — the defect class this probe was built for, applied to the remaining surfaces.
-const OVERLAP = ['pluginsN', 'mimeN', 'fontsCheck', 'uaDataFull', 'connDown'];
+const OVERLAP = ['pluginsN', 'mimeN', 'fontsCheck', 'uaDataFull', 'connDown',
+  'audioHash', 'rects', 'notifPermM', 'battM', 'mediaN', 'permState', 'screenOrient', 'webauthn'];
 console.log(`\n=== MAIN vs WORKER | kernel=${useKernel ? `on(seed ${SEED})` : 'OFF'} | js-layer=${useExt ? 'on' : 'OFF'} ===\n`);
 console.log(`${'surface'.padEnd(14)}${'MAIN'.padEnd(30)}WORKER`);
 console.log('-'.repeat(84));
@@ -489,7 +568,13 @@ if (workerMeasured === 0) {
   console.error('\nFAIL: the worker answered nothing comparable, so this run proved nothing.');
   process.exit(1);
 }
-console.log(`WORKER-ONLY surfaces (kernel coverage visible where the JS layer cannot reach):`);
+const WORKER_REACH = ['connDown', 'mediaNW', 'notifPermW', 'permStateW', 'screenOrientW', 'webauthnW', 'battW', 'fontsCheckW', 'pluginsNW', 'mimeNW'];
+console.log(`\nWORKER globals available for hooking:\n${JSON.stringify(worker?.avail, null, 2)}`);
+console.log(`WORKER reachability of the surfaces the JS layer overrides:`);
+console.log(`  connIdentity ${String(main?.connIdentity)}`);
+console.log(`  connStability ${String(main?.connDown)} vs ${String(main?.connDown2)} ${String(main?.connDown) === String(main?.connDown2) ? '(stable)' : '(FLUCTUATES WITHIN ONE CONTEXT)'}`);
+for (const k of WORKER_REACH) console.log(`  ${k.padEnd(14)}${String(worker?.[k] ?? '-')}`);
+console.log(`\nWORKER-ONLY surfaces (kernel coverage visible where the JS layer cannot reach):`);
 for (const k of WORKER_ONLY) console.log(`  ${k.padEnd(14)}${String(worker?.[k] ?? '-')}`);
 console.log(`\nMAIN-THREAD values of surfaces the JS layer may duplicate — run again with NT_NO_EXT=1 and compare:`);
 for (const k of OVERLAP) console.log(`  ${k.padEnd(12)}${String(main?.[k] ?? '-')}`);

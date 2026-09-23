@@ -648,9 +648,21 @@ export function buildStealthScript(opts: StealthOptions): string {
     //
     // Skipped when the kernel already spoofs it: there is no --fingerprint-device-memory switch
     // (measured — the kernel ignores one and picks 4/8/16/32/64 from the seed itself), so a value
-    // chosen here can only ever DISAGREE with the engine. Measured: 251 of 400 seeds (63%) get a
-    // ramGB that differs from the engine's, and the page/worker pair then reports 8 vs 16.
+    // chosen here can only ever DISAGREE with the engine on DESKTOP, where the engine's answer is
+    // in range. Measured: 251 of 400 seeds (63%) get a ramGB that differs from the engine's.
     if (isMobile) {
+      // On a phone the engine's answer is out of range, not merely different.
+      //
+      // Chromium clamps this per platform, in
+      // third_party/blink/common/device_memory/approximated_device_memory.cc:
+      //   float kMinMemory = 2.0f;  float kMaxMemory = 32.0f;   // desktop
+      //   #if BUILDFLAG(IS_ANDROID)  kMinMemory = 1.0f;  kMaxMemory = 8.0f;  #endif
+      // Our kernel is a DESKTOP build, so it happily reports 16 or 32 while claiming to be an
+      // Android phone — a value no real Android Chrome can produce, readable in one line:
+      //   navigator.deviceMemory <= 8 is guaranteed on Android.
+      // The JS layer cannot make the WORKER agree (workers never see it), so on mobile the honest
+      // options are a clamped page value or none; undefined is what a phone without the API
+      // reports, and it is consistent in both contexts because the kernel does not fake it there.
       hookGetter(Navigator.prototype, 'deviceMemory', function () { return undefined; });
     } else if (CFG.deviceMemory !== null && !CFG.engineCoversDeviceMemory) {
       hookGetter(Navigator.prototype, 'deviceMemory', function () { return CFG.deviceMemory; });
@@ -684,10 +696,15 @@ export function buildStealthScript(opts: StealthOptions): string {
         : { type: 'portrait-primary', angle: 0, onchange: null };
       hookGetter(Screen.prototype, 'orientation', function () { return orient; });
     }
-    if (typeof Navigator !== 'undefined') {
-      // TODO(engine-parity): Navigator.prototype.connection
-      hookGetter(Navigator.prototype, 'connection', function () { return { effectiveType: '4g', rtt: 50, downlink: 10, saveData: false, onchange: null }; });
-    }
+    // TODO(engine-parity): Navigator.prototype.connection
+    //
+    // REMOVED, on measurement, and the reasoning is the same one that removed the desktop copy.
+    // The getter returned a fresh object per read — a probe reading it twice saw a NEW OBJECT EACH
+    // READ, where a real NetworkInformation is a stable singleton. Worse, the value reached the
+    // page only: a worker reads the host's real connection, so a page claiming a constant 10
+    // against a worker reporting 1.3 is a 590% disagreement, where an unmodified browser shows
+    // about 3% drift between the two contexts. Spoofing one context made the profile more
+    // conspicuous than leaving the real value alone in both.
 
     // --- Mobile Motion & Orientation Sensors ---
     if (CFG.sensors) {

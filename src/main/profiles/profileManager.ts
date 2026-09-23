@@ -1646,6 +1646,21 @@ export function resolveLaunchConfig(id: string): LaunchConfig {
         if (typeof devCfg.platform === 'string') {
           fingerprint.platform = devCfg.platform;
         }
+        if (devCfg.mobile === true) {
+          // A phone must not present as a Windows machine.
+          //
+          // The seeded mobile presets carry `platform: 'windows'` (carried over from the desktop
+          // presets they were copied from), and that value reaches `--fingerprint-platform` — the
+          // flag the ENGINE uses. It is what a WORKER reports, and a worker is reachable by page
+          // script but cannot be patched by the injected JS layer. Measured before this fix: page
+          // `Linux armv81`, worker `Win32` — one device described as two operating systems.
+          // The JS layer still reports the platform-specific string on the page.
+          //
+          // The kernel understands only windows|linux|macos (docs/KERNEL.md); 'android' resolves to
+          // Win32, measured. So each mobile platform maps to the closest one the engine can express,
+          // keeping the worker in the same OS family the page claims.
+          fingerprint.platform = logicalPlatform === 'ios' ? 'macos' : 'linux';
+        }
         if (typeof devCfg.platformVersion === 'string') {
           fingerprint.platformVersion = devCfg.platformVersion;
         }
