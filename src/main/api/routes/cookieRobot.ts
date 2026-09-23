@@ -8,7 +8,6 @@ import {
   getReport,
   listReports,
   parseUrlList,
-  isDomainBlocked,
   scheduleCookieRobotTaskGroup,
 } from '../../scripts/modules/cookieRobot';
 import { FARM_SITES } from '../../scripts/modules/cookieFarm/sites';

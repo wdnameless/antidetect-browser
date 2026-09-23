@@ -282,15 +282,18 @@ export function isDomainBlocked(hostname: string, blocklist: string[]): boolean 
     const trimmed = pattern.trim().toLowerCase();
     if (!trimmed) continue;
     if (trimmed === lowerHost) return true;
-    if (trimmed.startsWith('*.')) {
+    if (trimmed.startsWith('*.') && trimmed.endsWith('.*')) {
+      // Checked BEFORE the bare `*.` form: `*.foo.*` also starts with `*.`, so the earlier branch
+      // used to swallow it and this pattern could never match. `*.ads.*` silently behaved as
+      // `*.ads` — matching ads.example.com but not example.ads.net, which is what it asks for.
+      const middle = trimmed.slice(2, -2);
+      if (middle && lowerHost.includes(middle)) return true;
+    } else if (trimmed.startsWith('*.')) {
       const root = trimmed.slice(2);
       if (lowerHost === root || lowerHost.endsWith('.' + root)) return true;
     } else if (trimmed.endsWith('.*')) {
       const prefix = trimmed.slice(0, -2);
       if (lowerHost === prefix || lowerHost.startsWith(prefix + '.')) return true;
-    } else if (trimmed.startsWith('*.') && trimmed.endsWith('.*')) {
-      const middle = trimmed.slice(2, -2);
-      if (lowerHost.includes(middle)) return true;
     }
   }
   return false;
