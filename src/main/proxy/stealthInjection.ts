@@ -51,7 +51,7 @@ export interface StealthOptions {
    * When the launcher runs a stock binary the kernel covers nothing and this stays falsy, which
    * is why the JavaScript path is retained rather than deleted.
    */
-  engineCovers?: { canvas?: boolean; deviceMemory?: boolean };
+  engineCovers?: { canvas?: boolean; deviceMemory?: boolean; clientHints?: boolean };
   webgpu?: {
     vendor?: string;
     architecture?: string;
@@ -408,6 +408,7 @@ export function buildStealthScript(opts: StealthOptions): string {
     // layer stands down so the two cannot disagree (see StealthOptions.engineCovers).
     engineCoversCanvas: opts.engineCovers?.canvas ?? false,
     engineCoversDeviceMemory: opts.engineCovers?.deviceMemory ?? false,
+    engineCoversClientHints: opts.engineCovers?.clientHints ?? false,
     audioNoise: opts.audioNoise ?? true,
     rectsNoise: opts.rectsNoise ?? true,
     webglNoise: opts.webglNoise ?? true,
@@ -557,7 +558,19 @@ export function buildStealthScript(opts: StealthOptions): string {
     toJSON: toJSONFn,
   };
 
-  if (typeof Navigator !== 'undefined') {
+  // Same stand-down as canvas and deviceMemory, for the same measured reason.
+  //
+  // The kernel fills every SYNC Client Hints field identically on the page and inside a worker
+  // (measured: with NT_NO_EXT=1 the two contexts agree; the JS layer is what introduced the gap).
+  // This hook then overwrote the page's object with values a worker never receives, because
+  // Navigator inside a worker is a different object. Result: the page reported
+  // {arch:arm,bits:64,pv:14.5.0} while the worker reported {} — one claimed device, two answers,
+  // exactly the pattern the other stand-downs in this module were added for.
+  //
+  // getHighEntropyValues is left hooked: it is an async method the kernel also answers, but the JS
+  // version is what the page's other surfaces were made consistent with. Kept when the kernel is
+  // absent, where it is the only source of these values.
+  if (typeof Navigator !== 'undefined' && !CFG.engineCoversClientHints) {
     hookGetter(Navigator.prototype, 'userAgentData', function () { return uaData; });
   }
 

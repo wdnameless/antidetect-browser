@@ -244,14 +244,15 @@ export async function buildChromiumArgs(
   // Measured basis: with the kernel alone, canvas is already unique per profile AND identical on
   // the page and inside a worker (four seeds -> four distinct hashes, each stable across
   // contexts), and deviceMemory is consistent in both too. The JavaScript layer's own canvas
-  // noise and memory value applied to the page but never to the worker — a 3/9 surface
-  // disagreement, including two different canvas hashes for one claimed device. An antifraud
-  // script does not need to know the correct value; the disagreement itself is the signal.
+  // noise, memory value and Client Hints object applied to the page but never to the worker — a
+  // surface disagreement, including two different canvas hashes and an empty userAgentData in the
+  // worker, for one claimed device. An antifraud script does not need to know the correct value;
+  // the disagreement itself is the signal.
   //
   // The kernel spoofs whenever a seed is passed, so that is the signal. Done once here because
   // four separate sites in this function write the stealth extension and they must all agree.
   if (cfg.stealth && cfg.fingerprint && cfg.fingerprint.seed > 0) {
-    cfg = { ...cfg, stealth: { ...cfg.stealth, engineCovers: { canvas: true, deviceMemory: true } } };
+    cfg = { ...cfg, stealth: { ...cfg.stealth, engineCovers: { canvas: true, deviceMemory: true, clientHints: true } } };
   }
   const args: string[] = [
     `--user-data-dir=${cfg.userDataDir}`,

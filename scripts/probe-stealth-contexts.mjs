@@ -57,7 +57,7 @@ if (!fs.existsSync(EXE)) {
 // pre-fix behaviour (JavaScript overrides canvas and deviceMemory on the main thread only).
 const simulateOld = process.env.NT_SIMULATE_OLD_LAYER === '1';
 const stealthOpts = {
-  engineCovers: simulateOld ? undefined : { canvas: true, deviceMemory: true },
+  engineCovers: simulateOld ? undefined : { canvas: true, deviceMemory: true, clientHints: true },
   mobile: false,
   logicalPlatform: 'macos',
   platformVersion: '14.5.0',
@@ -110,6 +110,8 @@ const MAIN_PROBE = `(async () => {
     tz: Intl.DateTimeFormat().resolvedOptions().timeZone,
     gpu: null, canvas: null,
     webgl: null, audio: null, rects: null,
+    uaDataSync: null,
+    pluginsN: null, mimeN: null, fontsCheck: null, uaDataFull: null, connDown: null,
     lies: null,
   };
   try {
@@ -154,6 +156,19 @@ const MAIN_PROBE = `(async () => {
       o.audio = String(sum);
     } else { o.audio = 'absent'; }
   } catch (err) { o.audio = "err:" + err.message; }
+  try { o.pluginsN = navigator.plugins ? navigator.plugins.length : 'absent'; } catch (err) { o.pluginsN = 'n/a'; }
+  try { o.mimeN = navigator.mimeTypes ? navigator.mimeTypes.length : 'absent'; } catch (err) { o.mimeN = 'n/a'; }
+  try { o.fontsCheck = document.fonts && document.fonts.check ? 'yes' : 'no'; } catch (err) { o.fontsCheck = 'n/a'; }
+  try {
+    const d = navigator.userAgentData;
+    o.uaDataFull = d ? JSON.stringify({ brands: (d.brands||[]).map(b=>b.brand+'/'+b.version).join('|'), mobile: d.mobile, platform: d.platform, pv: d.platformVersion, arch: d.architecture, bits: d.bitness, model: d.model }) : 'absent';
+  } catch (err) { o.uaDataFull = 'n/a'; }
+  try { o.connDown = navigator.connection ? String(navigator.connection.downlink) : 'absent'; } catch (err) { o.connDown = 'n/a'; }
+  // Same fields the WORKER probe reads, so the two are actually comparable.
+  try {
+    const d = navigator.userAgentData;
+    o.uaDataSync = d ? JSON.stringify({ brands: (d.brands||[]).map(b=>b.brand+'/'+b.version).join('|'), mobile: d.mobile, platform: d.platform, pv: d.platformVersion, arch: d.architecture, bits: d.bitness, model: d.model }) : 'absent';
+  } catch (err) { o.uaDataSync = 'n/a'; }
   // Classic tells an antifraud script checks in two lines. native here means the property still
   // behaves like the engine's own; anything else is a modification the page can see.
   try {
@@ -206,6 +221,7 @@ const WORKER_BODY = `(${function () {
       touch: self.navigator.maxTouchPoints, langs: (self.navigator.languages || []).join(','),
       tz: Intl.DateTimeFormat().resolvedOptions().timeZone,
       gpu: null, canvas: null,
+      uaDataSync: null,
       hasDocument: typeof document !== 'undefined',
       plugins: null, mimeCount: null, notifPerm: null, batt: null,
       mediaCount: null, connType: null, voices: null, webgpuVendor: null,
@@ -214,6 +230,12 @@ const WORKER_BODY = `(${function () {
       const d = self.navigator.userAgentData;
       o.gpu = d ? (await d.getHighEntropyValues(['architecture','bitness','platformVersion'])).architecture ?? 'null-arch' : 'absent';
     } catch { o.gpu = 'err'; }
+    // Sync properties, not getHighEntropyValues: the page's values come from the JS layer's
+    // uaData object, which a worker never receives.
+    try {
+      const d = self.navigator.userAgentData;
+      o.uaDataSync = d ? JSON.stringify({ brands: (d.brands||[]).map(b=>b.brand+'/'+b.version).join('|'), mobile: d.mobile, platform: d.platform, pv: d.platformVersion, arch: d.architecture, bits: d.bitness, model: d.model }) : 'absent';
+    } catch { o.uaDataSync = 'err'; }
     // Surfaces the JS layer overrides: measured in a worker, where only the kernel can reach.
     try { o.plugins = self.navigator.plugins ? self.navigator.plugins.length : 'absent'; } catch { o.plugins = 'n/a'; }
     try { o.mimeCount = self.navigator.mimeTypes ? self.navigator.mimeTypes.length : 'absent'; } catch { o.mimeCount = 'n/a'; }
@@ -355,8 +377,12 @@ ws.close(); child.kill(); server.close();
 await new Promise((r) => setTimeout(r, 400));
 try { fs.rmSync(userDataDir, { recursive: true, force: true }); } catch {}
 
-const KEYS = ['ua', 'platform', 'cores', 'memory', 'langs', 'tz', 'gpu', 'canvas', 'webgl', 'rects', 'audio'];
+const KEYS = ['ua', 'platform', 'cores', 'memory', 'langs', 'tz', 'gpu', 'uaDataSync', 'canvas', 'webgl', 'rects', 'audio'];
 const WORKER_ONLY = ['plugins', 'mimeCount', 'notifPerm', 'batt', 'mediaCount', 'connType', 'voices', 'webgpuVendor'];
+// Surfaces a worker cannot reach at all. Comparing them with a run that omits the JS layer
+// (NT_NO_EXT=1) shows whether the JavaScript side is DUPLICATING something the kernel already
+// spoofs — the defect class this probe was built for, applied to the remaining surfaces.
+const OVERLAP = ['pluginsN', 'mimeN', 'fontsCheck', 'uaDataFull', 'connDown'];
 console.log(`\n=== MAIN vs WORKER | kernel=${useKernel ? `on(seed ${SEED})` : 'OFF'} | js-layer=${useExt ? 'on' : 'OFF'} ===\n`);
 console.log(`${'surface'.padEnd(14)}${'MAIN'.padEnd(30)}WORKER`);
 console.log('-'.repeat(84));
@@ -380,6 +406,8 @@ for (const k of KEYS) {
 }
 console.log(`WORKER-ONLY surfaces (kernel coverage visible where the JS layer cannot reach):`);
 for (const k of WORKER_ONLY) console.log(`  ${k.padEnd(14)}${String(worker?.[k] ?? '-')}`);
+console.log(`\nMAIN-THREAD values of surfaces the JS layer may duplicate — run again with NT_NO_EXT=1 and compare:`);
+for (const k of OVERLAP) console.log(`  ${k.padEnd(12)}${String(main?.[k] ?? '-')}`);
 console.log(`\ntouch: main=${String(main?.touch ?? '-')} worker=${String(worker?.touch ?? '-')} (WorkerNavigator has no maxTouchPoints by spec — not a leak)`);
 console.log(`\nJS-layer tells on the MAIN thread — what a page reads in two lines:`);
 console.log(JSON.stringify(main?.lies ?? { unavailable: main?.__error ?? 'unknown' }, null, 2));

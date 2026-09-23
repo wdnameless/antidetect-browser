@@ -156,7 +156,7 @@ export interface StealthConfig {
    * down on them instead of overwriting the engine on the main thread only. See
    * `StealthOptions.engineCovers` for the measurements that motivated it.
    */
-  engineCovers?: { canvas?: boolean; deviceMemory?: boolean };
+  engineCovers?: { canvas?: boolean; deviceMemory?: boolean; clientHints?: boolean };
 }
 
 export interface SshTunnelConfig {

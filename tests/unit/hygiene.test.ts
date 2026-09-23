@@ -203,7 +203,7 @@ describe('hygiene: declarations must be consumed', () => {
       hardwareConcurrency: 8,
       deviceMemory: 4,
       seed: 2023,
-      engineCovers: { canvas: true, deviceMemory: true },
+      engineCovers: { canvas: true, deviceMemory: true, clientHints: true },
     });
 
     // Both must remain valid, runnable browser scripts.
@@ -215,13 +215,16 @@ describe('hygiene: declarations must be consumed', () => {
     for (const src of [engineCovers, legacy]) {
       expect(src).toMatch(/CFG\.engineCoversDeviceMemory/);
       expect(src).toMatch(/CFG\.engineCoversCanvas/);
+      expect(src).toMatch(/CFG\.engineCoversClientHints/);
     }
 
     // And the flags actually reach the payload with the requested values, so a launcher that
     // passes engineCovers gets the stand-down and one that does not keeps the old behaviour.
     expect(legacy).toMatch(/"engineCoversCanvas":true/);
     expect(legacy).toMatch(/"engineCoversDeviceMemory":true/);
+    expect(legacy).toMatch(/"engineCoversClientHints":true/);
     expect(engineCovers).toMatch(/"engineCoversCanvas":false/);
     expect(engineCovers).toMatch(/"engineCoversDeviceMemory":false/);
+    expect(engineCovers).toMatch(/"engineCoversClientHints":false/);
   });
 });
