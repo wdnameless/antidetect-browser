@@ -151,6 +151,12 @@ export interface StealthConfig {
   webglVendor?: string;
   webglRenderer?: string;
   fontList?: string[];
+  /**
+   * Surfaces the kernel already spoofs natively for this launch, so the JavaScript layer stands
+   * down on them instead of overwriting the engine on the main thread only. See
+   * `StealthOptions.engineCovers` for the measurements that motivated it.
+   */
+  engineCovers?: { canvas?: boolean; deviceMemory?: boolean };
 }
 
 export interface SshTunnelConfig {
