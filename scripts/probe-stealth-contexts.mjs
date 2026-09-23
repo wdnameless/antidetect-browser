@@ -110,7 +110,7 @@ const MAIN_PROBE = `(async () => {
     tz: Intl.DateTimeFormat().resolvedOptions().timeZone,
     gpu: null, canvas: null,
     webgl: null, audio: null, rects: null,
-    uaDataSync: null,
+    uaDataSync: null, uaDataHigh: null,
     pluginsN: null, mimeN: null, fontsCheck: null, uaDataFull: null, connDown: null,
     lies: null,
   };
@@ -168,7 +168,9 @@ const MAIN_PROBE = `(async () => {
   try {
     const d = navigator.userAgentData;
     o.uaDataSync = d ? JSON.stringify({ brands: (d.brands||[]).map(b=>b.brand+'/'+b.version).join('|'), mobile: d.mobile, platform: d.platform, pv: d.platformVersion, arch: d.architecture, bits: d.bitness, model: d.model }) : 'absent';
-  } catch (err) { o.uaDataSync = 'n/a'; }
+    const hi = d ? await d.getHighEntropyValues(['architecture','bitness','platformVersion','model','fullVersionList']) : null;
+    o.uaDataHigh = hi ? JSON.stringify({ arch: hi.architecture, bits: hi.bitness, pv: hi.platformVersion, model: hi.model }) : 'absent';
+  } catch (err) { o.uaDataSync = 'n/a'; o.uaDataHigh = 'n/a'; }
   // Classic tells an antifraud script checks in two lines. native here means the property still
   // behaves like the engine's own; anything else is a modification the page can see.
   try {
@@ -221,7 +223,7 @@ const WORKER_BODY = `(${function () {
       touch: self.navigator.maxTouchPoints, langs: (self.navigator.languages || []).join(','),
       tz: Intl.DateTimeFormat().resolvedOptions().timeZone,
       gpu: null, canvas: null,
-      uaDataSync: null,
+      uaDataSync: null, uaDataHigh: null,
       hasDocument: typeof document !== 'undefined',
       plugins: null, mimeCount: null, notifPerm: null, batt: null,
       mediaCount: null, connType: null, voices: null, webgpuVendor: null,
@@ -235,7 +237,9 @@ const WORKER_BODY = `(${function () {
     try {
       const d = self.navigator.userAgentData;
       o.uaDataSync = d ? JSON.stringify({ brands: (d.brands||[]).map(b=>b.brand+'/'+b.version).join('|'), mobile: d.mobile, platform: d.platform, pv: d.platformVersion, arch: d.architecture, bits: d.bitness, model: d.model }) : 'absent';
-    } catch { o.uaDataSync = 'err'; }
+      const hi = d ? await d.getHighEntropyValues(['architecture','bitness','platformVersion','model','fullVersionList']) : null;
+      o.uaDataHigh = hi ? JSON.stringify({ arch: hi.architecture, bits: hi.bitness, pv: hi.platformVersion, model: hi.model }) : 'absent';
+    } catch (err) { o.uaDataSync = 'err'; o.uaDataHigh = 'err:' + err.message; }
     // Surfaces the JS layer overrides: measured in a worker, where only the kernel can reach.
     try { o.plugins = self.navigator.plugins ? self.navigator.plugins.length : 'absent'; } catch { o.plugins = 'n/a'; }
     try { o.mimeCount = self.navigator.mimeTypes ? self.navigator.mimeTypes.length : 'absent'; } catch { o.mimeCount = 'n/a'; }
@@ -377,7 +381,7 @@ ws.close(); child.kill(); server.close();
 await new Promise((r) => setTimeout(r, 400));
 try { fs.rmSync(userDataDir, { recursive: true, force: true }); } catch {}
 
-const KEYS = ['ua', 'platform', 'cores', 'memory', 'langs', 'tz', 'gpu', 'uaDataSync', 'canvas', 'webgl', 'rects', 'audio'];
+const KEYS = ['ua', 'platform', 'cores', 'memory', 'langs', 'tz', 'gpu', 'uaDataSync', 'uaDataHigh', 'canvas', 'webgl', 'rects', 'audio'];
 const WORKER_ONLY = ['plugins', 'mimeCount', 'notifPerm', 'batt', 'mediaCount', 'connType', 'voices', 'webgpuVendor'];
 // Surfaces a worker cannot reach at all. Comparing them with a run that omits the JS layer
 // (NT_NO_EXT=1) shows whether the JavaScript side is DUPLICATING something the kernel already
