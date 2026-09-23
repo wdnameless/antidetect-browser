@@ -249,11 +249,15 @@ export async function buildChromiumArgs(
   // worker, for one claimed device. An antifraud script does not need to know the correct value;
   // the disagreement itself is the signal.
   //
-  // The kernel spoofs whenever a seed is passed, so that is the signal. Done once here because
+  // The kernel spoofs whenever a seed is passed, so that is the signal. Computed once here because
   // four separate sites in this function write the stealth extension and they must all agree.
-  if (cfg.stealth && cfg.fingerprint && cfg.fingerprint.seed > 0) {
-    cfg = { ...cfg, stealth: { ...cfg.stealth, engineCovers: { canvas: true, deviceMemory: true, clientHints: true } } };
-  }
+  //
+  // A local rather than reassigning the `cfg` parameter: shadowing an argument makes every later
+  // read of `cfg` in this long function ambiguous about which shape it sees.
+  const stealthCfg =
+    cfg.stealth && cfg.fingerprint && cfg.fingerprint.seed > 0
+      ? { ...cfg.stealth, engineCovers: { canvas: true, deviceMemory: true, clientHints: true, webgl: true } }
+      : cfg.stealth;
   const args: string[] = [
     `--user-data-dir=${cfg.userDataDir}`,
     '--remote-debugging-port=0',
@@ -354,20 +358,20 @@ export async function buildChromiumArgs(
   if (cfg.extensionPaths && cfg.extensionPaths.length) {
     extensionsToLoad.push(...cfg.extensionPaths);
   }
-  if (cfg.stealth) {
+  if (stealthCfg) {
     const stealthExtDir = path.join(cfg.userDataDir, 'stealth-ext');
     const sigFile = path.join(stealthExtDir, 'stealth-manifest.sig.json');
     const signingKey = getStealthSigningKey(DATA_DIR);
     if (!fs.existsSync(stealthExtDir) || !fs.existsSync(sigFile)) {
-      writeStealthExtension(stealthExtDir, cfg.stealth, { signingKey });
-    } else if (stealthLocaleChanged(stealthExtDir, cfg.stealth)) {
+      writeStealthExtension(stealthExtDir, stealthCfg, { signingKey });
+    } else if (stealthLocaleChanged(stealthExtDir, stealthCfg)) {
       // The extension was written once and never revisited, so a language chosen afterwards left
       // the OLD locale in place — measured on a real profile: `navigator.language` reported
       // en-US while the generated voice pool still said `ja-JP`, from the seed's locale at the
       // time the extension was first built. The two must describe one machine, so a changed
       // locale rebuilds the extension.
       console.info(`[stealth] Rebuilding stealth extension for profile '${cfg.profileId}': its locale no longer matches the profile's language`);
-      writeStealthExtension(stealthExtDir, cfg.stealth, { signingKey });
+      writeStealthExtension(stealthExtDir, stealthCfg, { signingKey });
     }
     try {
       verifyStealthExtensionDirectory(stealthExtDir, { profileId: cfg.profileId });
@@ -384,7 +388,7 @@ export async function buildChromiumArgs(
       // turning the check into decoration. See the `secure-runtime-supply-chain` requirement.
       if (err instanceof StealthExtensionVerificationError && err.verificationResult?.reason === 'key-not-found') {
         console.info(`[stealth] Regenerating stealth extension for profile '${cfg.profileId}': its signature names a key this installation no longer has`);
-        writeStealthExtension(stealthExtDir, cfg.stealth, { signingKey });
+        writeStealthExtension(stealthExtDir, stealthCfg, { signingKey });
         verifyStealthExtensionDirectory(stealthExtDir, { profileId: cfg.profileId });
       } else {
         throw err;
@@ -529,7 +533,7 @@ export async function startProfile(cfg: LaunchConfig): Promise<StartResult> {
         if (err instanceof StealthExtensionVerificationError && err.verificationResult?.reason === 'key-not-found') {
           const signingKey = getStealthSigningKey(DATA_DIR);
           console.info(`[stealth] Regenerating stealth extension for profile '${cfg.profileId}': its signature names a key this installation no longer has`);
-          writeStealthExtension(stealthExtDir, cfg.stealth, { signingKey });
+          writeStealthExtension(stealthExtDir, cfg.stealth!, { signingKey });
           verifyStealthExtensionDirectory(stealthExtDir, { profileId: cfg.profileId });
         } else {
           throw err;

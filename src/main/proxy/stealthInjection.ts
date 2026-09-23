@@ -51,7 +51,7 @@ export interface StealthOptions {
    * When the launcher runs a stock binary the kernel covers nothing and this stays falsy, which
    * is why the JavaScript path is retained rather than deleted.
    */
-  engineCovers?: { canvas?: boolean; deviceMemory?: boolean; clientHints?: boolean };
+  engineCovers?: { canvas?: boolean; deviceMemory?: boolean; clientHints?: boolean; webgl?: boolean };
   webgpu?: {
     vendor?: string;
     architecture?: string;
@@ -409,6 +409,7 @@ export function buildStealthScript(opts: StealthOptions): string {
     engineCoversCanvas: opts.engineCovers?.canvas ?? false,
     engineCoversDeviceMemory: opts.engineCovers?.deviceMemory ?? false,
     engineCoversClientHints: opts.engineCovers?.clientHints ?? false,
+    engineCoversWebgl: opts.engineCovers?.webgl ?? false,
     audioNoise: opts.audioNoise ?? true,
     rectsNoise: opts.rectsNoise ?? true,
     webglNoise: opts.webglNoise ?? true,
@@ -1041,7 +1042,15 @@ export function buildStealthScript(opts: StealthOptions): string {
   }
 
   // --- WebGL / WebGL2 Noise & Vendor Spoofing ---
-  if (CFG.webglNoise) {
+  //
+  // Third surface with the same stand-down, and this one was found by an independent reviewer
+  // running the probe with the launcher's GPU flags, which the probe had been omitting — without
+  // them the kernel exposes no WebGL context at all and the comparison silently read 'no-gl' on
+  // both sides, i.e. it agreed because nothing was measured. With the flags: kernel-only gives
+  // identical strings in both contexts, while the JavaScript layer makes the page report 'no-gl'
+  // against the worker's spoofed
+  // 'Google Inc. (Apple)|ANGLE (...)'.
+  if (CFG.webglNoise && !CFG.engineCoversWebgl) {
     const UNMASKED_VENDOR_WEBGL = 0x9245;
     const UNMASKED_RENDERER_WEBGL = 0x9246;
 

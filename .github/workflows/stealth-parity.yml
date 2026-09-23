@@ -72,16 +72,23 @@ jobs:
       # Proves the gate can still go red. If the simulation ever stops
       # reproducing the old divergence, the assertion above has stopped
       # meaning anything, and this step is what says so.
+      #
+      # The simulation exits 0 WHEN IT DIVERGES, so success here is an
+      # inverted condition. Written with `if` rather than `|| exit 0`: the
+      # earlier form made the step fail on success and pass on nothing.
       - name: Prove the gate can still fail
         shell: bash
         run: |
-          set -euo pipefail
-          NT_SIMULATE_OLD_LAYER=1 \
-            node scripts/probe-stealth-contexts.mjs 2023 \
-            || exit 0
-          echo "FAIL: the old-layer simulation did not reproduce a divergence,"
-          echo "so the parity check above is no longer proving anything."
-          exit 1
+          set -uo pipefail
+          if NT_SIMULATE_OLD_LAYER=1 \
+            node scripts/probe-stealth-contexts.mjs 2023; then
+            echo "Old-layer simulation reproduced the divergence: the"
+            echo "parity check above can still fail. Good."
+          else
+            echo "FAIL: the simulation did not reproduce a divergence, so the"
+            echo "parity check above is no longer proving anything."
+            exit 1
+          fi
 
       - name: Upload the probe report
         if: always()

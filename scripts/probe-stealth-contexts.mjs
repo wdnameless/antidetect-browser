@@ -28,6 +28,7 @@ const userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'nt-context-probe-'));
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const { buildStealthScript } = require(path.join(ROOT, 'dist/src/main/proxy/stealthInjection.js'));
 const { getPlatformAsset } = require(path.join(ROOT, 'dist/src/main/util/kernelAcquire.js'));
+const { resolveGpuFlags } = require(path.join(ROOT, 'dist/src/main/util/gpuBackend.js'));
 
 // Kernel path comes from the same place `npm run ensure-kernel` writes it: `<repo>/data/chromium`,
 // NOT `getKernelDirectory()` from the product's config.
@@ -57,7 +58,7 @@ if (!fs.existsSync(EXE)) {
 // pre-fix behaviour (JavaScript overrides canvas and deviceMemory on the main thread only).
 const simulateOld = process.env.NT_SIMULATE_OLD_LAYER === '1';
 const stealthOpts = {
-  engineCovers: simulateOld ? undefined : { canvas: true, deviceMemory: true, clientHints: true },
+  engineCovers: simulateOld ? undefined : { canvas: true, deviceMemory: true, clientHints: true, webgl: true },
   mobile: false,
   logicalPlatform: 'macos',
   platformVersion: '14.5.0',
@@ -109,6 +110,7 @@ const MAIN_PROBE = `(async () => {
     touch: navigator.maxTouchPoints, langs: (navigator.languages || []).join(','),
     tz: Intl.DateTimeFormat().resolvedOptions().timeZone,
     gpu: null, canvas: null,
+    webglUnmasked: null,
     webgl: null, audio: null, rects: null,
     uaDataSync: null, uaDataHigh: null,
     pluginsN: null, mimeN: null, fontsCheck: null, uaDataFull: null, connDown: null,
@@ -135,6 +137,14 @@ const MAIN_PROBE = `(async () => {
       o.webgl = dbg ? String(gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL)) : 'no-ext';
     } else { o.webgl = 'no-gl'; }
   } catch (err) { o.webgl = "err:" + err.message; }
+  try {
+    const c = document.createElement('canvas');
+    const gl = c.getContext('webgl');
+    if (gl) {
+      const dbg = gl.getExtension('WEBGL_debug_renderer_info');
+      o.webglUnmasked = dbg ? String(gl.getParameter(dbg.UNMASKED_VENDOR_WEBGL)) + '|' + String(gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL)) : 'no-ext';
+    } else { o.webglUnmasked = 'no-gl'; }
+  } catch (err) { o.webglUnmasked = "err:" + err.message; }
   try {
     const el = document.createElement('div');
     el.style.cssText = 'position:absolute;width:133.7px;height:17.3px';
@@ -278,6 +288,16 @@ const WORKER_BODY = `(${function () {
       } else { o.webgl = 'no-offscreen'; }
     } catch (err) { o.webgl = "err:" + err.message; }
     try {
+      if (typeof OffscreenCanvas !== 'undefined') {
+        const c = new OffscreenCanvas(1, 1);
+        const gl = c.getContext('webgl');
+        if (gl) {
+          const dbg = gl.getExtension('WEBGL_debug_renderer_info');
+          o.webglUnmasked = dbg ? String(gl.getParameter(dbg.UNMASKED_VENDOR_WEBGL)) + '|' + String(gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL)) : 'no-ext';
+        } else { o.webglUnmasked = 'no-gl'; }
+      } else { o.webglUnmasked = 'no-offscreen'; }
+    } catch (err) { o.webglUnmasked = "err:" + err.message; }
+    try {
       if (typeof OfflineAudioContext !== 'undefined') {
         const ctx = new OfflineAudioContext(1, 44100, 44100);
         const osc = ctx.createOscillator(); osc.type = 'triangle'; osc.frequency.value = 10000;
@@ -317,6 +337,10 @@ const args = [
   ...(useExt ? [`--load-extension=${extDir}`, `--disable-extensions-except=${extDir}`] : []),
   `--user-data-dir=${userDataDir}`,
   '--remote-debugging-port=0',
+  // The launcher always passes these; without them the shipped kernel exposes a NULL WebGL
+  // context and the WebGL comparison silently degrades to 'no-gl' on both sides — a measurement
+  // that always agrees because nothing was measured.
+  ...resolveGpuFlags(),
   ...(process.env.NT_HEADLESS === '1' ? ['--headless=new'] : []),
   '--no-first-run', '--no-default-browser-check',
   origin,
@@ -365,10 +389,34 @@ const evaluate = async (expression, awaitPromise = true) => {
   return r.result?.result?.value;
 };
 
-// Let the content script at document_start install itself.
-await new Promise((r) => setTimeout(r, 1500));
+// Wait until the content script has actually installed, rather than sleeping a fixed 1500 ms.
+//
+// The fixed sleep made the gate FLAKY, which is worse than a gate that never runs: one run out of
+// four read the page before the stealth layer applied and reported a WebGL divergence that did not
+// exist. A flaky check gets disabled by whoever is woken up by it, so the wait is now tied to the
+// observable condition — the JS layer's own marker on the prototype it patches.
+const STEALTH_READY = `(() => {
+  try {
+    const d = Object.getOwnPropertyDescriptor(Navigator.prototype, 'deviceMemory');
+    // The kernel also defines this, so presence alone proves nothing; the JS layer additionally
+    // defines Function.prototype.toString as a data property it owns.
+    return typeof navigator.userAgentData !== 'undefined' && !!d;
+  } catch { return false; }
+})()`;
+
+let ready = false;
+for (let i = 0; i < 40; i++) {
+  if (await evaluate(STEALTH_READY, false)) { ready = true; break; }
+  await new Promise((r) => setTimeout(r, 100));
+}
+if (!ready && useExt) {
+  console.error('[probe] the stealth content script never installed; refusing to measure an ' +
+    'unpatched page and report it as a divergence.');
+  process.exit(1);
+}
 
 const main = await evaluate(MAIN_PROBE);
+
 const worker = await evaluate(`new Promise((resolve) => {
   const blob = new Blob([${JSON.stringify(WORKER_BODY)}], { type: 'application/javascript' });
   const w = new Worker(URL.createObjectURL(blob));
@@ -377,11 +425,28 @@ const worker = await evaluate(`new Promise((resolve) => {
   w.postMessage('go');
 })`);
 
+// WebGL needs the GPU process, which starts asynchronously. The page is measured first and can
+// lose the race against it, reporting `no-gl`, while the worker — measured a moment later — gets a
+// real context. That produced a `no-gl` vs `ANGLE (Apple…)` divergence on roughly one run in two,
+// which is an environment race and not a property of the product.
+//
+// Retried here rather than slept through: a fixed delay just moves the boundary, and a flaky gate
+// is worse than no gate because whoever is woken by it disables it. Both contexts must be able to
+// measure a surface before a difference between them means anything.
+for (let i = 0; i < 30 && String(main?.webglUnmasked) === 'no-gl'; i++) {
+  await new Promise((r) => setTimeout(r, 100));
+  const retry = await evaluate(MAIN_PROBE);
+  if (retry && !retry.__error) Object.assign(main, retry);
+}
+// If the page still has no WebGL after that, this machine cannot measure the surface at all, and
+// the comparison must say so rather than report the page's absence as the page's fingerprint.
+const webglUnavailable = String(main?.webglUnmasked) === 'no-gl' || String(worker?.webglUnmasked) === 'no-gl';
+
 ws.close(); child.kill(); server.close();
 await new Promise((r) => setTimeout(r, 400));
 try { fs.rmSync(userDataDir, { recursive: true, force: true }); } catch {}
 
-const KEYS = ['ua', 'platform', 'cores', 'memory', 'langs', 'tz', 'gpu', 'uaDataSync', 'uaDataHigh', 'canvas', 'webgl', 'rects', 'audio'];
+const KEYS = ['ua', 'platform', 'cores', 'memory', 'langs', 'tz', 'gpu', 'uaDataSync', 'uaDataHigh', 'webglUnmasked', 'canvas', 'webgl', 'rects', 'audio'];
 const WORKER_ONLY = ['plugins', 'mimeCount', 'notifPerm', 'batt', 'mediaCount', 'connType', 'voices', 'webgpuVendor'];
 // Surfaces a worker cannot reach at all. Comparing them with a run that omits the JS layer
 // (NT_NO_EXT=1) shows whether the JavaScript side is DUPLICATING something the kernel already
@@ -397,16 +462,32 @@ console.log('-'.repeat(84));
 const UNMEASURABLE = /^(?:-|absent|no-gl|no-offscreen|n\/a)$/;
 let diverged = 0;
 let skipped = 0;
+// A worker that failed to run (exception, empty result, timeout) reports NOTHING for every field.
+// Each such field then looked "not measurable" and was skipped, so a dead worker produced
+// `0/0 compared` and a GREEN gate — the worst possible failure for a check whose whole point is
+// catching a silent divergence. A worker error is now fatal, and "measured nothing at all" is a
+// failure rather than a pass.
+if (!worker || worker.__error) {
+  console.error(`\nFAIL: the worker probe did not run (${worker?.__error ?? 'no result'}). ` +
+    'A missing measurement is not a passing one.');
+  process.exit(1);
+}
+let workerMeasured = 0;
 for (const k of KEYS) {
   const a = String(main?.[k] ?? '-'); const b = String(worker?.[k] ?? '-');
   const t = (s) => (s.length > 28 ? `${s.slice(0, 25)}...` : s);
-  if (UNMEASURABLE.test(b)) {
+  if (UNMEASURABLE.test(b) || (k.startsWith('webgl') && webglUnavailable)) {
     skipped++;
     console.log(k.padEnd(14) + t(a).padEnd(30) + t(b) + '   (not measurable in a worker — no leak to compare)');
     continue;
   }
+  workerMeasured++;
   const same = a === b; if (!same) diverged++;
   console.log(k.padEnd(14) + t(a).padEnd(30) + t(b) + (same ? '' : '   <-- DIVERGES'));
+}
+if (workerMeasured === 0) {
+  console.error('\nFAIL: the worker answered nothing comparable, so this run proved nothing.');
+  process.exit(1);
 }
 console.log(`WORKER-ONLY surfaces (kernel coverage visible where the JS layer cannot reach):`);
 for (const k of WORKER_ONLY) console.log(`  ${k.padEnd(14)}${String(worker?.[k] ?? '-')}`);
