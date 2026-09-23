@@ -17,7 +17,6 @@ import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 
 const require = createRequire(import.meta.url);
-const EXE = path.resolve('data/chromium/fingerprint-chromium/ungoogled-chromium_148.0.7778.215-1.1_windows_x64/chrome.exe');
 const SEED = Number(process.argv[2] ?? 2023);
 const userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'nt-context-probe-'));
 
@@ -28,6 +27,31 @@ const userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'nt-context-probe-'));
 // cannot throw on our own static import.meta.url.
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const { buildStealthScript } = require(path.join(ROOT, 'dist/src/main/proxy/stealthInjection.js'));
+const { getPlatformAsset } = require(path.join(ROOT, 'dist/src/main/util/kernelAcquire.js'));
+
+// Kernel path comes from the same place `npm run ensure-kernel` writes it: `<repo>/data/chromium`,
+// NOT `getKernelDirectory()` from the product's config.
+//
+// Those two disagree by design — `CHROMIUM_DIR` is derived from `DATA_DIR`, which resolves to the
+// user's data folder (`~/.antidetect/data/chromium`) because that is where a RUNNING app keeps
+// its data, while the build-time downloader puts the kernel inside the checkout. Pointing the
+// probe at the config resolver made it look in `~/.antidetect/...` and report a missing kernel on
+// a machine where it was present. The checkout is the right source for a test that builds the
+// extension from `dist/` and is meant to run in CI.
+//
+// `NT_KERNEL_EXE` overrides both for a run against an unpacked build elsewhere.
+const EXE = process.env.NT_KERNEL_EXE
+  ? path.resolve(process.env.NT_KERNEL_EXE)
+  : (() => {
+      const kernelDir = path.join(ROOT, 'data', 'chromium', 'fingerprint-chromium');
+      const asset = getPlatformAsset(process.platform);
+      return path.join(kernelDir, asset.executableSubpath);
+    })();
+if (!fs.existsSync(EXE)) {
+  console.error(`[probe] kernel binary not found at ${EXE}\n` +
+    'Run `npm run ensure-kernel` first, or set NT_KERNEL_EXE to an unpacked kernel.');
+  process.exit(2);
+}
 // Mirrors what the launcher now passes when the kernel is present: the JavaScript layer stands
 // down on the surfaces the engine already spoofs. Set NT_SIMULATE_OLD_LAYER=1 to reproduce the
 // pre-fix behaviour (JavaScript overrides canvas and deviceMemory on the main thread only).
