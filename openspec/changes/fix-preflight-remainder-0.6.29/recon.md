@@ -38,3 +38,19 @@ the proxy check — the one whose latency actually matters — shows none.
 - The proxy verdict carries `durationMs`.
 - Both typechecks clean; `tests/unit/preflight` green; full suite green; tagged and published as
   0.6.29 with a signature that verifies against the configured pubkey.
+
+## Outcome
+
+All three fixed, each proven by execution rather than by reading:
+
+- **A** — reproduced in a real browser (warm cache with PASS → break the proxy → launch with the
+  guard on) and shown fixed: the modal now reads `✕ FAIL 2` with the guard banner present. The first
+  attempt at this fix looked up `data.verdict`, but the blocked response carries the verdict directly
+  in `data`, so it silently fell back to the cache and left the defect standing — caught only by
+  running the sequence.
+- **B** — proven with an instrumented `checkProxy`: exactly **one** call per `runPreflight` with a
+  proxy, and **zero** for a proxy-less profile, after the refactor that replaced the mutable binding
+  with a const expression.
+- **C** — `durationMs: 42` reaches the verdict for the proxy check, so the modal renders its latency.
+
+Full suite 156 files / 1290 passed; both typechecks clean; build and SBOM verification green.
