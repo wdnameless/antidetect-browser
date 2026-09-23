@@ -1,0 +1,93 @@
+name: Stealth context parity
+
+# Gates one defect class with a measurement instead of a reading:
+# does the page and a Web Worker describe the SAME machine?
+#
+# An antifraud script does not need to know which value is correct. It spins
+# up a Worker, asks the same question, and compares. A mismatch means
+# spoofing, and it links every profile whose Worker answers identically.
+#
+# This shipped undetected: the page reported `deviceMemory 8` while the
+# Worker said 16, and two canvas hashes differed for one claimed device. The
+# JavaScript layer overwrote surfaces the kernel had already spoofed, on the
+# main thread only — workers never see `Navigator` or
+# `CanvasRenderingContext2D` hooks, those are different objects there.
+# Background and numbers: docs/STEALTH_PARITY.md.
+#
+# Scope: this measures CONSISTENCY ACROSS CONTEXTS. It does not score against
+# CreepJS, BrowserScan or PixelScan. Passing here does not mean those
+# checkers are satisfied.
+on:
+  push:
+    branches: [main]
+    paths: &stealth-paths
+      - 'src/main/proxy/stealthInjection.ts'
+      - 'src/main/launcher/chromium.ts'
+      - 'src/main/fingerprints/**'
+      - 'scripts/probe-stealth-contexts.mjs'
+      - '.github/workflows/stealth-parity.yml'
+  pull_request:
+    paths: *stealth-paths
+  workflow_dispatch:
+
+jobs:
+  parity:
+    name: Page vs Worker
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # The probe builds the stealth payload from compiled output, so the
+      # build is a prerequisite here rather than a convenience.
+      - name: Build the main process
+        run: npm run build:main
+
+      # ~190 MB. Cached on the pinned version so a repeat run does not pay
+      # for it again. The downloader verifies SHA-256 itself, so a cache hit
+      # is a real artifact rather than a guess.
+      - name: Cache the browser kernel
+        uses: actions/cache@v4
+        with:
+          path: data/chromium/fingerprint-chromium
+          key: kernel-${{ runner.os }}-148.0.7778.215
+
+      - name: Ensure the browser kernel
+        run: npm run ensure-kernel
+
+      # A Windows runner has no display; headless keeps this from being a
+      # scheduling problem. Exit 0 means every compared surface agreed. A
+      # non-zero exit is the defect this gate exists for and must not be
+      # softened into a warning.
+      - name: Compare main thread against a Web Worker
+        run: node scripts/probe-stealth-contexts.mjs 2023
+
+      # Proves the gate can still go red. If the simulation ever stops
+      # reproducing the old divergence, the assertion above has stopped
+      # meaning anything, and this step is what says so.
+      - name: Prove the gate can still fail
+        shell: bash
+        run: |
+          set -euo pipefail
+          NT_SIMULATE_OLD_LAYER=1 \
+            node scripts/probe-stealth-contexts.mjs 2023 \
+            || exit 0
+          echo "FAIL: the old-layer simulation did not reproduce a divergence,"
+          echo "so the parity check above is no longer proving anything."
+          exit 1
+
+      - name: Upload the probe report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stealth-parity-report
+          path: data/**/DevToolsActivePort
+          if-no-files-found: ignore
+          retention-days: 7

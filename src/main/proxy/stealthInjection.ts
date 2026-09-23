@@ -105,6 +105,21 @@ function defaultPlatformVersion(lp: LogicalPlatform): string {
   }
 }
 
+/**
+ * Default device model reported to Client Hints for a platform that has one.
+ *
+ * Extracted from a nested ternary that read `android ? 'Pixel 8' : ios ? 'iPhone' : ''`, which is
+ * parsed right-to-left and invites the reader to conclude the empty string applies to every
+ * non-Apple platform. Desktop platforms genuinely have no model, so '' is correct for them.
+ */
+function defaultModelFor(lp: LogicalPlatform): string {
+  switch (lp) {
+    case 'android': return 'Pixel 8';
+    case 'ios': return 'iPhone';
+    default: return '';
+  }
+}
+
 function getArchitecture(lp: LogicalPlatform, chip?: string, forcedArch?: string): string {
   if (forcedArch) return forcedArch;
   if (lp === 'macos') {
@@ -380,7 +395,9 @@ export function buildStealthScript(opts: StealthOptions): string {
     platformVersion: opts.platformVersion ?? (hwVector ? hwVector.platformVersion : defaultPlatformVersion(opts.logicalPlatform)),
     architecture: getArchitecture(opts.logicalPlatform, opts.chip, opts.architecture),
     bitness: '64',
-    model: opts.model ?? (opts.logicalPlatform === 'android' ? 'Pixel 8' : opts.logicalPlatform === 'ios' ? 'iPhone' : ''),
+    // Flattened from a nested ternary: `android ? 'Pixel 8' : ios ? 'iPhone' : ''` is read
+    // right-to-left and is easy to misread as assigning '' to everything non-Apple.
+    model: opts.model ?? defaultModelFor(opts.logicalPlatform),
     brands: BRANDS,
     fullVersionList: FULL_VERSION_LIST,
     hardwareConcurrency: opts.hardwareConcurrency ?? (hwVector ? hwVector.cpuCores : null),

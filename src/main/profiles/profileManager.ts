@@ -1469,14 +1469,20 @@ export function listProfiles(
     if (typeof chromiumLauncher.isRunning === 'function') {
       isRunningFn = chromiumLauncher.isRunning;
     }
-  } catch {}
+  } catch {
+    // Optional dependency: this module is absent in some build modes, and the caller tolerates a
+    // missing liveness probe by reporting the stored status. Swallowed deliberately — but only
+    // for that reason, so a failure is still diagnosable from the fallback it produces.
+  }
   try {
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const firefoxLauncher = require('../launcher/firefox') as { isRunning?: (id: string) => boolean };
     if (typeof firefoxLauncher.isRunning === 'function') {
       isFirefoxRunningFn = firefoxLauncher.isRunning;
     }
-  } catch {}
+  } catch {
+    // Same as above: the Firefox launcher is optional and its absence is not an error.
+  }
 
   const list: ProfileListItem[] = rows.map((r) => {
     const liveRunning = isRunningFn(r.id) || isFirefoxRunningFn(r.id);
