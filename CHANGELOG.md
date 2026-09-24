@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.6.35] - 2026-09-24
+
+### Added
+- **Headless on/off in the profile editor.** Settings for a profile now include a
+  display-mode switch in the PRIVACY section. Off is a normal browser window; on
+  launches without one, which is what an agent-driven profile wants. The stored
+  value is what the launcher uses, so the switch changes what the kernel does
+  rather than only what the form remembers.
+
+### Changed
+- **The profiles table shows where a proxy exits, not its protocol.** The PROXY
+  column now leads with flag, country and city; the transport (HTTP/SOCKS5/SSH)
+  moved into the tooltip, since it is a property of the proxy rather than the
+  thing the column is scanned for. A proxy whose geography has not been resolved
+  still shows its transport name rather than a blank.
+
 ## [0.6.34] - 2026-09-24
 
 ### Fixed
