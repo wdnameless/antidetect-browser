@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { api, CloudStateData, ProfileListItem, SyncResultRow } from '../api';
+import { api, CloudStateData, SyncResultRow } from '../api';
 import { useI18n } from '../i18n';
 import { openExternalUrl, BOOTSTRAP_RAW_URL, SERVER_DEPLOY_DOC_URL, SERVER_README_URL } from '../externalUrl';
 
@@ -46,10 +46,6 @@ export const CloudSync: React.FC = () => {
   const [remoteKey, setRemoteKey] = useState('');
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState('');
-  const [localList, setLocalList] = useState<ProfileListItem[]>([]);
-  const [remoteList, setRemoteList] = useState<ProfileListItem[]>([]);
-  const [selLocal, setSelLocal] = useState<Set<string>>(new Set());
-  const [selRemote, setSelRemote] = useState<Set<string>>(new Set());
   const [syncLog, setSyncLog] = useState<SyncResultRow[]>([]);
 
   // Google Drive state
@@ -87,18 +83,6 @@ export const CloudSync: React.FC = () => {
     refreshState();
     refreshGDriveStatus();
   }, []);
-
-  const loadLocalProfiles = (): void => {
-    api.list({ pageSize: 500 }).then((r) => {
-      if (r.code === 0) setLocalList(r.data.list ?? []);
-    }).catch(() => undefined);
-  };
-
-  useEffect(() => {
-    if (state?.connected && state?.authorized) {
-      loadLocalProfiles();
-    }
-  }, [state?.connected, state?.authorized]);
 
   // Polling device auth
   useEffect(() => {
@@ -254,7 +238,7 @@ export const CloudSync: React.FC = () => {
   const handleDisconnect = (): void => {
     setBusy(true);
     api.cloudDisconnect().then(() => {
-      setRemoteList([]); setSyncLog([]);
+      setSyncLog([]);
       setBusy(false);
       refreshState();
     }).catch(() => setBusy(false));
@@ -284,17 +268,6 @@ export const CloudSync: React.FC = () => {
       }
       setBusy(false);
     }).catch((e: Error) => { setNotice(e.message); setBusy(false); });
-  };
-
-  const handleRemoteList = (): void => {
-    setBusy(true);
-    api.cloudRemoteList().then((r) => {
-      if (r.code === 0) {
-        setRemoteList(r.data.list ?? []);
-        setSelRemote(new Set());
-      }
-      setBusy(false);
-    }).catch(() => setBusy(false));
   };
 
   return (
@@ -554,9 +527,6 @@ export const CloudSync: React.FC = () => {
               </button>
               <button className="btn" onClick={() => handlePull()} disabled={busy}>
                 {t('Pull All Remote Profiles')}
-              </button>
-              <button className="btn" onClick={handleRemoteList} disabled={busy}>
-                {t('List Remote Profiles')}
               </button>
             </div>
 
