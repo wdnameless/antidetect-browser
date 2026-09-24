@@ -2667,6 +2667,43 @@ tr.row-dense:focus-within .row-dense__actions {
   color: var(--text-muted);
 }
 
+/* Auto / Real per noise surface. The row rhythm is shared with the derived rows it replaces
+   (one line per surface); only the right-hand value became interactive, so this adds the
+   minimum-height the toggle needs rather than restating the whole layout. */
+.pf-noise-row {
+  min-height: 28px;
+}
+
+.noise-toggle {
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+}
+
+.noise-toggle button {
+  border: none;
+  background: transparent;
+  border-radius: var(--radius-sm);
+  padding: 3px 10px;
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.noise-toggle button:hover {
+  color: var(--text);
+}
+
+.noise-toggle button.active {
+  background: var(--surface-3);
+  color: var(--accent);
+  font-weight: 600;
+}
+
 /* Chip/token input: typing a port and pressing Enter commits it. */
 .pf-chip-input {
   display: flex;

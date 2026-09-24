@@ -34,39 +34,64 @@ describe('profile save reaches every field the modal collects', () => {
   it('persists the browser language chosen in the modal', () => {
     const body = saveHandlerBody(source);
 
-    // The value must be USED by the save path, in either mode. `saveProfileLanguage` is the
-    // helper that writes it through the fingerprint route, because `lang` is not a column on
-    // `profiles` and `profileUpdate` does not accept it.
+    // The value must be USED by the save path, in either mode. The write goes through the
+    // fingerprint route, because `lang` is not a column on `profiles` and `profileUpdate` does
+    // not accept it.
+    //
+    // Matched on the ARGUMENT rather than on a helper name. That helper was later generalised to
+    // carry a second fingerprint-config value in the same read-modify-write, and a guard pinning
+    // the old name would have reported a failure for a change that kept the behaviour exactly.
+    // What must hold is that `lang` is handed to the code that persists it, whatever that code is
+    // called.
     expect(
-      /saveProfileLanguage\s*\(/.test(body),
+      /lang:\s*profileLang/.test(body),
       'the save handler never persists `profileLang`. The modal shows a Browser language select ' +
         'whose value is discarded on Save — set the language through the fingerprint route, ' +
         'where the launcher reads it from.',
     ).toBe(true);
   });
 
-  it('persists it in BOTH create and edit, not just one', () => {
+  it('persists the per-surface noise choice the modal collects', () => {
+    const body = saveHandlerBody(source);
+    // Same rule, new field: NOISE offers Auto/Real per surface, and the choice is stored as
+    // `fingerprint.config.disableSpoofing`. A control whose value is never sent is the exact
+    // defect this file exists to catch, so the new one is guarded from the start.
+    expect(
+      /disableSpoofing:\s*noiseReal\.join/.test(body),
+      'the noise Real/Auto choice is never persisted — it must be written to the fingerprint ' +
+        'config as `disableSpoofing`, the key the launcher turns into --disable-spoofing.',
+    ).toBe(true);
+  });
+
+  it('persists the fingerprint-config values in BOTH create and edit, not just one', () => {
     const body = saveHandlerBody(source);
     // Two branches, two saves: a fix applied to one mode only would still lose the value in the
-    // other, and the modal offers the same control in both.
-    const uses = body.match(/saveProfileLanguage\s*\(/g) ?? [];
+    // other, and the modal offers the same controls in both.
+    const uses = body.match(/saveFingerprintConfig\s*\(/g) ?? [];
     expect(
       uses.length,
-      `the language is saved in ${uses.length} of the two branches (create, edit)`,
+      `the fingerprint config is saved in ${uses.length} of the two branches (create, edit)`,
     ).toBeGreaterThanOrEqual(2);
   });
 
-  it('writes it through the fingerprint route, where the launcher reads it', () => {
-    // `profileUpdate` has no language field; the value lives at `fingerprint.config.lang`.
-    const helperStart = source.indexOf('const saveProfileLanguage');
-    expect(helperStart, 'saveProfileLanguage helper not found').toBeGreaterThan(-1);
+  it('writes them through the fingerprint route, where the launcher reads them back', () => {
+    // `profileUpdate` has no language field; both values live under `fingerprint.config`.
+    const helperStart = source.indexOf('const saveFingerprintConfig');
+    expect(helperStart, 'saveFingerprintConfig helper not found').toBeGreaterThan(-1);
     const nextFn = source.indexOf('\n  const ', helperStart + 10);
     const helper = source.slice(helperStart, nextFn === -1 ? source.length : nextFn);
     expect(
       /profileUpdateFingerprint/.test(helper),
-      'the language must be written with profileUpdateFingerprint — that is the route that ' +
-        'stores it, and the only one the launcher reads back',
+      'the fingerprint config must be written with profileUpdateFingerprint — that is the route ' +
+        'that stores it, and the only one the launcher reads back',
     ).toBe(true);
+    // One write for both values: two calls would each re-read the blob, and the second would
+    // write back a copy taken before the first landed.
+    const writes = helper.match(/profileUpdateFingerprint\s*\(/g) ?? [];
+    expect(
+      writes.length,
+      'the helper writes more than once; the values must share a single read-modify-write',
+    ).toBe(1);
   });
 
   it('keeps "Auto" distinguishable from a concrete language', () => {

@@ -115,6 +115,18 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
   // Display mode. Headless profiles launch without a window, which is what an agent-driven
   // profile wants and what a human operator never does by accident from this form.
   const [headlessMode, setHeadlessMode] = useState(false);
+  /**
+   * Per-surface noise, as the KERNEL sees it: a token present here is passed to
+   * `--disable-spoofing=<token>`, which turns that surface's engine-level spoofing off.
+   *
+   * Stored in the fingerprint config blob as a comma-joined string, the same shape the
+   * fingerprint route already reads (`disableSpoofing`). Tokens match the kernel's own
+   * names, so this list is a control over a real switch and not a vocabulary of its own.
+   *
+   * "Auto" = the kernel spoofs it from the seed, which is what makes a profile unique.
+   * "Real" = stand down and report the machine's own value.
+   */
+  const [noiseReal, setNoiseReal] = useState<string[]>([]);
 
   // Proxy state in modal: mode = 'none' | 'saved' | 'custom'
   const [proxyMode, setProxyMode] = useState<'none' | 'saved' | 'custom'>('none');
@@ -153,6 +165,28 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
     screenHeight?: number;
     disableSpoofing?: string[];
   }
+
+/**
+ * The noise surfaces the operator can switch between Auto and Real.
+ *
+ * `token` is the kernel's own `--disable-spoofing` value, not a label of our own: the switch
+ * is matched by exact string, and an unknown token is accepted and ignored, so a rename here
+ * would silently turn the control into decoration. `gpu` is the current spelling — the old
+ * `--fingerprint-gpu-vendor` / `--disable-gpu-fingerprint` flags were retired in Chrome 144.
+ *
+ * `measured` records which of these a probe actually observed changing the browser. Canvas
+ * and font were confirmed against the pinned kernel (distinct canvas hash / font count with
+ * the token set). Audio, clientrects and gpu are offered because the kernel documents them,
+ * but the probe used here could not resolve their effect, so they are labelled as documented
+ * rather than presented as equally proven.
+ */
+const NOISE_SURFACES = [
+  { label: 'Canvas', token: 'canvas', measured: true },
+  { label: 'Fonts', token: 'font', measured: true },
+  { label: 'Audio', token: 'audio', measured: false },
+  { label: 'Client rects', token: 'clientrects', measured: false },
+  { label: 'WebGL / GPU', token: 'gpu', measured: false },
+] as const;
   const [fpForm, setFpForm] = useState<FpForm>({});
   const [extSel, setExtSel] = useState<string[]>([]);
 
@@ -727,11 +761,16 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
    * "no explicit language" and lets the fingerprint's own seed-derived locale decide. Deleting
    * the key instead would be equally correct; writing the empty string keeps the shape stable.
    */
-  const saveProfileLanguage = async (userId: string, lang: string) => {
+  const saveFingerprintConfig = async (
+    userId: string,
+    values: { lang?: string; disableSpoofing?: string },
+  ) => {
     const res = await api.profileDetail(userId);
     if (res.code !== 0 || !res.data) return;
     const cfg = ((res.data.fingerprint?.config ?? {}) as Record<string, unknown>) || {};
-    await api.profileUpdateFingerprint(userId, { ...cfg, lang });
+    // Both values are written in ONE read-modify-write. Two calls would each re-read the blob
+    // and the second would be writing back a copy taken before the first landed.
+    await api.profileUpdateFingerprint(userId, { ...cfg, ...values });
   };
 
   const openEditModal = async (p: ProfileListItem) => {
@@ -750,12 +789,17 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
         // fingerprint object itself — reading them one level up silently yields undefined
         // and the form would show a default that disagrees with the profile. An absent `lang`
         // stays empty so the select renders "Auto" rather than claiming a concrete value.
-        const fpCfg = (d.fingerprint?.config ?? {}) as { lang?: string; deviceMemory?: number };
+        const fpCfg = (d.fingerprint?.config ?? {}) as { lang?: string; deviceMemory?: number; disableSpoofing?: string };
         setProfileLang(typeof fpCfg.lang === 'string' ? fpCfg.lang : '');
         setDoNotTrack((d.do_not_track as 'off' | 'on' | 'auto') || 'auto');
         setBlockedPorts(Array.isArray(d.blocked_ports) ? d.blocked_ports.map(Number).filter((n) => !isNaN(n) && n > 0 && n <= 65535) : []);
         setWebrtcPolicy((d.webrtc_policy as 'default' | 'disable_non_proxied_udp' | 'proxy') || 'default');
         setHeadlessMode(d.headless === true);
+        setNoiseReal(
+          typeof fpCfg.disableSpoofing === 'string' && fpCfg.disableSpoofing
+            ? fpCfg.disableSpoofing.split(',').map((x) => x.trim()).filter(Boolean)
+            : [],
+        );
         if (typeof d.fingerprint?.hardwareConcurrency === 'number') setCores(d.fingerprint.hardwareConcurrency);
         setPortInput('');
         setName(d.name || '');
@@ -873,8 +917,11 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
           // so it is written through the fingerprint route. `create` derives a language from the
           // fingerprint seed; without this the operator's choice was discarded at creation too.
           const createdId = res.data?.user_id;
-          if (createdId && profileLang) {
-            await saveProfileLanguage(createdId, profileLang);
+          if (createdId && (profileLang || noiseReal.length > 0)) {
+            await saveFingerprintConfig(createdId, {
+              lang: profileLang,
+              disableSpoofing: noiseReal.join(','),
+            });
           }
           setModalMode(null);
           await loadProfiles();
@@ -904,7 +951,10 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
           // Same reason as the create branch: the language is part of the fingerprint config, and
           // `profileUpdate` does not carry it. Omitting this is exactly the reported defect — the
           // select showed a value, Save reported success, and the value never left the form.
-          await saveProfileLanguage(profileId, profileLang);
+          await saveFingerprintConfig(profileId, {
+            lang: profileLang,
+            disableSpoofing: noiseReal.join(','),
+          });
           setModalMode(null);
           await loadProfiles();
           await loadGroups();
@@ -2567,34 +2617,11 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
               <button className="btn-icon" onClick={() => setModalMode(null)}>✕</button>
             </div>
 
-            {/* Modal Tabs Header */}
-            {/* Section jump bar. The reference groups the form into labelled sections
-                rather than hiding them behind tabs, but keeping a way to reach a section
-                matters once the form is long — these scroll to it instead of swapping the
-                body, so nothing is ever off-screen-but-selected. */}
-            <div className="modal-tabs" data-testid="profile-form-sections">
-              {([
-                ['identity', 'IDENTITY'],
-                ['locale', 'LOCALE'],
-                ['privacy', 'PRIVACY'],
-                ['noise', 'NOISE'],
-                ['media', 'MEDIA DEVICES'],
-                ['extras', 'EXTENSIONS & COOKIES'],
-              ] as const).map(([id, label]) => (
-                <button
-                  key={id}
-                  type="button"
-                  className="tab-btn"
-                  onClick={() => document.getElementById(`pf-section-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
-                >
-                  <span>{t(label)}</span>
-                </button>
-              ))}
-            </div>
             <div className="modal-body">
               {/*
-                Sectioned layout, three columns, following the reference. Sections are
-                stacked (not tabbed) so nothing is hidden: the jump bar above scrolls to one.
+                Sectioned layout, three columns, following the reference. Every section is
+                visible at once — the headings below label their own group, so a jump bar
+                only added a second navigation surface for a form that already fits.
                 The three existing tab bodies (general / proxy / fingerprint) are kept
                 VERBATIM below — the redesign is presentational, and rewriting working
                 controls would be a needless regression risk.
@@ -2719,29 +2746,46 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
                   <div className="pf-section" id="pf-section-noise">
                     <div className="pf-section-label">{t('NOISE')}</div>
                     {/*
-                      These are derived, not chosen. The stealth layer generates canvas /
-                      audio / rects / WebGL noise and the font inventory from the profile's
-                      fingerprint seed and hardware vector, so there is no per-profile
-                      switch to expose — a toggle here would be a control that does nothing.
-                      Showing the real state is useful; faking a switch is not.
+                      Each surface has a real switch behind it: Real adds the kernel's own
+                      `--disable-spoofing` token for that surface, Auto leaves engine-level
+                      spoofing on. Tokens match the kernel exactly (Chrome 144+ replaced the
+                      old --fingerprint-gpu-* flags with `gpu`), because a misspelled token is
+                      accepted silently and would make this control do nothing.
+                    */}
+                    {NOISE_SURFACES.map(({ label, token }) => {
+                      const isReal = noiseReal.includes(token);
+                      return (
+                        <div className="pf-derived-row pf-noise-row" key={token}>
+                          <span>{t(label)}</span>
+                          <div className="noise-toggle" role="group">
+                            <button
+                              type="button"
+                              className={isReal ? '' : 'active'}
+                              data-testid={`noise-auto-${token}`}
+                              onClick={() => setNoiseReal(noiseReal.filter((x) => x !== token))}
+                            >
+                              {t('Auto')}
+                            </button>
+                            <button
+                              type="button"
+                              className={isReal ? 'active' : ''}
+                              data-testid={`noise-real-${token}`}
+                              onClick={() => setNoiseReal(isReal ? noiseReal : [...noiseReal, token])}
+                            >
+                              {t('Real')}
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                    {/*
+                      Sensors stay informational on purpose: `resolveSensorConfig` returns null
+                      for anything that is not a MOBILE profile and the kernel exposes no token
+                      for them, so a switch here could not do anything for the profile showing
+                      it.
                     */}
                     <div className="pf-derived-row">
-                      <span>{t('Canvas')}</span><code>{t('Auto (per-seed)')}</code>
-                    </div>
-                    <div className="pf-derived-row">
-                      <span>{t('WebGL')}</span><code>{t('Auto (per-seed)')}</code>
-                    </div>
-                    <div className="pf-derived-row">
-                      <span>{t('Audio')}</span><code>{t('Auto (per-seed)')}</code>
-                    </div>
-                    <div className="pf-derived-row">
-                      <span>{t('Client rects')}</span><code>{t('Auto (per-seed)')}</code>
-                    </div>
-                    <div className="pf-derived-row">
-                      <span>{t('Sensors')}</span><code>{t('Auto (per-seed)')}</code>
-                    </div>
-                    <div className="pf-derived-row">
-                      <span>{t('Fonts')}</span><code>{t('From hardware vector')}</code>
+                      <span>{t('Sensors')}</span><code>{t('Mobile profiles only')}</code>
                     </div>
 
                     <div className="form-group" style={{ marginTop: 'var(--space-3)' }}>
@@ -3017,8 +3061,25 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
                       <span className="fp-item-val" style={{ color: 'var(--ok)' }}>false (Stealth forced)</span>
                     </div>
                     <div className="fp-item">
-                      <span className="fp-item-label">Canvas &amp; Audio Noise</span>
-                      <span className="fp-item-val" style={{ color: 'var(--ok)' }}>Active (Per-Seed Hash)</span>
+                      <span className="fp-item-label">{t('Noise status')}</span>
+                      {/*
+                        Reports the NOISE choice above instead of a fixed "Active" badge. A badge
+                        that always claimed noise was on would contradict the operator the moment
+                        they switched a surface to Real — the summary would be telling them the
+                        opposite of what the launch is about to do.
+                      */}
+                      {(() => {
+                        const off = NOISE_SURFACES.filter((x) => noiseReal.includes(x.token));
+                        if (off.length === 0) {
+                          return <span className="fp-item-val" style={{ color: 'var(--ok)' }}>{t('Active (per-seed)')}</span>;
+                        }
+                        const which = off.map((x) => x.label).join(', ');
+                        return (
+                          <span className="fp-item-val" style={{ color: 'var(--text-secondary)' }}>
+                            {`${t('Real')}: ${which}`}
+                          </span>
+                        );
+                      })()}
                     </div>
                     <div className="fp-item">
                       <span className="fp-item-label">CPU Cores</span>
