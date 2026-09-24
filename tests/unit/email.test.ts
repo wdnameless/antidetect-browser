@@ -339,12 +339,40 @@ describe('Minimal IMAP Client with Fake Socket Seam', () => {
     const cachedInbox = await listInbox(db, account.id, failingSocketFactory);
     expect(cachedInbox.cached).toBe(true);
     expect(cachedInbox.messages.length).toBe(2);
+    // AND it must say why. The original test asserted only `cached`, so a fallback that swallowed
+    // the reason passed: the operator saw "Cached" over a possibly-empty inbox and could not tell
+    // a rejected login from an empty mailbox. This is the assertion that was missing.
+    expect(cachedInbox.error, 'a cache fallback must carry the reason it fell back').toBeTruthy();
+    expect(cachedInbox.error).toContain('ECONNREFUSED');
 
     // Should return cached message body
     const cachedDetail = await readMessage(db, account.id, '101', failingSocketFactory);
     expect(cachedDetail.cached).toBe(true);
     expect(cachedDetail.body).toContain('482910');
+    // Same for a single message: a stale body must not read as a successful live fetch.
+    expect(cachedDetail.error, 'a cached body must carry the reason it is stale').toContain('ECONNREFUSED');
 
+    resetSecretCiphers();
+  });
+
+  it('a successful live read reports NO error', async () => {
+    const db = getDb();
+    ensureEmailTables(db);
+    setSecretCipher({
+      protect: (plain) => plain || null,
+      unprotect: (cipherText) => cipherText || undefined,
+    });
+    const account = await createAccount(db, {
+      label: 'Live Ok', email: 'live@example.com', host: '127.0.0.1',
+      port: serverPort, username: 'live@example.com', password: 'password123',
+    });
+    const socketFactory: SocketFactory = (opts) => net.connect({ host: opts.host, port: opts.port });
+
+    const inbox = await listInbox(db, account.id, socketFactory);
+    // The mirror of the case above: the field must be absent on success, or every healthy read
+    // would raise a banner and the real failures would stop being visible.
+    expect(inbox.cached).toBe(false);
+    expect(inbox.error).toBeUndefined();
     resetSecretCiphers();
   });
 });

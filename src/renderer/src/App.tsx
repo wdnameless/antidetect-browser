@@ -39,6 +39,7 @@ import {
   CloudIcon,
   TrashIcon,
   CookieIcon,
+  MailIcon,
   FlowIcon,
 } from './icons';
 type Page =
@@ -138,8 +139,12 @@ export const NAV_DESTINATIONS: NavDestination[] = [
   },
   {
     key: 'email',
-    label: 'Library',
-    icon: CookieIcon,
+    // Named for what it IS. The page is the IMAP mail manager (`pages/Email.tsx`, `/api/v1/email`),
+    // and "Library" described a grouping the sidebar already expresses with its LIBRARY heading —
+    // so the label told the operator nothing about the destination and read as a second, empty
+    // Library section. The icon was a cookie, which belongs to the cookie farm, not to mail.
+    label: 'IMAP',
+    icon: MailIcon,
     group: 'LIBRARY',
   },
   // SYSTEM

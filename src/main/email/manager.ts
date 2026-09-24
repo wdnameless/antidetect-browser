@@ -60,11 +60,21 @@ export interface EmailMessageDetail extends EmailMessageSummary {
   accountId: string;
   body: string;
   cached?: boolean;
+  /** Why the live fetch failed, when the body came from the cache instead. */
+  error?: string;
 }
 
 export interface InboxResult {
   messages: EmailMessageSummary[];
   cached: boolean;
+  /**
+   * Why the live read failed, when it did. The cache fallback is useful, but it used to be SILENT:
+   * a rejected login or an unreachable host returned `cached: true` with an empty list, and the
+   * operator saw "Cached" over an empty inbox with no reason — indistinguishable from a mailbox
+   * that is genuinely empty. The provider's own words ("AUTHENTICATIONFAILED") were discarded one
+   * line above being shown.
+   */
+  error?: string;
 }
 
 export type SocketFactory = (options: { host: string; port: number; tls?: boolean }) => net.Socket;
@@ -561,9 +571,16 @@ export async function listInbox(
 
     session.close();
     return { messages, cached: false };
-  } catch (_err) {
+  } catch (err) {
     session.close();
-    // Offline / unreachable fallback to cache
+    /*
+     * The cache is a fallback, not a disguise. The reason the live read failed is carried out to
+     * the caller, because the operator's question is "why is my inbox empty", and the provider
+     * already answered it precisely — `AUTHENTICATIONFAILED` means the password is wrong (iCloud
+     * requires an app-specific one), a connect timeout means the host or the network is wrong.
+     * Reporting neither left the two indistinguishable from an empty mailbox.
+     */
+    const reason = err instanceof Error ? err.message : String(err);
     const cachedRows = db.prepare(`
       SELECT uid, subject, from_addr as "from", date
       FROM email_messages_cache
@@ -571,7 +588,7 @@ export async function listInbox(
       ORDER BY created_at DESC
     `).all(accountId) as EmailMessageSummary[];
 
-    return { messages: cachedRows, cached: true };
+    return { messages: cachedRows, cached: true, error: reason };
   }
 }
 
@@ -652,6 +669,9 @@ export async function readMessage(
         date: cachedRow.date ?? '',
         body: cachedRow.body,
         cached: true,
+        // Same reason as `listInbox`: a cached body must say why it is cached, or a stale copy
+        // reads as a successful live fetch.
+        error: err instanceof Error ? err.message : String(err),
       };
     }
     throw err;

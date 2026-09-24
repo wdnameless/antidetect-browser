@@ -533,6 +533,8 @@ export interface EmailMessageDetail extends EmailMessageSummary {
   accountId: string;
   body: string;
   cached?: boolean;
+  /** Why the live fetch failed, when the body came from the cache instead. */
+  error?: string;
 }
 export interface McpStatus {
   running: boolean;
@@ -1299,7 +1301,7 @@ export const api = {
   emailAccountDelete: (accountId: string) =>
     request<{ deleted: boolean }>(`/api/v1/email/accounts/${encodeURIComponent(accountId)}`, { method: 'DELETE' }),
   emailInboxList: (accountId: string) =>
-    request<{ messages: EmailMessageSummary[]; cached: boolean }>(
+    request<{ messages: EmailMessageSummary[]; cached: boolean; error?: string }>(
       `/api/v1/email/accounts/${encodeURIComponent(accountId)}/inbox`
     ),
   emailMessageGet: (accountId: string, uid: string) =>

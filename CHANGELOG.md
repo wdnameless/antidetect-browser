@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.6.42] - 2026-09-24
+
+### Fixed
+- **The mail manager hid why it failed.** Reading a mailbox falls back to a local cache when the
+  live IMAP connection does not work — and it discarded the reason while doing so. A mailbox whose
+  login was rejected, or whose host was unreachable, came back as `Cached` with an empty list, which
+  looks exactly like a mailbox that is genuinely empty. Verified against the real provider: iCloud
+  answers `AUTHENTICATIONFAILED Authentication Failed`, and that sentence is now shown instead of
+  being swallowed one line above the display. The empty state distinguishes the two cases, so a
+  failed read no longer claims the inbox is empty.
+  - iCloud (and most providers) require an **app-specific password**; a normal account password is
+    rejected by the server. The message now says so, because the server does.
+- **The tab is called IMAP.** It was labelled `Library` while opening the IMAP mail manager, inside a
+  sidebar section already headed LIBRARY — so the label named the grouping rather than the
+  destination, and read as a second, empty Library. It also wore the cookie-farm icon; it now has an
+  envelope.
+
 ## [0.6.41] - 2026-09-24
 
 ### Fixed

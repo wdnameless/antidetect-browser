@@ -57,6 +57,10 @@ export function Email(): JSX.Element {
       if (res.code === 0 && res.data) {
         setMessages(res.data.messages || []);
         setIsCached(Boolean(res.data.cached));
+        // The live read failed and the cache answered instead. Show WHY: "Inbox is empty" without
+        // the reason is indistinguishable from a mailbox that is genuinely empty, and the provider
+        // already said what was wrong ("AUTHENTICATIONFAILED").
+        setError(res.data.error ? `${t('email.liveReadFailed') || 'Could not read the mailbox'}: ${res.data.error}` : null);
       } else {
         setError(res.msg || 'Failed to fetch inbox');
       }
@@ -271,7 +275,9 @@ export function Email(): JSX.Element {
             )}
             {selectedAccountId && messages.length === 0 && !loadingInbox && (
               <div style={{ padding: '16px', color: 'var(--text-muted)', textAlign: 'center', fontSize: '13px' }}>
-                {t('email.noMessages') || 'Inbox is empty'}
+                {/* A failed read is not an empty mailbox. Saying "Inbox is empty" over a rejected
+                    login is the same class of lie as showing a stale location next to a dead proxy. */}
+                {error ? (t('email.inboxUnavailable') || 'Inbox could not be read — see the message above') : (t('email.noMessages') || 'Inbox is empty')}
               </div>
             )}
             {messages.map((msg) => {
