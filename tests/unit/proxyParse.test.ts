@@ -59,6 +59,75 @@ describe('parseProxyInput — the provider line', () => {
   it('parses host:port with no credentials', () => {
     expect(parseProxyInput('1.2.3.4:1080')).toEqual({ type: undefined, host: '1.2.3.4', port: 1080 });
   });
+  it('parses host:port:user:pass (CIS/residential provider export)', () => {
+    expect(parseProxyInput('lime.proxyhub.team:8080:bcEB84Yv7rcpRk4:mySecret123')).toEqual({
+      type: undefined,
+      host: 'lime.proxyhub.team',
+      port: 8080,
+      username: 'bcEB84Yv7rcpRk4',
+      password: 'mySecret123',
+    });
+  });
+
+  it('parses ip:port:user:pass', () => {
+    expect(parseProxyInput('185.199.108.153:8080:login:password')).toEqual({
+      type: undefined,
+      host: '185.199.108.153',
+      port: 8080,
+      username: 'login',
+      password: 'password',
+    });
+  });
+
+  it('parses user:pass:host:port (inverted format)', () => {
+    expect(parseProxyInput('myuser:mypassword:185.199.108.153:8080')).toEqual({
+      type: undefined,
+      host: '185.199.108.153',
+      port: 8080,
+      username: 'myuser',
+      password: 'mypassword',
+    });
+  });
+
+  it('parses alternative delimiters: semicolon, pipe, tab, and spaces', () => {
+    const expected = {
+      type: undefined,
+      host: '185.199.108.153',
+      port: 8080,
+      username: 'login',
+      password: 'password',
+    };
+    expect(parseProxyInput('185.199.108.153;8080;login;password')).toEqual(expected);
+    expect(parseProxyInput('185.199.108.153|8080|login|password')).toEqual(expected);
+    expect(parseProxyInput('185.199.108.153\t8080\tlogin\tpassword')).toEqual(expected);
+    expect(parseProxyInput('185.199.108.153 8080 login password')).toEqual(expected);
+  });
+
+  it('parses scheme with host:port:user:pass', () => {
+    expect(parseProxyInput('socks5://lime.proxyhub.team:8080:myuser:mypass')).toEqual({
+      type: 'socks5',
+      host: 'lime.proxyhub.team',
+      port: 8080,
+      username: 'myuser',
+      password: 'mypass',
+    });
+    expect(parseProxyInput('http://1.2.3.4:3128:user:pass')).toEqual({
+      type: 'http',
+      host: '1.2.3.4',
+      port: 3128,
+      username: 'user',
+      password: 'pass',
+    });
+  });
+
+  it('parses 3-part format host:port:user without password', () => {
+    expect(parseProxyInput('1.2.3.4:8080:useronly')).toEqual({
+      type: undefined,
+      host: '1.2.3.4',
+      port: 8080,
+      username: 'useronly',
+    });
+  });
 });
 
 describe('parseProxyInput — what it must NOT touch', () => {

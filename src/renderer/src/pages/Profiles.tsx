@@ -137,6 +137,13 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
   const [customProxyPort, setCustomProxyPort] = useState('');
   const [customProxyUser, setCustomProxyUser] = useState('');
   const [customProxyPass, setCustomProxyPass] = useState('');
+  const applyCustomProxy = useCallback((parsed: NonNullable<ReturnType<typeof parseProxyInput>>) => {
+    setCustomProxyHost(parsed.host);
+    if (parsed.port) setCustomProxyPort(String(parsed.port));
+    if (parsed.type) setCustomProxyType(parsed.type);
+    if (parsed.username) setCustomProxyUser(parsed.username);
+    if (parsed.password) setCustomProxyPass(parsed.password);
+  }, []);
   const [proxyTesting, setProxyTesting] = useState(false);
   const [proxyTestResult, setProxyTestResult] = useState<ProxyTestResult | null>(null);
 
@@ -2982,33 +2989,42 @@ const NOISE_SURFACES = [
                           <option value="ssh">SSH Tunnel</option>
                         </select>
                       </div>
+                      <div className="form-group" style={{ marginBottom: 4 }}>
+                        <label style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <span>Quick Proxy String / Быстрый ввод одной строкой</span>
+                          <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>ip:port:user:pass | user:pass@host:port</span>
+                        </label>
+                        <input
+                          placeholder="Вставьте прокси (любой формат: ip:port:login:pass, user:pass@host:port, socks5://...)"
+                          onChange={(e) => {
+                            const parsed = parseProxyInput(e.target.value);
+                            if (parsed) applyCustomProxy(parsed);
+                          }}
+                        />
+                      </div>
 
                       <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 10 }}>
                         <div className="form-group">
                           <label>Host / IP</label>
                           <input
-                            placeholder="user:pass@host:port, or 1.2.3.4, or proxy.example.com"
+                            placeholder="ip:port:user:pass, user:pass@host:port, or proxy.example.com"
                             value={customProxyHost}
                             data-testid="custom-proxy-host"
                             onChange={(e) => {
-                              /* A provider hands the operator one line —
-                                 `login:password@country-…:8080` — while this form asks for four
-                                 separate fields. Pasting it whole fills them, because taking that
-                                 string apart by hand is where the port ends up inside the host, or
-                                 a password containing `@` splits at the wrong separator.
-
-                                 A bare hostname is left exactly as typed: `parseProxyInput`
-                                 returns null for it by design, so the ordinary case is untouched. */
                               const parsed = parseProxyInput(e.target.value);
                               if (!parsed) {
                                 setCustomProxyHost(e.target.value);
                                 return;
                               }
-                              setCustomProxyHost(parsed.host);
-                              if (parsed.port) setCustomProxyPort(String(parsed.port));
-                              if (parsed.type) setCustomProxyType(parsed.type);
-                              if (parsed.username) setCustomProxyUser(parsed.username);
-                              if (parsed.password) setCustomProxyPass(parsed.password);
+                              applyCustomProxy(parsed);
+                            }}
+                            onPaste={(e) => {
+                              const text = e.clipboardData.getData('text');
+                              const parsed = parseProxyInput(text);
+                              if (parsed) {
+                                e.preventDefault();
+                                applyCustomProxy(parsed);
+                              }
                             }}
                           />
                         </div>

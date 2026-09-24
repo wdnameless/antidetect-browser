@@ -5,6 +5,7 @@ import { EmptyState } from '../components/EmptyState';
 import { useColumnResize } from '../useColumnResize';
 import { useI18n } from '../i18n';
 import { flagOf } from '../proxyGeo';
+import { parseProxyInput } from '../proxyParse';
 
 export function Proxies() {
   const { t } = useI18n();
@@ -18,6 +19,13 @@ export function Proxies() {
   const [user, setUser] = useState('');
   const [pass, setPass] = useState('');
   const [privateKey, setPrivateKey] = useState('');
+  const applyParsedProxy = useCallback((parsed: NonNullable<ReturnType<typeof parseProxyInput>>) => {
+    setHost(parsed.host);
+    if (parsed.port) setPort(String(parsed.port));
+    if (parsed.type) setType(parsed.type);
+    if (parsed.username) setUser(parsed.username);
+    if (parsed.password) setPass(parsed.password);
+  }, []);
   const [checkResult, setCheckResult] = useState<Record<string, { ok: boolean; ip?: string; latencyMs?: number; error?: string }>>({});
   const [geoFill, setGeoFill] = useState<GeoFillStatus | null>(null);
 
@@ -358,11 +366,44 @@ export function Proxies() {
                   <option value="ssh">SSH Tunnel</option>
                 </select>
               </div>
+              <div className="form-group" style={{ marginBottom: 4 }}>
+                <label style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span>{t('Quick Proxy String / Быстрый ввод одной строкой')}</span>
+                  <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>ip:port:user:pass | user:pass@host:port</span>
+                </label>
+                <input
+                  placeholder={t('Вставьте прокси (любой формат: ip:port:login:pass, user:pass@host:port, socks5://...)')}
+                  onChange={(e) => {
+                    const parsed = parseProxyInput(e.target.value);
+                    if (parsed) applyParsedProxy(parsed);
+                  }}
+                />
+              </div>
 
               <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 12 }}>
                 <div className="form-group">
                   <label>Host / IP</label>
-                  <input placeholder="192.168.1.1 or proxy.example.com" value={host} onChange={(e) => setHost(e.target.value)} autoFocus />
+                  <input
+                    placeholder="ip:port:user:pass, user:pass@host:port, or proxy.example.com"
+                    value={host}
+                    onChange={(e) => {
+                      const parsed = parseProxyInput(e.target.value);
+                      if (!parsed) {
+                        setHost(e.target.value);
+                        return;
+                      }
+                      applyParsedProxy(parsed);
+                    }}
+                    onPaste={(e) => {
+                      const text = e.clipboardData.getData('text');
+                      const parsed = parseProxyInput(text);
+                      if (parsed) {
+                        e.preventDefault();
+                        applyParsedProxy(parsed);
+                      }
+                    }}
+                    autoFocus
+                  />
                 </div>
                 <div className="form-group">
                   <label>Port</label>

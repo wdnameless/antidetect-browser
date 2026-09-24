@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.6.40] - 2026-09-24
+
+### Added
+- **Smart proxy string recognition.** Paste or type proxies in any real-world
+  format: `host:port:user:pass`, `user:pass:host:port`, `user:pass@host:port`,
+  `scheme://...` with colons, semicolons, pipes, tabs, or spaces. Both the
+  Custom Proxy form in Profiles and the Proxies management modal automatically
+  recognize and populate Host, Port, Protocol, Username, and Password. Added a
+  dedicated Quick Proxy String field for instant single-line pasting.
+
+### Fixed
+- **Resilient proxy check with public DNS fallback.** If a public proxy domain
+  resolves to a private IP (e.g. `10.250.249.66` on `lime.proxyhub.team` due to
+  ISP/VPN redirect) or fails on local DNS, the check resolves via public DNS
+  (1.1.1.1, 8.8.8.8, Cloudflare DoH) to connect to the actual public gateway.
+  Removed false-positive blocking check.
+- **Tolerant HTTP response parsing.** Proxy check now uses `insecureHTTPParser`,
+  preventing `Missing expected CR after response line` errors on rotating proxies
+  that return bare LF line endings, and returns clean HTTP 407 status messages.
+
 ## [0.6.39] - 2026-09-24
 
 ### Changed

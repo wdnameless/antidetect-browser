@@ -145,26 +145,11 @@ export async function checkProxy(proxy: ProxyRow): Promise<ProxyCheckResult> {
   let tunnel: SshTunnel | undefined;
 
   try {
-    /*
-     * Resolve the host ourselves before dialing it.
-     *
-     * Measured reason: a residential proxy configured as `lime.proxyhub.team:8080` failed with
-     * `connect ETIMEDOUT 10.250.249.66:8080`. That address is RFC1918, so the request never left
-     * the machine — the operator's resolver had answered with a private address, and the error
-     * named a network timeout. Reported as a timeout, it sent the operator to the provider, who
-     * was not at fault and whose proxy worked when dialed directly.
-     *
-     * A private, loopback or link-local answer for a public proxy host is never correct, so it is
-     * reported as the DNS problem it is, naming the host AND the address it wrongly resolved to.
-     */
-    if (proxy.type !== 'ssh') {
-      const bad = await describeUnreachableResolution(proxy.host);
-      if (bad) return { ok: false, error: bad };
-    }
+    const targetHost = await resolveProxyHost(proxy.host);
 
     if (proxy.type === 'ssh') {
       tunnel = await createSshTunnel({
-        host: proxy.host,
+        host: targetHost,
         port: proxy.port,
         username: proxy.username ?? undefined,
         password: revealSecret(proxy.password),
@@ -175,12 +160,12 @@ export async function checkProxy(proxy: ProxyRow): Promise<ProxyCheckResult> {
     } else if (proxy.type === 'socks5') {
       const auth = proxy.username ? `${encodeURIComponent(proxy.username)}:${encodeURIComponent(revealSecret(proxy.password) ?? '')}@` : '';
       // SAFETY: SocksProxyAgent implements http.Agent interface compatible with node-fetch
-      agent = new SocksProxyAgent(`socks5://${auth}${proxy.host}:${proxy.port}`) as unknown as http.Agent;
+      agent = new SocksProxyAgent(`socks5://${auth}${targetHost}:${proxy.port}`) as unknown as http.Agent;
     } else {
       // http / https
       const auth = proxy.username ? `${encodeURIComponent(proxy.username)}:${encodeURIComponent(revealSecret(proxy.password) ?? '')}@` : '';
       // SAFETY: HttpProxyAgent implements http.Agent interface compatible with node-fetch
-      agent = new HttpProxyAgent(`http://${auth}${proxy.host}:${proxy.port}`) as unknown as http.Agent;
+      agent = new HttpProxyAgent(`http://${auth}${targetHost}:${proxy.port}`) as unknown as http.Agent;
     }
 
     /*
@@ -195,8 +180,7 @@ export async function checkProxy(proxy: ProxyRow): Promise<ProxyCheckResult> {
     let lastError = '';
     for (let attempt = 1; attempt <= 2; attempt++) {
       try {
-        const res = await fetch(CHECK_URL, { agent, timeout: 15000 });
-        const body = (await res.json()) as {
+        const body = (await httpCheck(CHECK_URL, agent, 15000)) as {
           status?: string;
           query?: string;
           country?: string;
@@ -205,7 +189,6 @@ export async function checkProxy(proxy: ProxyRow): Promise<ProxyCheckResult> {
           lat?: number;
           lon?: number;
         };
-
         if (body.status !== 'success') {
           return { ok: false, error: 'proxy check failed' };
         }
@@ -243,24 +226,98 @@ function isTransientProxyError(message: string): boolean {
  * Deliberately says "DNS", not "network": the operator cannot fix a resolver by retrying, and the
  * message has to point at the machine rather than at the provider.
  */
-async function describeUnreachableResolution(host: string): Promise<string | null> {
+async function resolveProxyHost(host: string): Promise<string> {
   const isIpLiteral = /^\d{1,3}(\.\d{1,3}){3}$/.test(host) || host.includes(':');
-  if (isIpLiteral) {
-    return isPrivateOrLocal(host)
-      ? `proxy address ${host} is a private address; a public proxy cannot be reached there`
-      : null;
-  }
+  if (isIpLiteral) return host;
+  if (/(^|\.)(localhost|local|lan|internal|home)$/i.test(host)) return host;
+
+  let localAddress: string | null = null;
   try {
     const { address } = await dns.lookup(host);
-    if (!isPrivateOrLocal(address)) return null;
-    return (
-      `${host} resolved to the private address ${address}, so the request never left this machine. ` +
-      `This is a DNS problem on this computer, not a fault in the proxy — check the resolver, ` +
-      `the hosts file, or a VPN/route that is intercepting the name.`
-    );
-  } catch (err) {
-    return `${host} could not be resolved: ${(err as Error).message}`;
+    if (!isPrivateOrLocal(address)) {
+      return host;
+    }
+    localAddress = address;
+  } catch {
+    // Local DNS failed
   }
+
+  // Fallback to public DNS when local DNS resolves to private IP or fails
+  try {
+    const resolver = new dns.Resolver();
+    resolver.setServers(['1.1.1.1', '8.8.8.8', '77.88.8.8']);
+    const addrs = await resolver.resolve4(host);
+    if (addrs && addrs.length > 0) return addrs[0];
+  } catch {
+    // Public DNS failed
+  }
+
+  try {
+    const res = await fetch(`https://1.1.1.1/dns-query?name=${encodeURIComponent(host)}&type=A`, {
+      headers: { accept: 'application/dns-json' },
+      timeout: 3000,
+    });
+    const data = (await res.json()) as { Answer?: Array<{ type: number; data: string }> };
+    const a = data.Answer?.find((x) => x.type === 1);
+    if (a?.data) return a.data;
+  } catch {
+    // DoH failed
+  }
+
+  return localAddress ?? host;
+}
+
+function httpCheck(urlStr: string, agent: http.Agent | undefined, timeoutMs: number): Promise<unknown> {
+  return new Promise((resolve, reject) => {
+    let u: URL;
+    try {
+      u = new URL(urlStr);
+    } catch (err) {
+      return reject(err);
+    }
+    const req = http.request(
+      u,
+      {
+        agent,
+        insecureHTTPParser: true,
+        timeout: timeoutMs,
+        headers: {
+          Accept: 'application/json',
+          'User-Agent': 'NullTrace/1.0',
+        },
+      },
+      (res) => {
+        let data = '';
+        res.on('data', (chunk) => (data += chunk));
+        res.on('end', () => {
+          if (res.statusCode === 407) {
+            return reject(
+              new Error('Proxy authentication required (HTTP 407). Check your proxy username and password.')
+            );
+          }
+          if (res.statusCode && res.statusCode >= 400) {
+            return reject(
+              new Error(`Proxy returned HTTP ${res.statusCode}${data ? ': ' + data.slice(0, 100) : ''}`)
+            );
+          }
+          try {
+            const json = JSON.parse(data);
+            resolve(json);
+          } catch {
+            reject(new Error(`Invalid JSON from proxy check: ${data.slice(0, 100)}`));
+          }
+        });
+      }
+    );
+
+    req.on('timeout', () => {
+      req.destroy(new Error(`Proxy connection timed out (${timeoutMs}ms)`));
+    });
+    req.on('error', (err) => {
+      reject(err);
+    });
+    req.end();
+  });
 }
 
 export interface GeoFillStatus {
