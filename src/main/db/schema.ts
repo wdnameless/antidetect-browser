@@ -13,6 +13,7 @@ import { migrateTaskGroups } from './migrations/taskGroups';
  */
 const MIGRATABLE_COLUMNS: Readonly<Record<string, true>> = {
   private_key: true, timezone: true, latitude: true, longitude: true, city: true, browser_type: true,
+  country_code: true,
   mobile_model_id: true, deleted_at: true, path: true, bookmarks: true, launch_args: true,
   color: true, do_not_track: true, blocked_ports: true, webrtc_policy: true, notes: true,
   headless: true, android_config: true,
@@ -60,6 +61,7 @@ export function migrate(db: Database): void {
       password    TEXT,
       private_key TEXT,
       country     TEXT,
+      country_code TEXT,
       city        TEXT,
       timezone    TEXT,
       status      TEXT DEFAULT 'unknown',
@@ -240,6 +242,12 @@ export function migrate(db: Database): void {
   ensureColumn(db, 'proxies', 'latitude', 'REAL');
   ensureColumn(db, 'proxies', 'longitude', 'REAL');
   ensureColumn(db, 'proxies', 'city', 'TEXT');
+  // ISO 3166-1 alpha-2 as returned by the same geo lookup ("DE"). The flag and the two-letter
+  // label derive from a CODE, and `country` holds the provider's display NAME ("Germany") — a
+  // name cannot be turned into a flag without a lookup table we already receive the answer to.
+  // A row written before this column keeps its name and gains the code on its next check, because
+  // `startGeoFill` treats "name but no code" as still unresolved.
+  ensureColumn(db, 'proxies', 'country_code', 'TEXT');
   ensureColumn(db, 'profiles', 'browser_type', 'TEXT DEFAULT \'chromium\'');
   ensureColumn(db, 'profiles', 'mobile_model_id', 'TEXT');
   // Trash (soft delete): NULL = live profile, timestamp = moved to trash.

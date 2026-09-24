@@ -32,6 +32,8 @@ export interface ProxyRow {
   password: string | null;
   private_key: string | null;
   country: string | null;
+  /** ISO 3166-1 alpha-2 ("DE") from the same lookup. `country` holds the display name. */
+  country_code: string | null;
   city: string | null;
   timezone: string | null;
   latitude: number | null;
@@ -44,6 +46,8 @@ export interface ProxyCheckResult {
   ok: boolean;
   ip?: string;
   country?: string;
+  /** ISO 3166-1 alpha-2, the value the flag and the short label are derived from. */
+  countryCode?: string;
   city?: string;
   timezone?: string;
   latitude?: number;
@@ -52,7 +56,10 @@ export interface ProxyCheckResult {
   error?: string;
 }
 
-const CHECK_URL = 'http://ip-api.com/json/?fields=status,query,country,city,timezone,lat,lon';
+// `countryCode` is the ISO 3166-1 alpha-2 value ("DE"). The display name alone cannot produce a
+// flag or a two-letter label, and the provider returns both in this one response — so asking for
+// the code costs nothing and removes any need for a name-to-code table.
+const CHECK_URL = 'http://ip-api.com/json/?fields=status,message,query,country,countryCode,city,timezone,lat,lon';
 
 function toProxyRow(row: unknown): ProxyRow {
   return row as ProxyRow;
@@ -78,6 +85,11 @@ export function createProxy(input: ProxyInput): string {
     'unknown',
     Date.now()
   );
+  // Every proxy is looked up once, at the queue's pace, so no creation path has to remember to ask
+  // and none of them can flood the rate-limited lookup service by asking all at once. The caller
+  // that wants the answer synchronously still calls `/api/v1/proxy/check` and gets it immediately;
+  // this is what stops a proxy created anywhere ELSE from staying "Not checked yet" forever.
+  queueGeoChecks([id]);
   return id;
 }
 
@@ -121,18 +133,47 @@ export function deleteProxy(id: string): boolean {
   return deleted;
 }
 
+/**
+ * The ISO code as a stored value, or null when the provider sent something that is not one.
+ *
+ * Stored rather than trusted downstream: `flagOf` derives a flag from two letters, so a malformed
+ * value would render as a broken glyph in every row that carries it, and the column is read by
+ * paths that cannot re-ask the provider what it meant.
+ */
+function normalizeCountryCode(raw: unknown): string | undefined {
+  if (typeof raw !== 'string') return undefined;
+  const code = raw.trim().toUpperCase();
+  return /^[A-Z]{2}$/.test(code) ? code : undefined;
+}
+
 export function setProxyResult(id: string, result: ProxyCheckResult): void {
-  getDb()
-    .prepare('UPDATE proxies SET status = ?, country = ?, city = ?, timezone = ?, latitude = ?, longitude = ? WHERE id = ?')
+  getDb().prepare(
+      'UPDATE proxies SET status = ?, country = ?, country_code = ?, city = ?, timezone = ?, latitude = ?, longitude = ? WHERE id = ?'
+    )
     .run(
       result.ok ? 'ok' : 'fail',
       result.country ?? null,
+      result.countryCode ?? null,
       result.city ?? null,
       result.timezone ?? null,
       result.latitude ?? null,
       result.longitude ?? null,
       id
     );
+}
+
+/**
+ * Record an already-performed check, if the proxy still exists.
+ *
+ * For callers that obtained the result themselves — preflight runs its own probe and must keep the
+ * answer rather than throw away a request it already paid for. Returns whether anything was
+ * stored, so a caller cannot report a result as recorded when the row was gone.
+ */
+export function recordCheckResult(id: string, result: ProxyCheckResult): boolean {
+  if (!id || !getProxy(id)) return false;
+  setProxyResult(id, result);
+  notifyGeoResolved(id);
+  return true;
 }
 
 /**
@@ -184,6 +225,7 @@ export async function checkProxy(proxy: ProxyRow): Promise<ProxyCheckResult> {
           status?: string;
           query?: string;
           country?: string;
+          countryCode?: string;
           city?: string;
           timezone?: string;
           lat?: number;
@@ -196,6 +238,7 @@ export async function checkProxy(proxy: ProxyRow): Promise<ProxyCheckResult> {
           ok: true,
           ip: body.query,
           country: body.country,
+          countryCode: normalizeCountryCode(body.countryCode),
           city: body.city,
           timezone: body.timezone,
           latitude: body.lat,
@@ -348,9 +391,25 @@ function delay(ms: number): Promise<void> {
   };
   return promise;
 }
-let geoFillActive = false;
-let geoFillAbort = false;
-let geoFillRunId = 0;
+
+/*
+ * ONE QUEUE FOR EVERY GEO CHECK.
+ *
+ * There used to be no queue at all: a proxy was checked only if the operator pressed Test on the
+ * Proxies page, or if a profile was created through that one page's own check call. A proxy that
+ * arrived any other way — an agent creating a profile, the SDKs, a batch create, a CSV import —
+ * was written with `country = NULL, status = 'unknown'` and nothing ever asked where it exits. Its
+ * row said "Not checked yet" for the rest of its life.
+ *
+ * The queue is the single owner now, so every door gets the same behaviour and the free lookup
+ * service sees one paced stream instead of whatever each caller happens to fire. Pacing is why
+ * this cannot simply be "check inside createProxy and await": a 142-line proxy import would open
+ * 142 concurrent lookups and get rate-limited, which reads to the operator as "the geo feature is
+ * broken" — the defect this queue exists to remove.
+ */
+const geoPending: string[] = [];
+const geoPendingSet = new Set<string>();
+let geoWorkerActive = false;
 let geoFillStatus: GeoFillStatus = {
   running: false,
   total: 0,
@@ -362,105 +421,164 @@ let geoFillStatus: GeoFillStatus = {
   pacing_ms: GEO_FILL_PACING_MS,
 };
 
+type GeoResolvedCallback = (proxyId: string) => void;
+const geoResolvedCallbacks: GeoResolvedCallback[] = [];
+
+/**
+ * Notified when a queued check has STORED its result, so a table can refresh at the moment the
+ * geography exists instead of on its next slow poll.
+ */
+export function onProxyGeoResolved(cb: GeoResolvedCallback): () => void {
+  geoResolvedCallbacks.push(cb);
+  return () => {
+    const idx = geoResolvedCallbacks.indexOf(cb);
+    if (idx !== -1) geoResolvedCallbacks.splice(idx, 1);
+  };
+}
+
+function notifyGeoResolved(proxyId: string): void {
+  for (const cb of geoResolvedCallbacks) {
+    try {
+      cb(proxyId);
+    } catch {
+      // A subscriber's failure is not the proxy's problem.
+    }
+  }
+}
+
+/**
+ * Whether the row already carries what the geo column needs.
+ *
+ * The CODE is the test, not the name. Rows written before `country_code` existed hold a display
+ * name and no code, so they are still unresolved: a geo pass fills the code and the flag starts
+ * working on a row that previously could never show one.
+ */
+function isGeoResolved(proxy: ProxyRow | undefined): boolean {
+  return Boolean(proxy && proxy.country_code);
+}
+
 export function getGeoFillStatus(): GeoFillStatus {
   return { ...geoFillStatus };
 }
 
-export function stopGeoFill(): GeoFillStatus {
-  if (geoFillActive) {
-    geoFillAbort = true;
-    geoFillActive = false;
+/**
+ * Ask for these proxies to be looked up, at the queue's pace.
+ *
+ * Idempotent: an id already waiting is not queued twice, so a profile update that re-sends the
+ * same proxy cannot spend a second request on it.
+ */
+export function queueGeoChecks(ids: readonly string[]): void {
+  let added = 0;
+  for (const id of ids) {
+    if (!id || geoPendingSet.has(id)) continue;
+    geoPendingSet.add(id);
+    geoPending.push(id);
+    added++;
   }
-  geoFillStatus.running = false;
-  geoFillStatus.current_proxy_id = null;
-  if (cancelGeoFillDelay) {
-    cancelGeoFillDelay();
-  }
-  return { ...geoFillStatus, running: false };
-}
+  if (added === 0) return;
 
-export function startGeoFill(options?: { force?: boolean }): GeoFillStatus {
-  if (geoFillActive) {
-    return { ...geoFillStatus };
-  }
-
-  const db = getDb();
-  const query = options?.force
-    ? 'SELECT * FROM proxies WHERE (country IS NULL OR country = \'\' OR city IS NULL) ORDER BY created_at DESC'
-    : 'SELECT * FROM proxies WHERE (country IS NULL OR country = \'\' OR city IS NULL) AND status != \'fail\' ORDER BY created_at DESC';
-  const candidates = db.prepare(query).all() as ProxyRow[];
-
-  if (candidates.length === 0) {
+  if (geoWorkerActive) {
+    // Work accepted while a worker exists still needs the progress display to say so. Without
+    // this, a pass that had been stopped — which clears `running` and cancels the delay — accepted
+    // new ids that the still-live worker drained while every status query reported "not running".
+    geoFillStatus.running = true;
+    geoFillStatus.total += added;
+  } else {
+    // A pass that starts from idle is the one the progress display is about, so its counters
+    // begin at zero rather than continuing an earlier pass's totals.
     geoFillStatus = {
-      running: false,
-      total: 0,
+      running: true,
+      total: added,
       completed: 0,
       succeeded: 0,
       failed: 0,
       current_proxy_id: null,
-      started_at: null,
+      started_at: Date.now(),
       pacing_ms: GEO_FILL_PACING_MS,
     };
-    return { ...geoFillStatus };
   }
+  void drainGeoQueue();
+}
 
-  const runId = ++geoFillRunId;
-  geoFillActive = true;
-  geoFillAbort = false;
-  geoFillStatus = {
-    running: true,
-    total: candidates.length,
-    completed: 0,
-    succeeded: 0,
-    failed: 0,
-    current_proxy_id: null,
-    started_at: Date.now(),
-    pacing_ms: GEO_FILL_PACING_MS,
-  };
-
-  void (async () => {
-    try {
-      for (const proxy of candidates) {
-        if (geoFillAbort || runId !== geoFillRunId) break;
-
-        const current = getProxy(proxy.id);
-        if (!current || (current.country && current.city)) {
-          if (runId !== geoFillRunId) break;
+async function drainGeoQueue(): Promise<void> {
+  if (geoWorkerActive) return;
+  geoWorkerActive = true;
+  try {
+    while (geoPending.length > 0) {
+      const id = geoPending.shift() as string;
+      try {
+        const current = getProxy(id);
+        if (!current || isGeoResolved(current)) {
+          // Nothing to ask: the proxy is gone, or its row already answers the column.
           geoFillStatus.completed++;
           continue;
         }
 
-        if (geoFillAbort || runId !== geoFillRunId) break;
-        geoFillStatus.current_proxy_id = proxy.id;
+        geoFillStatus.current_proxy_id = id;
         try {
           const res = await checkProxy(current);
-          if (geoFillAbort || runId !== geoFillRunId) break;
-          setProxyResult(proxy.id, res);
-          if (res.ok) {
-            geoFillStatus.succeeded++;
-          } else {
-            geoFillStatus.failed++;
-          }
+          setProxyResult(id, res);
+          if (res.ok) geoFillStatus.succeeded++;
+          else geoFillStatus.failed++;
+          notifyGeoResolved(id);
         } catch {
-          if (geoFillAbort || runId !== geoFillRunId) break;
           geoFillStatus.failed++;
         }
-        if (geoFillAbort || runId !== geoFillRunId) break;
         geoFillStatus.completed++;
-
-        if (!geoFillAbort && runId === geoFillRunId && geoFillStatus.completed < geoFillStatus.total) {
-          await delay(GEO_FILL_PACING_MS);
-        }
-      }
-    } finally {
-      if (runId === geoFillRunId) {
-        geoFillActive = false;
-        geoFillStatus.running = false;
+      } finally {
+        // Released only HERE, not when the id was shifted off. While a request is in flight — up to
+        // the 15s timeout, twice on a retry — the id must stay in the set: otherwise a
+        // `queueGeoChecks` call in that window queues a SECOND check of the same proxy, and a proxy
+        // that then fails gets checked twice against a rate-limited quota and counted twice.
+        geoPendingSet.delete(id);
         geoFillStatus.current_proxy_id = null;
       }
-    }
-  })();
 
+      if (geoPending.length > 0) await delay(GEO_FILL_PACING_MS);
+    }
+  } finally {
+    geoWorkerActive = false;
+    geoFillStatus.running = false;
+    geoFillStatus.current_proxy_id = null;
+  }
+}
+
+/**
+ * Stop the pending work.
+ *
+ * A check already in flight is NOT cancelled: it has spent a request from a strictly limited
+ * quota, and its answer is as true as one taken a moment later. Cancelling it would discard that
+ * request and leave the row unknown.
+ *
+ * `total` is deliberately left as the size of the pass that was attempted. Rewriting it to the
+ * completed count made a stopped pass of 100 report "3/3" — it read as a finished job instead of a
+ * cancelled one, which is the opposite of what happened to the other 97 proxies.
+ */
+export function stopGeoFill(): GeoFillStatus {
+  geoPending.length = 0;
+  geoPendingSet.clear();
+  if (cancelGeoFillDelay) {
+    cancelGeoFillDelay();
+  }
+  geoFillStatus.running = false;
+  geoFillStatus.current_proxy_id = null;
+  return { ...geoFillStatus, running: false };
+}
+
+/**
+ * Queue every proxy whose geography is missing, at the queue's pace.
+ *
+ * `force` re-checks rows whose last check FAILED. Without it they are skipped: their failure is a
+ * fact about the proxy, and repeating it would spend the whole quota on the dead ones instead of
+ * the ones that might answer.
+ */
+export function startGeoFill(options?: { force?: boolean }): GeoFillStatus {
+  const db = getDb();
+  const query = options?.force
+    ? 'SELECT * FROM proxies WHERE (country_code IS NULL OR country_code = \'\') ORDER BY created_at DESC'
+    : 'SELECT * FROM proxies WHERE (country_code IS NULL OR country_code = \'\') AND status != \'fail\' ORDER BY created_at DESC';
+  const ids = (db.prepare(query).all() as ProxyRow[]).filter((p) => !isGeoResolved(p)).map((p) => p.id);
+  queueGeoChecks(ids);
   return { ...geoFillStatus };
 }
 

@@ -54,6 +54,7 @@ router.get('/api/v1/proxy/list', (_req, res) => {
     port: p.port,
     username: p.username,
     country: p.country,
+    country_code: p.country_code,
     city: p.city,
     timezone: p.timezone,
     latitude: p.latitude,
@@ -104,7 +105,11 @@ router.post('/api/v1/proxy/check', async (req, res) => {
   }
   try {
     const result = await xm.checkProxy(proxy);
-    xm.setProxyResult(proxy.id, result);
+    // Through `recordCheckResult`, not `setProxyResult` directly: the manual Test writes the same
+    // columns, and it is the one place an operator stares at the row while it happens, so it must
+    // also push the `proxy-geo` event that refreshes the table. Writing the columns without the
+    // notification left the row showing its old state until the next slow poll.
+    xm.recordCheckResult(proxy.id, result);
     res.json({ code: 0, msg: 'success', data: result });
   } catch (err) {
     res.json({ code: -1, msg: (err as Error).message, data: {} });

@@ -1,5 +1,34 @@
 # Changelog
 
+## [0.6.41] - 2026-09-24
+
+### Fixed
+- **Preflight threw away the check it had just performed.** Running a preflight probe goes through
+  the proxy and receives the exit country and its ISO code; neither was stored, so the PROXY column
+  still read "Not checked yet" for a proxy the operator had just checked by hand — the exact
+  confusion the column exists to prevent.
+- **Pressing Test on a proxy left the row stale.** The manual check wrote its result to the database
+  but did not push the update, so the row only corrected itself on the next slow refresh.
+- **Profile badge colours never appeared.** The colour was read from the database and typed on the
+  profile list, but dropped one line before the response, so the coloured dot could not render for
+  any profile. Present since the badge feature shipped.
+- **Proxies bound in bulk were never checked.** The batch bind route was the last creation path that
+  attached a proxy without asking where it exits.
+- **A stopped geo pass reported itself as finished** — a cancelled run of 100 showed "3/3", reading
+  as a completed job rather than one that stopped after three.
+- **A geo check could run twice for the same proxy.** Queueing a proxy again while its request was
+  still in flight spent a second request against a rate-limited lookup service and counted the
+  proxy twice.
+- **Auto-detect progress could show nothing** when work was queued while a worker was still
+  finishing an earlier request.
+- **The Proxies page polled with a stale value and restarted its own timer** on every state change;
+  the profile editor's proxy dropdown also kept showing a proxy without its geography until reload.
+
+### Changed
+- Tests: a UDP relay case asserted a hardcoded port was closed, but that port sits inside the
+  Windows ephemeral range, so any other test binding a port could be handed it. It now takes a port
+  it proves closed.
+
 ## [0.6.40] - 2026-09-24
 
 ### Added

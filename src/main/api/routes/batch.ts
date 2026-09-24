@@ -3,6 +3,7 @@ import { z } from 'zod';
 import * as pm from '../../profiles/profileManager';
 import { getDb } from '../../db';
 import { readXlsx, InvalidXlsxError } from '../../io/xlsx';
+import { queueGeoChecks } from '../../proxy/proxyManager';
 
 const router = Router();
 
@@ -61,13 +62,20 @@ router.post('/api/v1/browser-profile/batch-bind-proxy', (req, res) => {
   }
   const db = getDb();
   let updated = 0;
+  const boundProxyIds: string[] = [];
   for (let i = 0; i < user_ids.length; i++) {
     const proxyId = proxy_ids[i % proxy_ids.length];
     const r = db
       .prepare('UPDATE profiles SET proxy_id = ?, updated_at = ? WHERE id = ?')
       .run(proxyId, Date.now(), user_ids[i]);
-    if (r.changes > 0) updated++;
+    if (r.changes > 0) {
+      updated++;
+      boundProxyIds.push(proxyId);
+    }
   }
+  // Same door as every other binding path: a proxy newly attached by a batch has never been looked
+  // up here, so without this the rows read "Not checked yet" until someone presses Test.
+  queueGeoChecks(boundProxyIds);
   res.json({ code: 0, msg: 'success', data: { updated } });
 });
 

@@ -35,6 +35,8 @@ interface ResolvedProxyInfo {
   username?: string;
   password?: string;
   country?: string;
+  /** ISO code; the preflight row handed to `checkProxy` needs it, and so do the geo comparisons. */
+  countryCode?: string;
   city?: string;
   timezone?: string;
 }
@@ -59,6 +61,7 @@ export function resolveProfileData(profileId: string): ProfileResolvedData | nul
         username: px.username ?? undefined,
         password: px.password ?? undefined,
         country: px.country ?? undefined,
+        countryCode: px.country_code ?? undefined,
         timezone: px.timezone ?? undefined,
       };
     } else {
@@ -110,6 +113,7 @@ function buildProxyCheckRow(proxy: ResolvedProxyInfo, fallbackId = 'tmp-check'):
     password: proxy.password ?? null,
     private_key: null,
     country: proxy.country ?? null,
+    country_code: proxy.countryCode ?? null,
     city: proxy.city ?? null,
     timezone: proxy.timezone ?? null,
     latitude: null,
@@ -530,6 +534,23 @@ export async function runPreflight(profileId: string): Promise<PreflightVerdict>
             error: err instanceof Error ? err.message : String(err),
           }))
       : undefined;
+
+  /*
+   * STORE the probe's answer.
+   *
+   * This probe already goes through the proxy and already gets the country and the ISO code back —
+   * the only thing it did not do was keep them, so the PROXY column kept saying "Not checked yet"
+   * for a proxy the operator had just checked by hand. Preflight is the check run before a launch,
+   * which makes it exactly the moment the answer is most wanted, and a result that is thrown away
+   * after being paid for is the same defect as never checking at all.
+   *
+   * The row is checked by `recordCheckResult`: `buildProxyCheckRow` supplies a placeholder id
+   * (`tmp-check`) when the profile has no proxy row, and writing through that id would record
+   * nothing while claiming success.
+   */
+  if (sharedProxyResult && proxy?.id) {
+    proxyManager.recordCheckResult(proxy.id, sharedProxyResult);
+  }
 
   const [
     proxyAlive,

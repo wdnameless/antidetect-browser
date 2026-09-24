@@ -701,10 +701,23 @@ const NOISE_SURFACES = [
    */
   useEffect(() => {
     return subscribeToEvents((event) => {
-      if (event.type !== 'profile-status') return;
+      // `profile-status` is what this subscription originally carried, and it must stay: it is how
+      // an agent-opened profile appears in the table.
+      if (event.type === 'profile-status') {
+        void loadProfiles();
+        return;
+      }
+      // `proxy-geo` matters here too: the PROXY column belongs to this table, and a check queued by
+      // any door can land at any moment. Without it the row keeps saying "Not checked yet" until
+      // the 30s floor, which is exactly the window the operator reads as "it did not work".
+      if (event.type !== 'proxy-geo') return;
       void loadProfiles();
+      // And the proxy LIST too: the create/edit modal's "Choose Proxy from List" dropdown renders
+      // `proxies`, so a proxy resolved a moment ago still reads as a bare host:port there — the
+      // operator opens the modal to use the new geography and finds it missing.
+      void loadProxies();
     });
-  }, [loadProfiles]);
+  }, [loadProfiles, loadProxies]);
 
   /**
    * A slow reconciliation poll, kept as a floor rather than the mechanism.
@@ -2098,9 +2111,9 @@ const NOISE_SURFACES = [
                             >
                               ✕
                             </span>
-                          ) : geoLabel({ country: p.proxy_country, city: p.proxy_city }) ? (
+                          ) : geoLabel({ code: p.proxy_country_code, country: p.proxy_country, city: p.proxy_city }) ? (
                             <span style={{ color: 'var(--accent)', fontSize: 12 }}>
-                              {geoLabel({ country: p.proxy_country, city: p.proxy_city })}
+                              {geoLabel({ code: p.proxy_country_code, country: p.proxy_country, city: p.proxy_city })}
                             </span>
                           ) : (
                             /* No result yet. Named rather than left blank, so an unchecked proxy is

@@ -11,6 +11,7 @@ import { deleteEntriesForProfile } from '../vault/accountVault';
 import { removeBindingsForProfile } from '../tags/tagManager';
 import { deriveHardwareVector, migrateLegacySeed, selectFamilyBySeed } from '../fingerprints/derivation';
 import { EXTENDED_FINGERPRINT_CATALOG } from '../fingerprints/catalog';
+import { queueGeoChecks } from '../proxy/proxyManager';
 
 export type ProxyType = 'http' | 'https' | 'socks5' | 'ssh';
 
@@ -107,6 +108,8 @@ export interface ProxyRow {
   password: string | null;
   private_key: string | null;
   country: string | null;
+  /** ISO 3166-1 alpha-2 ("DE"); `country` holds the display name ("Germany"). */
+  country_code: string | null;
   timezone: string | null;
   latitude: number | null;
   longitude: number | null;
@@ -211,10 +214,14 @@ export interface ProfileListItem {
   name: string | null;
   status: string;
   group_id: string | null;
+  /** Bound proxy id, so a row can be matched to a geo result that arrives after it rendered. */
+  proxy_id?: string | null;
   proxy_type?: string | null;
   proxy_host?: string | null;
   proxy_port?: number | null;
   proxy_country?: string | null;
+  /** ISO code for the flag and the short label; `proxy_country` is the display name. */
+  proxy_country_code?: string | null;
   proxy_city?: string | null;
   proxy_status?: string | null;
   fingerprint_seed?: number | null;
@@ -247,6 +254,8 @@ export interface ProfileDetails {
     port: number;
     username: string | null;
     country: string | null;
+    /** ISO 3166-1 alpha-2; `country` is the display name. */
+    country_code: string | null;
     timezone: string | null;
     status: string;
   } | null;
@@ -456,6 +465,11 @@ export function createProfile(input: CreateProfileInput): string {
       'unknown',
       now
     );
+    // The row exists and has no geography yet. Nothing else would ever ask for it: this path is
+    // reached by the SDKs, agent-created profiles, batch create and imports, none of which run the
+    // Proxies page's own check. Queued rather than awaited so a 142-line import cannot open 142
+    // concurrent lookups, and queued AFTER the insert so the worker always finds the row.
+    queueGeoChecks([proxyId]);
   }
 
   const seed = typeof input.fingerprint_seed === 'number' && input.fingerprint_seed > 0
@@ -763,6 +777,7 @@ export function getProfileDetails(id: string): ProfileDetails | null {
         port: px.port,
         username: px.username,
         country: px.country,
+        country_code: px.country_code,
         timezone: px.timezone,
         status: px.status,
       };
@@ -1263,6 +1278,9 @@ export function updateProfile(
       'unknown',
       Date.now()
     );
+    // Same reason as `createProfile`: a proxy can arrive through the update path too, and it is
+    // just as unchecked there.
+    queueGeoChecks([effectiveProxyId]);
   } else if (updates.proxy === null) {
     effectiveProxyId = null;
   }
@@ -1473,9 +1491,10 @@ export function listProfiles(
         LEFT JOIN devices dev ON dev.id = p.device_id${where}`).get(...params) as { c: number }).c;
   const rows = db // pi-lens-ignore: sql-injection
     .prepare(
-      `SELECT p.id, p.name, p.status, p.group_id, p.color,
+      `SELECT p.id, p.name, p.status, p.group_id, p.color, p.proxy_id,
               px.type AS proxy_type, px.host AS proxy_host, px.port AS proxy_port,
-              px.country AS proxy_country, px.city AS proxy_city, px.status AS proxy_status,
+              px.country AS proxy_country, px.country_code AS proxy_country_code,
+              px.city AS proxy_city, px.status AS proxy_status,
               fp.seed AS fingerprint_seed,
               dev.platform AS platform, dev.name AS device_name
        FROM profiles p
@@ -1490,10 +1509,12 @@ export function listProfiles(
     name: string | null;
     status: string;
     group_id: string | null;
+    proxy_id: string | null;
     proxy_type: string | null;
     proxy_host: string | null;
     proxy_port: number | null;
     proxy_country: string | null;
+    proxy_country_code: string | null;
     proxy_city: string | null;
     proxy_status: string | null;
     fingerprint_seed: number | null;
@@ -1533,15 +1554,21 @@ export function listProfiles(
       name: r.name,
       status,
       group_id: r.group_id,
+      proxy_id: r.proxy_id,
       proxy_type: r.proxy_type,
       proxy_host: r.proxy_host,
       proxy_port: r.proxy_port,
       proxy_country: r.proxy_country,
+      proxy_country_code: r.proxy_country_code,
       proxy_city: r.proxy_city,
       proxy_status: r.proxy_status,
       fingerprint_seed: r.fingerprint_seed,
       platform: r.platform,
       device_name: r.device_name,
+      // The colour was SELECTed and typed on `ProfileListItem` but never copied here, so the row's
+      // badge dot (`data-testid="profile-color-dot"`) could not render for any profile — the whole
+      // badge feature was inert. The column was read and then dropped one line later.
+      color: r.color,
     };
   });
   return { list, total };

@@ -24,6 +24,7 @@ import { Router, Request, Response } from 'express';
 import { timingSafeEqual } from 'crypto';
 import { getApiKey } from '../../config';
 import { onProfileStatusChange } from '../../profiles/profileManager';
+import { onProxyGeoResolved } from '../../proxy/proxyManager';
 import { onAgentActivity, publishAgentActivity, MCP_TOOL_LABELS, type AgentActivityEvent } from '../../agentActivity';
 
 export const eventsRouter = Router();
@@ -87,6 +88,13 @@ eventsRouter.get('/api/v1/events/stream', (req: Request, res: Response) => {
     write(res, { type: 'agent-activity', event });
   });
 
+  // A queued geo check finishing is the event an operator is waiting on right after creating a
+  // proxy or a profile, and the cell it fills is in a table that otherwise refreshes on a 30s
+  // floor. Pushed, so the row stops saying "Not checked yet" when the answer actually arrives.
+  const unsubscribeGeo = onProxyGeoResolved((proxyId) => {
+    write(res, { type: 'proxy-geo', proxyId, at: Date.now() });
+  });
+
   const keepAlive = setInterval(() => {
     try {
       res.write(': keep-alive\n\n');
@@ -99,6 +107,7 @@ eventsRouter.get('/api/v1/events/stream', (req: Request, res: Response) => {
     clearInterval(keepAlive);
     unsubscribeStatus();
     unsubscribeActivity();
+    unsubscribeGeo();
     openStreams.delete(res);
   };
 

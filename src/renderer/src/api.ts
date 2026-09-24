@@ -22,7 +22,11 @@ export interface ProfileListItem {
   proxy_type?: string | null;
   proxy_host?: string | null;
   proxy_port?: number | null;
+  /** Bound proxy's id, so a row can be matched against a geo result arriving later. */
+  proxy_id?: string | null;
   proxy_country?: string | null;
+  /** ISO code for the flag and the two-letter label; `proxy_country` is the display name. */
+  proxy_country_code?: string | null;
   proxy_city?: string | null;
   /** Proxy health from the last check: 'ok' | 'fail' | 'unknown'. */
   proxy_status?: string | null;
@@ -57,6 +61,8 @@ export interface ProfileDetails {
     port: number;
     username: string | null;
     country: string | null;
+    /** ISO 3166-1 alpha-2; `country` is the display name. */
+    country_code: string | null;
     timezone: string | null;
     status: string;
   } | null;
@@ -82,6 +88,8 @@ export interface ProxyItem {
   port: number;
   username: string | null;
   country: string | null;
+  /** ISO 3166-1 alpha-2; `country` is the display name. */
+  country_code?: string | null;
   city?: string | null;
   timezone: string | null;
   latitude?: number | null;

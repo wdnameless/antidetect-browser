@@ -32,6 +32,12 @@ export interface AgentActivityEventData {
 export type StreamMessage =
   | { type: 'hello'; at: number }
   | { type: 'profile-status'; profileId: string; status: 'running' | 'closed' | 'error'; at: number }
+  /**
+   * A queued proxy geo check stored its result. The tables refresh on this rather than waiting for
+   * their slow reconciliation poll, so a proxy created a second ago shows its country — or its
+   * cross — without the operator watching an empty cell and wondering.
+   */
+  | { type: 'proxy-geo'; proxyId: string; at: number }
   | { type: 'agent-activity'; event: AgentActivityEventData };
 export type StreamEvent = StreamMessage;
 
@@ -116,6 +122,11 @@ export function parseStreamData(raw: string): StreamMessage | null {
             status: data.status,
             at: data.at,
           };
+        }
+        break;
+      case 'proxy-geo':
+        if (typeof data.proxyId === 'string' && typeof data.at === 'number') {
+          return { type: 'proxy-geo', proxyId: data.proxyId, at: data.at };
         }
         break;
       case 'agent-activity': {

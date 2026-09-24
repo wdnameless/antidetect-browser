@@ -83,8 +83,11 @@
 #### `GET /api/v1/proxy/list`
 Список прокси:
 ```json
-{ "code": 0, "msg": "success", "data": { "list": [ { "proxy_id": "x_1", "type": "socks5", "host": "1.2.3.4", "port": 1080, "username": "u", "country": "BG", "timezone": "Europe/Sofia", "status": "ok" } ], "total": 1 } }
+{ "code": 0, "msg": "success", "data": { "list": [ { "proxy_id": "x_1", "type": "socks5", "host": "1.2.3.4", "port": 1080, "username": "u", "country": "Germany", "country_code": "DE", "city": "Falkenstein", "timezone": "Europe/Sofia", "status": "ok" } ], "total": 1 } }
 ```
+
+`country` — название страны от гео-сервиса ("Germany"); `country_code` — ISO 3166-1 alpha-2 ("DE"),
+из которого строятся флаг и двухбуквенная метка в интерфейсе.
 
 #### `POST /api/v1/proxy/update`
 Тело: `{ "proxy_id": "x_...", ...поля как в create (все опциональны) }`.
@@ -93,13 +96,22 @@
 Тело: `{ "proxy_id": "x_..." }`. Ошибка, если прокси привязан к профилю.
 
 #### `POST /api/v1/proxy/check`
-Проверяет прокси запросом через него к ip-api.com и сохраняет результат (status/country/timezone).
+Проверяет прокси запросом через него к ip-api.com и сохраняет результат (status/country/country_code/timezone).
 Тело: `{ "proxy_id": "x_..." }`
 Ответ:
 ```json
-{ "code": 0, "msg": "success", "data": { "ok": true, "ip": "78.90.183.137", "country": "Bulgaria", "timezone": "Europe/Sofia", "latencyMs": 155 } }
+{ "code": 0, "msg": "success", "data": { "ok": true, "ip": "78.90.183.137", "country": "Bulgaria", "countryCode": "BG", "timezone": "Europe/Sofia", "latencyMs": 155 } }
 ```
 Для SSH-прокси временно поднимается локальный SOCKS5-туннель.
+
+**Каждый новый прокси проверяется автоматически.** Очередь живёт в `proxyManager` и вызывается
+из всех путей создания — `POST /api/v1/proxy/create`, импорт списка, создание и обновление
+профиля, `batch-create`, импорт CSV/XLSX и bundle. Проверки идут последовательно с паузой 1500 мс,
+чтобы укладываться в лимит бесплатного гео-сервиса (45 запросов/мин), поэтому результат приходит
+не мгновенно. Готовность каждого прокси приходит в UI событием `proxy-geo` по SSE
+(`GET /api/v1/events/stream`); прогрессом всей очереди управляют
+`POST /api/v1/proxy/geo-fill/start|stop` и `GET /api/v1/proxy/geo-fill/status`.
+Прокси, чья проверка не удалась, повторно не опрашивается, пока не вызван `start` с `force`.
 
 #### `POST /api/v1/browser-profile/update`
 Привязка прокси к профилю (или отвязка). Тело: `{ "user_id": "p_...", "proxy_id": "x_..." | null }`.

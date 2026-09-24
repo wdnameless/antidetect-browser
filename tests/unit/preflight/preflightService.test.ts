@@ -20,6 +20,9 @@ import { registerUdpRelayState, unregisterUdpRelayState } from '../../../src/mai
 
 vi.mock('../../../src/main/proxy/proxyManager', () => ({
   checkProxy: vi.fn(),
+  // Present because `runPreflight` now STORES the probe it already paid for. A mock that omits a
+  // real export fails the whole suite the moment that path runs, which is what happened here.
+  recordCheckResult: vi.fn(() => true),
 }));
 
 vi.mock('../../../src/main/profiles/profileManager', () => ({

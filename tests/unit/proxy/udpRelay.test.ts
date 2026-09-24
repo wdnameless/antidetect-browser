@@ -246,10 +246,29 @@ describe('UDP Capability Probe & Reason Codes', () => {
   });
 
   it('maps network-unreachable when connecting to closed port', async () => {
-    const res = await probeUdpSupport({
-      host: '127.0.0.1',
-      port: 59999,
-    });
+    // A port that is PROVEN to be closed right now, not a hardcoded 59999.
+    //
+    // 59999 sits inside the Windows ephemeral range (49152-65535), so any test in the same run that
+    // binds port 0 can be handed exactly that number — and then this probe talks to a live listener
+    // instead of a dead port and reports a completely different reason. That is not hypothetical: it
+    // was observed as `expected 'auth-failed' to be 'network-unreachable'` once a sibling test
+    // started binding ephemeral ports. Binding 0, reading the assigned port, and closing it makes
+    // the port free at the moment of the probe without depending on a magic number.
+    const scratch = net.createServer();
+    const { promise: taken, resolve: onTaken } = Promise.withResolvers<number>();
+    scratch.listen(0, '127.0.0.1', () => onTaken((scratch.address() as net.AddressInfo).port));
+    const closedPort = await taken;
+    const { promise: released, resolve: onReleased } = Promise.withResolvers<void>();
+    scratch.close(() => onReleased());
+    await released;
+
+    const res = await probeUdpSupport(
+      {
+        host: '127.0.0.1',
+        port: closedPort,
+      },
+      { bypassCache: true }
+    );
 
     expect(res.supported).toBe(false);
     expect(res.reason).toBe('network-unreachable');

@@ -6,6 +6,7 @@ import { useColumnResize } from '../useColumnResize';
 import { useI18n } from '../i18n';
 import { flagOf } from '../proxyGeo';
 import { parseProxyInput } from '../proxyParse';
+import { subscribeToEvents } from '../eventsStream';
 
 export function Proxies() {
   const { t } = useI18n();
@@ -62,14 +63,20 @@ export function Proxies() {
   // instead of blocking on it. Polling stops as soon as the pass reports itself finished.
   useEffect(() => {
     let cancelled = false;
+    // `wasRunning` is local, not a read of `geoFill`. Reading the state would freeze whatever value
+    // the effect first saw, and putting it in the dependency list made the interval tear down and
+    // restart on every flip — so the effect depended on churn to observe its own state.
+    let wasRunning = false;
     const tick = async () => {
       try {
         const res = await api.proxyGeoFillStatus();
         if (cancelled || res.code !== 0) return;
         setGeoFill(res.data);
-        if (!res.data.running) {
-          await load();
-        }
+        // Reload ONCE, on the running -> finished edge. Rows are pushed individually by
+        // `proxy-geo`, so this only covers a dropped stream; it must never be a per-tick refresh,
+        // which would reload the whole table every 2 seconds for the length of the pass.
+        if (wasRunning && !res.data.running) await load();
+        wasRunning = res.data.running;
       } catch {
         // A status poll failing is not worth surfacing; the next tick retries.
       }
@@ -80,6 +87,14 @@ export function Proxies() {
       cancelled = true;
       clearInterval(timer);
     };
+  }, [load]);
+
+  // A finished check refreshes exactly what it changed, the moment it changed.
+  useEffect(() => {
+    return subscribeToEvents((event) => {
+      if (event.type !== 'proxy-geo') return;
+      void load();
+    });
   }, [load]);
 
   const startGeoFill = async () => {
@@ -117,7 +132,6 @@ export function Proxies() {
 
       const res = await api.proxyCreate(body);
       if (res.code === 0) {
-        const newId = res.data?.proxy_id;
         setShowModal(false);
         setHost('');
         setPort('');
@@ -125,23 +139,11 @@ export function Proxies() {
         setPass('');
         setPrivateKey('');
         await load();
-        // Check it immediately. A proxy with no result has no geography, so an operator who adds
-        // one and sees an empty LOCATION cell cannot tell "not checked yet" from "broken proxy" —
-        // and would press Test anyway. Doing it here means the row arrives with its answer,
-        // including the cross when it does not work.
-        //
-        // Awaited, not fired-and-forgotten, so `busy` covers the check: otherwise the modal closes,
-        // the list reloads, and the row quietly changes again a second later.
-        if (newId) {
-          try {
-            const chk = await api.proxyCheck(newId);
-            if (chk.code === 0) setCheckResult((prev) => ({ ...prev, [newId]: chk.data }));
-          } catch {
-            // A failed CHECK must not read as a failed CREATE. `setProxyResult` has already stored
-            // 'fail' server-side, which is what the row renders.
-          }
-          await load();
-        }
+        // No explicit check here. The backend queues a lookup for every proxy it creates, paced to
+        // stay inside the free service's rate limit, and pushes the result over SSE — so the row
+        // fills itself. Firing one from here as well was two concurrent checks of the same proxy,
+        // and on a rotating gateway those can exit through DIFFERENT countries: the second answer
+        // overwrites the first, and the row ends up claiming a location the check never confirmed.
       } else {
         setError(res.msg);
       }
@@ -212,23 +214,11 @@ export function Proxies() {
         );
         setImportText('');
         await load();
-        // Auto-detect geo: check each new proxy (sequential, gentle on ip-api).
-        if (importProto && res.data.proxy_ids.length > 0) {
-          const ids: string[] = res.data.proxy_ids;
-          setImportSummary((s) => s + ` — ${t('checking geo…')} (0/${ids.length})`);
-          for (let i = 0; i < ids.length; i++) {
-            try {
-              await api.proxyCheck(ids[i]);
-            } catch {
-              // keep going — one failed check must not stop the batch
-            }
-            if (i % 5 === 0 || i === ids.length - 1) {
-              setImportSummary((s) => s.replace(/\(0\/\d+\)$|\(\d+\/\d+\)$/, `(${i + 1}/${ids.length})`));
-              await load();
-            }
-          }
-          setImportSummary((s) => s.replace(/— .*$/, '') + ` — ${t('geo detected')}`);
-          await load();
+        // The backend queues geo for every proxy the import creates and paces the lookups; the
+        // header already renders that queue's progress. The sequential loop that used to live here
+        // was the same work done twice, unpaced, and racing the queue for the same proxies.
+        if (res.data.created > 0) {
+          setImportSummary((s) => s + ` — ${t('detecting geo…')}`);
         }
         setTimeout(() => {
           setShowImport(false);
@@ -549,8 +539,10 @@ export function Proxies() {
                         ) : p.country || p.city ? (
                           <span style={{ fontSize: 12.5, color: 'var(--text-secondary)' }}>
                             {/* Flag, country, city and timezone — the operator needs to see where the
-                                proxy actually exits, not just that something was stored. */}
-                            {flagOf(p.country) ? `${flagOf(p.country)} ` : ''}
+                                proxy actually exits, not just that something was stored. The flag
+                                comes from the ISO code, which is a separate column: a name has no
+                                derivable flag, and passing one here produced none at all. */}
+                            {flagOf(p.country_code) ? `${flagOf(p.country_code)} ` : ''}
                             {[p.country, p.city].filter(Boolean).join(' · ')}
                             {p.timezone ? ` · ${p.timezone}` : ''}
                           </span>
