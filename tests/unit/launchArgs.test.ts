@@ -8,7 +8,7 @@ import {
   resolveLaunchConfig,
 } from '../../src/main/profiles/profileManager';
 import { buildChromiumArgs } from '../../src/main/launcher/chromium';
-import { initDb, closeDb } from '../../src/main/db';
+import { initDb, closeDb, getDb } from '../../src/main/db';
 import { seedDevices } from '../../src/main/devices/deviceManager';
 import type { LaunchConfig } from '../../src/main/profiles/profileManager';
 import * as fs from 'fs';
@@ -69,6 +69,9 @@ describe('launchArgs - denylist rejection at save', () => {
     { arg: '--load-extension', expectedToken: '--load-extension' },
     { arg: '--disable-extensions', expectedToken: '--disable-extensions' },
     { arg: '--disable-extensions=true', expectedToken: '--disable-extensions' },
+    { arg: '--headless', expectedToken: '--headless' },
+    { arg: '--headless=new', expectedToken: '--headless' },
+    { arg: '--headless=old', expectedToken: '--headless' },
   ];
 
   for (const { arg, expectedToken } of deniedCases) {
@@ -139,6 +142,31 @@ describe('launchArgs - profileManager save & DB persistence', () => {
         launch_args: ['--remote-debugging-port=9222'],
       })
     ).toThrowError(/--remote-debugging/);
+  });
+
+  // The reported defect: a profile carrying `--headless=new` as a launch_arg opened no window at
+  // all, while the API answered success and the status row read "running". Extra args are
+  // appended LAST, so the switch silently overrode the launcher's own display mode. Saving is
+  // now blocked, and a row that already holds one is ignored rather than launched.
+  it('ignores a stale headless launch_arg on a row written before the denylist covered it', () => {
+    const id = createProfile({ name: 'Legacy Headless Row', launch_args: ['--disable-notifications'] });
+
+    // Write past the API, the way an older release (or a hand-edited database) did.
+    getDb()
+      .prepare('UPDATE profiles SET launch_args = ? WHERE id = ?')
+      .run(JSON.stringify(['--disable-notifications', '--headless=new']), id);
+
+    const cfg = resolveLaunchConfig(id);
+    expect(cfg.launch_args).toEqual(['--disable-notifications']);
+    expect(cfg.launch_args?.some((a) => a.startsWith('--headless'))).toBe(false);
+  });
+
+  it('does not let a stored headless launch_arg reach the command line', async () => {
+    const id = createProfile({ name: 'Headless Arg Must Not Reach argv' });
+    getDb().prepare('UPDATE profiles SET launch_args = ? WHERE id = ?').run(JSON.stringify(['--headless=new']), id);
+
+    const args = await buildChromiumArgs(resolveLaunchConfig(id));
+    expect(args.some((a) => a.startsWith('--headless'))).toBe(false);
   });
 });
 

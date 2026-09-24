@@ -361,7 +361,21 @@ export const DENIED_LAUNCH_ARGS = [
   '--proxy-server',
   '--load-extension',
   '--disable-extensions',
+  // Display mode is owned by the `headless` column, which has a first-class API field and
+  // reaches the kernel. As a launch_arg it was doubly wrong: these args are appended LAST
+  // (Chromium is last-wins), so `--headless=new` silently overrode the column and a profile
+  // the operator pressed Play on opened no window at all — while the API returned success and
+  // the status row read "running".
+  '--headless',
 ] as const;
+
+/** The denied token a switch hits, or null when the launcher does not own it. */
+function deniedLaunchArgToken(arg: string): string | null {
+  for (const denied of DENIED_LAUNCH_ARGS) {
+    if (arg.startsWith(denied)) return denied;
+  }
+  return null;
+}
 
 /**
  * Validates the per-profile extra launch args at SAVE time: any denied prefix
@@ -370,10 +384,9 @@ export const DENIED_LAUNCH_ARGS = [
 export function validateLaunchArgs(args: string[] | null | undefined): string[] {
   const list = args ?? [];
   for (const arg of list) {
-    for (const denied of DENIED_LAUNCH_ARGS) {
-      if (arg.startsWith(denied)) {
-        throw new Error(`launch_args: denied token '${denied}' in '${arg}'`);
-      }
+    const denied = deniedLaunchArgToken(arg);
+    if (denied) {
+      throw new Error(`launch_args: denied token '${denied}' in '${arg}'`);
     }
   }
   return [...list];
@@ -391,11 +404,23 @@ export function appendProfileArgs(
   return [...base, ...extra];
 }
 
+/**
+ * Reads the `launch_args` column and drops any switch the launcher itself owns.
+ *
+ * Rows written before the display-mode tokens joined the denylist still carry them, and a row
+ * could also be edited outside the API. Saving is validated, reading is forgiving: a denied
+ * token is ignored rather than thrown, so one stale row cannot make a profile unlaunchable.
+ * This is the single parse point, so both the detail view and `resolveLaunchConfig` agree on
+ * what the profile actually launches with.
+ */
 function parseLaunchArgsColumn(raw: string | null): string[] {
   if (!raw) return [];
   try {
     const parsed = JSON.parse(raw) as unknown;
-    return Array.isArray(parsed) ? parsed.filter((v): v is string => typeof v === 'string') : [];
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .filter((v): v is string => typeof v === 'string')
+      .filter((arg) => deniedLaunchArgToken(arg) === null);
   } catch {
     return [];
   }
