@@ -1,18 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { api, CloudStateData, ProfileListItem, SyncResultRow } from '../api';
 import { useI18n } from '../i18n';
+import { openExternalUrl, BOOTSTRAP_RAW_URL, SERVER_DEPLOY_DOC_URL, SERVER_README_URL } from '../externalUrl';
 
-// Self-hosted deployment: the bootstrap script and its guides live in the repository
-// under `deploy/`, served from the main branch so an operator always gets the current one.
-const BOOTSTRAP_URL =
-  'https://raw.githubusercontent.com/wdnameless/antidetect-browser/main/deploy/bootstrap.ps1';
-const DEPLOY_GUIDE_RU =
-  'https://github.com/wdnameless/antidetect-browser/blob/main/deploy/DEDICATED_AGENT_PROMPT.ru.md';
-const DEPLOY_GUIDE_EN =
-  'https://github.com/wdnameless/antidetect-browser/blob/main/README.md#dedicated-server';
-
+// Self-hosted deployment: the bootstrap script and its guides live in the repository under
+// `deploy/`. The URLs come from `externalUrl` so the repository slug is written in exactly one
+// place — this file previously hardcoded it and survived a rename pointing at the old path.
 const DEPLOY_COMMAND = [
-  `irm ${BOOTSTRAP_URL} -OutFile bootstrap.ps1`,
+  `irm ${BOOTSTRAP_RAW_URL} -OutFile bootstrap.ps1`,
   'Set-ExecutionPolicy -Scope Process Bypass -Force',
   '.\\bootstrap.ps1 -Peers 3',
 ].join('\n');
@@ -612,14 +607,14 @@ export const CloudSync: React.FC = () => {
           <button
             type="button"
             className="btn"
-            onClick={() => window.open(DEPLOY_GUIDE_RU, '_blank')}
+            onClick={() => openExternalUrl(SERVER_DEPLOY_DOC_URL)}
           >
             {t('Guide (RU)')}
           </button>
           <button
             type="button"
             className="btn"
-            onClick={() => window.open(DEPLOY_GUIDE_EN, '_blank')}
+            onClick={() => openExternalUrl(SERVER_README_URL)}
           >
             {t('Guide (EN)')}
           </button>

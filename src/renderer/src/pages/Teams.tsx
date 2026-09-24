@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { api, type TeamItem, type TeamMemberItem, type TeamPermissions } from '../api';
 import { useI18n } from '../i18n';
 import { PlusIcon, TrashIcon, CopyIcon, RefreshIcon, CheckIcon } from '../icons';
+import { ProGateCallToAction } from './LicenseSettings';
 
 const PERM_FLAGS: Array<{ key: keyof TeamPermissions; label: string }> = [
   { key: 'can_run_profiles', label: 'Run profiles' },
@@ -225,7 +226,11 @@ export function Teams() {
         </div>
       </div>
 
-      {error && <div className="error-banner">{t(error)}</div>}
+      {error === 'Pro license required' || error === 'LICENSE_REQUIRED' ? (
+        <ProGateCallToAction message={t('Team collaboration requires a Pro license.')} />
+      ) : error ? (
+        <div className="error-banner">{t(error)}</div>
+      ) : null}
       {msg && <div className="ok-banner">{t(msg)}</div>}
 
       {teams.length === 0 && !busy ? (

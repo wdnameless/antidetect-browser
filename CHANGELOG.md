@@ -1,5 +1,65 @@
 # Changelog
 
+## [0.6.33] - 2026-09-24
+
+### Changed — the repository is now NullTrace Antidetect Browser
+
+Renamed to `nulltrace-antidetect-browser` (GitHub forbids spaces in repository names, so the display
+name lives in the repository description). The rename was not cosmetic: **nine tracked files**
+referenced the old path and one of them is load-bearing — the updater endpoint in
+`src-tauri/tauri.conf.json`. Had that been missed, every installed copy would have silently stopped
+receiving updates, with no error anywhere the operator would think to look.
+
+Verified rather than assumed: GitHub redirects the old path, so **both** URLs answer and the
+installed 0.6.32 builds keep updating. References were updated only where they point forward —
+`CHANGELOG.md` and an internal `.workflow/` note keep the name the repository actually had at the
+time, because editing them to match a later rename would make the record false.
+
+### Added — a Free user can now see what Pro is, and reach it
+
+The freemium *logic* was already finished: tier checking, route gates on teams and sync, Ed25519
+licence issuance with rotation, native verification, and the legal surface. What was never finished
+is the part you actually encounter. A Free user was told, in one sentence, that a feature requires
+Pro — with no explanation of what Pro is and no way to get it.
+
+- **A plain two-column comparison** in Settings → License. It states that Free is the complete local
+  product — unlimited profiles, fingerprints, proxies, cookie farm, the full API and MCP surface —
+  and that Pro adds team collaboration and encrypted cloud sync. No countdowns, no pressure, and no
+  invented limits: the boundary is the operator's recorded decision and this release does not touch
+  it.
+- **One upgrade control**, opening an operator-supplied URL through the application's real external
+  link mechanism rather than `window.open`, which a Tauri webview ignores. The URL is a single
+  exported constant, so it is one line to replace.
+- **The call to action appears where the gate actually fires** — on the sync and teams screens —
+  with a second control that goes straight to the licence page for an existing key.
+- **An expired licence still says it expired**, beside the upgrade path rather than replaced by it.
+
+### Fixed — the WebRTC "fix" wrote a setting the check never read
+
+Found by a sweep of the licensing and preflight code. `checkWebrtcHygiene` inspected only the proxy's
+transport type and never looked at the profile's `webrtc_policy`, while the Fix button's whole
+action was to write that policy. So Fix reported success, preflight re-ran, and the same warning came
+back — forever. That is the same "фикс не работает" complaint the previous release was meant to
+close, surviving one layer deeper.
+
+Measured before and after on the same input: `warn / webrtc-leak-risk` →
+**`pass / webrtc-disabled`**. A policy that mitigates the risk is now recognised; `default` still
+warns, and a profile with no proxy is still clean.
+
+### Fixed — stopped geo detection kept reporting itself as running
+
+`stopGeoFill` returned a modified copy instead of changing the state it reported on, so while the
+worker finished an in-flight request the status route still answered `running: true`, the UI flipped
+back, and an immediate restart was refused. The stop is now authoritative, and the worker carries a
+run id so a finishing older pass cannot overwrite a newer one's state.
+
+### Fixed — activating a licence in a packaged build left the UI on Free
+
+`POST /api/v1/license/activate` answers with the licence state immediately, but in a packaged build
+that state is cross-checked against a verdict file the native side rewrites *afterwards*. The
+operator saw "License activated" while the interface still read Free until a manual reload. The
+licence screen now re-reads the state once the verdict has been refreshed.
+
 ## [0.6.32] - 2026-09-23
 
 ### Fixed — a blocked launch now explains itself, and Fix no longer misleads

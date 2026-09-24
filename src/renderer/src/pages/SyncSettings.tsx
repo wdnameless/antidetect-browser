@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { api } from '../api';
 import { useI18n } from '../i18n';
 import { RefreshIcon } from '../icons';
+import { ProGateCallToAction } from './LicenseSettings';
 
 /**
  * Settings → Sync: endpoint mode (cloud default / custom self-host), URL
@@ -135,7 +136,9 @@ export function SyncSettings() {
         </div>
       </div>
 
-      {!licenseOk ? <p className="hint" style={{ color: 'var(--warn)' }}>{t('Teams and sync require a Pro license (Settings → License).')}</p> : null}
+      {!licenseOk ? (
+        <ProGateCallToAction message={t('Encrypted cloud sync requires a Pro license.')} />
+      ) : null}
       {msg ? <p className="hint">{msg}</p> : null}
       <p className="hint">
         {t('Bundles are end-to-end encrypted (AES-256-GCM, HKDF team key). The server stores only ciphertext.')}

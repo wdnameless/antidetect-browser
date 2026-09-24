@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { getApiKey, getApiOrigin, checkHealth, getMcpStatus, startMcp, stopMcp, buildMcpBundleIn, type McpStatus } from '../api';
 import { useI18n } from '../i18n';
 import { currentTheme, setTheme, type Theme } from '../theme';
+import { openExternalUrl, DOCS_URL } from '../externalUrl';
 
 /**
  * Sidebar footer: the Automation API block from the reference design.
@@ -112,22 +113,6 @@ export function AutomationPanel() {
   // Masked on screen, real command on the clipboard: a full key on display ends up in
   // screenshots and screen shares, and the operator already has it.
   const maskedKey = apiKey ? `${apiKey.slice(0, 4)}\u2026${apiKey.slice(-4)}` : '<YOUR_API_KEY>';
-
-  /** What a client needs to talk to the MCP server, in the transport that is actually live. */
-  const mcpClientConfig = (): string => {
-    if (mcp?.running && mcp.httpUrl) {
-      // Running: the server exposes POST /mcp. There is no /sse route, so a config
-      // pointing at one would 404 on connect.
-      return JSON.stringify({ mcpServers: { nulltrace: { type: 'http', url: mcp.httpUrl } } }, null, 2);
-    }
-    // Stopped: stdio entry. The path nests one level deeper than the obvious guess
-    // (`mcp/dist/mcp/src/index.js`), because the MCP source imports from `src/main/motion`.
-    return JSON.stringify(
-      { mcpServers: { nulltrace: { command: 'node', args: ['mcp/dist/mcp/src/index.js'] } } },
-      null,
-      2,
-    );
-  };
 
   /**
    * Produce a ready-to-use MCP server and show the config to hand to an agent.
@@ -281,17 +266,7 @@ export function AutomationPanel() {
         <button
           type="button"
           className="automation-action-btn"
-          onClick={() => {
-            const docUrl = 'https://github.com/wdnameless/antidetect-browser/tree/main/docs';
-            // The bridge exposes this as `openExternal` (src-tauri/src/bridge.js), which opens
-            // the URL through the system handler. A plain <a target="_blank"> does nothing inside
-            // a Tauri webview, which is why the button appeared broken.
-            if (window.antidetect?.openExternal) {
-              void window.antidetect.openExternal(docUrl);
-            } else {
-              window.open(docUrl, '_blank', 'noreferrer,noopener');
-            }
-          }}
+          onClick={() => openExternalUrl(DOCS_URL)}
         >
           {t('Docs')}
         </button>

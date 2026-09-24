@@ -10,6 +10,12 @@ import {
   CheckName,
   ProfileResolvedData,
 } from './types';
+
+declare module './types' {
+  interface ProfileResolvedData {
+    webrtc_policy?: string | null;
+  }
+}
 import { storeVerdict } from './store';
 import {
   deriveHardwareVector,
@@ -89,6 +95,7 @@ export function resolveProfileData(profileId: string): ProfileResolvedData | nul
     timezone: profile.timezone,
     language,
     browser_type: profile.browser_type ?? undefined,
+    webrtc_policy: profile.webrtc_policy ?? null,
     proxy,
   };
 }
@@ -318,9 +325,26 @@ export function checkLanguageMatch(
 
 export function checkWebrtcHygiene(
   proxy?: ResolvedProxyInfo,
-  _browserType?: string | null
+  browserTypeOrPolicy?: string | null,
+  webrtcPolicy?: string | null
 ): CheckVerdict {
+  const policy =
+    webrtcPolicy !== undefined
+      ? webrtcPolicy
+      : browserTypeOrPolicy === 'disable_non_proxied_udp' ||
+        browserTypeOrPolicy === 'proxy' ||
+        browserTypeOrPolicy === 'default'
+      ? browserTypeOrPolicy
+      : undefined;
+
   if (proxy && (proxy.type === 'http' || proxy.type === 'ssh')) {
+    if (policy === 'disable_non_proxied_udp' || policy === 'proxy') {
+      return {
+        status: 'pass',
+        reasonCode: 'webrtc-disabled',
+        detail: `Proxy type '${proxy.type}' cannot route UDP, but WebRTC leak risk is mitigated by policy '${policy}'`,
+      };
+    }
     return {
       status: 'warn',
       reasonCode: PREFLIGHT_REASON.WEBRTC_LEAK_RISK,
@@ -520,7 +544,7 @@ export async function runPreflight(profileId: string): Promise<PreflightVerdict>
   ]);
 
   const languageMatch = checkLanguageMatch(data?.language, proxy?.country);
-  const webrtcHygiene = checkWebrtcHygiene(proxy, data?.browser_type);
+  const webrtcHygiene = checkWebrtcHygiene(proxy, data?.browser_type, data?.webrtc_policy);
   const dnsEgress = await checkDnsEgress(proxy);
   const coherence = checkCoherence(profileId);
 

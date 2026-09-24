@@ -39,8 +39,6 @@ import {
   SettingsIcon,
   BrandMark,
   CloudIcon,
-  UsersIcon,
-  KeyIcon,
   TrashIcon,
   CookieIcon,
   FlowIcon,
@@ -269,20 +267,6 @@ export function App() {
       void apiObj?.update?.quitAndInstall?.();
     }
   }, [updateFlowActive, kernelUpdateState]);
-
-
-  const openDocs = (e: React.MouseEvent) => {
-    e.preventDefault();
-    const url = 'https://github.com/wdnameless/antidetect-browser/tree/main/docs';
-    const apiObj = window.antidetect as (typeof window.antidetect & {
-      openExternal?: (u: string) => void;
-    }) | undefined;
-    if (apiObj?.openExternal) {
-      apiObj.openExternal(url);
-    } else {
-      window.open(url, '_blank', 'noopener,noreferrer');
-    }
-  };
 
   const initSession = useCallback((token: string) => {
     setApiKey(token);

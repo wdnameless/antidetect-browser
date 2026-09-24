@@ -475,6 +475,21 @@ const RU: Record<string, string> = {
   'Invalid license key': 'Неверный лицензионный ключ',
   'License removed': 'Лицензия удалена',
   'Pro unlocks Teams, RBAC and encrypted cloud sync. Keys are validated offline — no account needed.': 'Pro открывает команды, RBAC и зашифрованную облачную синхронизацию. Ключи проверяются офлайн — аккаунт не нужен.',
+  'Get Pro': 'Оформить Pro',
+  'License activating…': 'Активация лицензии…',
+  'Enter license key': 'Ввести ключ',
+  'Unlimited profiles, fingerprints, proxies, cookie farm': 'Неограниченные профили, отпечатки, прокси, фарминг куки',
+  'The full local API and MCP tool surface': 'Полный локальный API и набор MCP-инструментов',
+  'Everything in Free': 'Всё, что входит в Free',
+  'Team collaboration (shared profiles, roles)': 'Командная работа (общие профили, роли)',
+  'Encrypted cloud sync (AES-256-GCM, HKDF team key)': 'Зашифрованная облачная синхронизация (AES-256-GCM, ключ команды HKDF)',
+  'Support development of the project': 'Поддержка разработки проекта',
+  'Free is a complete product, not a trial: all local features, profiles, and API access are fully unlocked without limits.': 'Free — это полноценный продукт, а не триал: все локальные функции, профили и API доступны без ограничений.',
+  'Encrypted cloud sync requires a Pro license.': 'Зашифрованная облачная синхронизация требует лицензию Pro.',
+  'Team collaboration requires a Pro license.': 'Командная работа требует лицензию Pro.',
+  'Pro license required': 'Требуется лицензия Pro',
+  'Included': 'Включено',
+  'Active': 'Активен',
 
   // Sprint 2: Diagnostics
   'Select a profile': 'Выберите профиль',
@@ -1028,8 +1043,22 @@ const EN: Record<string, string> = {
   'Consents Accepted': 'Consents Accepted',
   'Crawl running in background': 'Crawl running in background',
   'Failed to stop cookie farm': 'Failed to stop cookie farm',
+  'Get Pro': 'Get Pro',
+  'Enter license key': 'Enter license key',
+  'Unlimited profiles, fingerprints, proxies, cookie farm': 'Unlimited profiles, fingerprints, proxies, cookie farm',
+  'The full local API and MCP tool surface': 'The full local API and MCP tool surface',
+  'Everything in Free': 'Everything in Free',
+  'Team collaboration (shared profiles, roles)': 'Team collaboration (shared profiles, roles)',
+  'Encrypted cloud sync (AES-256-GCM, HKDF team key)': 'Encrypted cloud sync (AES-256-GCM, HKDF team key)',
+  'Support development of the project': 'Support development of the project',
+  'Free is a complete product, not a trial: all local features, profiles, and API access are fully unlocked without limits.': 'Free is a complete product, not a trial: all local features, profiles, and API access are fully unlocked without limits.',
+  'Encrypted cloud sync requires a Pro license.': 'Encrypted cloud sync requires a Pro license.',
+  'Team collaboration requires a Pro license.': 'Team collaboration requires a Pro license.',
+  'Pro license required': 'Pro license required',
+  'Included': 'Included',
+  'Active': 'Active',
+  'License activating…': 'License activating…',
 };
-
 const Ctx = createContext<I18nCtx>({ lang: 'en', setLang: () => undefined, t: (s) => EN[s] ?? s });
 
 export function I18nProvider({ children }: { children: ReactNode }) {

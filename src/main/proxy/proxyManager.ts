@@ -208,13 +208,24 @@ export interface GeoFillStatus {
 
 const GEO_FILL_PACING_MS = 1500; // 1500ms delay = 40 req/min (strictly under ip-api 45 req/min free limit)
 
+let cancelGeoFillDelay: (() => void) | null = null;
+
 function delay(ms: number): Promise<void> {
   const { promise, resolve } = Promise.withResolvers<void>();
-  setTimeout(resolve, ms);
+  const timer = setTimeout(() => {
+    cancelGeoFillDelay = null;
+    resolve();
+  }, ms);
+  cancelGeoFillDelay = () => {
+    clearTimeout(timer);
+    cancelGeoFillDelay = null;
+    resolve();
+  };
   return promise;
 }
 let geoFillActive = false;
 let geoFillAbort = false;
+let geoFillRunId = 0;
 let geoFillStatus: GeoFillStatus = {
   running: false,
   total: 0,
@@ -233,6 +244,12 @@ export function getGeoFillStatus(): GeoFillStatus {
 export function stopGeoFill(): GeoFillStatus {
   if (geoFillActive) {
     geoFillAbort = true;
+    geoFillActive = false;
+  }
+  geoFillStatus.running = false;
+  geoFillStatus.current_proxy_id = null;
+  if (cancelGeoFillDelay) {
+    cancelGeoFillDelay();
   }
   return { ...geoFillStatus, running: false };
 }
@@ -262,6 +279,7 @@ export function startGeoFill(options?: { force?: boolean }): GeoFillStatus {
     return { ...geoFillStatus };
   }
 
+  const runId = ++geoFillRunId;
   geoFillActive = true;
   geoFillAbort = false;
   geoFillStatus = {
@@ -278,17 +296,20 @@ export function startGeoFill(options?: { force?: boolean }): GeoFillStatus {
   void (async () => {
     try {
       for (const proxy of candidates) {
-        if (geoFillAbort) break;
+        if (geoFillAbort || runId !== geoFillRunId) break;
 
         const current = getProxy(proxy.id);
         if (!current || (current.country && current.city)) {
+          if (runId !== geoFillRunId) break;
           geoFillStatus.completed++;
           continue;
         }
 
+        if (geoFillAbort || runId !== geoFillRunId) break;
         geoFillStatus.current_proxy_id = proxy.id;
         try {
           const res = await checkProxy(current);
+          if (geoFillAbort || runId !== geoFillRunId) break;
           setProxyResult(proxy.id, res);
           if (res.ok) {
             geoFillStatus.succeeded++;
@@ -296,18 +317,22 @@ export function startGeoFill(options?: { force?: boolean }): GeoFillStatus {
             geoFillStatus.failed++;
           }
         } catch {
+          if (geoFillAbort || runId !== geoFillRunId) break;
           geoFillStatus.failed++;
         }
+        if (geoFillAbort || runId !== geoFillRunId) break;
         geoFillStatus.completed++;
 
-        if (!geoFillAbort && geoFillStatus.completed < geoFillStatus.total) {
+        if (!geoFillAbort && runId === geoFillRunId && geoFillStatus.completed < geoFillStatus.total) {
           await delay(GEO_FILL_PACING_MS);
         }
       }
     } finally {
-      geoFillActive = false;
-      geoFillStatus.running = false;
-      geoFillStatus.current_proxy_id = null;
+      if (runId === geoFillRunId) {
+        geoFillActive = false;
+        geoFillStatus.running = false;
+        geoFillStatus.current_proxy_id = null;
+      }
     }
   })();
 

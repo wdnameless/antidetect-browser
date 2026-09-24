@@ -3,9 +3,12 @@ name: CI
 on:
   push:
     branches: [main]
-    # The release job below is gated on `refs/tags/v*`. Without this trigger that gate
-    # can never be true, so no tag has ever produced a release — v0.3.0 through v0.3.4
-    # were documented in the changelog and never shipped. A tag push starts the workflow.
+    # The release job below is gated on `refs/tags/v*`. Without this trigger
+    # that gate
+    # can never be true, so no tag has ever produced a release — v0.3.0 through
+    # v0.3.4
+    # were documented in the changelog and never shipped. A tag push starts the
+    # workflow.
     tags: ['v*']
   pull_request:
 
@@ -23,10 +26,14 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      # BEFORE typecheck, and this ordering is the fix: `mcp/src` imports `@antidetect/sdk`, whose
-      # `dist/` is gitignored and produced only by the SDK's own build. The npm `pretest` hook
-      # builds it, which is why the test job never noticed — but `typecheck` has no such hook, so
-      # running it first fails on a clean checkout with "Cannot find module '@antidetect/sdk'".
+      # BEFORE typecheck, and this ordering is the fix: `mcp/src` imports
+      # `@antidetect/sdk`, whose
+      # `dist/` is gitignored and produced only by the SDK's own build. The npm
+      # `pretest` hook
+      # builds it, which is why the test job never noticed — but `typecheck` has
+      # no such hook, so
+      # running it first fails on a clean checkout with "Cannot find module
+      # '@antidetect/sdk'".
       # Reproduced on a macos-14 runner before fixing.
       - name: Build the SDK
         run: npm run build:sdk
@@ -82,17 +89,26 @@ jobs:
 
   release-macos:
     name: Release macOS portable (Apple Silicon)
-    # Separate job from `release` rather than an extra matrix row: the Windows job's steps are
-    # Windows-shaped (PowerShell, NSIS, a minisign updater manifest) and mixing platforms would
-    # put `if: runner.os == ...` guards on every one of them. A parallel job keeps the Windows
-    # path exactly as it was — which is what its own tests assert — and gives macOS its own.
+    # Separate job from `release` rather than an extra matrix row: the Windows
+    # job's steps are
+    # Windows-shaped (PowerShell, NSIS, a minisign updater manifest) and mixing
+    # platforms would
+    # put `if: runner.os == ...` guards on every one of them. A parallel job
+    # keeps the Windows
+    # path exactly as it was — which is what its own tests assert — and gives
+    # macOS its own.
     #
-    # `macos-14` is Apple Silicon (M1) — confirmed by the runner's banner, which reports
-    # "Image: macos-14-arm64" for this label. The macOS SDK exists only on macOS, so this is the
-    # only way to produce the artefact at all; Windows cannot cross-compile to it.
+    # `macos-14` is Apple Silicon (M1) — confirmed by the runner's banner, which
+    # reports
+    # "Image: macos-14-arm64" for this label. The macOS SDK exists only on
+    # macOS, so this is the
+    # only way to produce the artefact at all; Windows cannot cross-compile to
+    # it.
     #
-    # Measured before this job was written (run 35494974446): the pinned kernel image is native
-    # arm64 and its stealth holds on M1, so an Apple Silicon artefact is a working product here
+    # Measured before this job was written (run 35494974446): the pinned kernel
+    # image is native
+    # arm64 and its stealth holds on M1, so an Apple Silicon artefact is a
+    # working product here
     # rather than a speculative one.
     if: startsWith(github.ref, 'refs/tags/v')
     needs: [test, sdk]
@@ -113,15 +129,20 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
 
-      # The sidecar Node runtime, for the arm64 target triple Tauri expects. Without this the
+      # The sidecar Node runtime, for the arm64 target triple Tauri expects.
+      # Without this the
       # shell has no runtime to spawn and the app starts to an error page.
       - name: Vendor the Node sidecar (arm64)
         run: npm run vendor:node
 
-      # BEFORE typecheck, and this ordering is the fix: `mcp/src` imports `@antidetect/sdk`, whose
-      # `dist/` is gitignored and produced only by the SDK's own build. The npm `pretest` hook
-      # builds it, which is why the test job never noticed — but `typecheck` has no such hook, so
-      # running it first fails on a clean checkout with "Cannot find module '@antidetect/sdk'".
+      # BEFORE typecheck, and this ordering is the fix: `mcp/src` imports
+      # `@antidetect/sdk`, whose
+      # `dist/` is gitignored and produced only by the SDK's own build. The npm
+      # `pretest` hook
+      # builds it, which is why the test job never noticed — but `typecheck` has
+      # no such hook, so
+      # running it first fails on a clean checkout with "Cannot find module
+      # '@antidetect/sdk'".
       # Reproduced on a macos-14 runner before fixing.
       - name: Build the SDK
         run: npm run build:sdk
@@ -135,8 +156,10 @@ jobs:
       - name: Unit tests
         run: npm test
 
-      # `--bundles app` and NOT `dmg`: a dmg is a distribution container, and the operator's
-      # chosen form is a folder holding the .app plus its data. `app` produces exactly that
+      # `--bundles app` and NOT `dmg`: a dmg is a distribution container, and
+      # the operator's
+      # chosen form is a folder holding the .app plus its data. `app` produces
+      # exactly that
       # bundle, which the packaging step below places into the portable layout.
       - name: Build the app bundle
         run: npx tauri build --bundles app
@@ -149,8 +172,10 @@ jobs:
           APP=$(find src-tauri/target/release/bundle/macos -maxdepth 1 -name '*.app' | head -1)
           if [ -z "$APP" ]; then echo "::error::no .app was produced"; exit 1; fi
           echo "bundle: $APP"
-          # Ad-hoc signed by the build (bundle.macOS.signingIdentity = "-"). A broken signature
-          # here means the app cannot launch on Apple Silicon at all, so it is checked, not assumed.
+          # Ad-hoc signed by the build (bundle.macOS.signingIdentity = "-"). A
+          # broken signature
+          # here means the app cannot launch on Apple Silicon at all, so it is
+          # checked, not assumed.
           codesign --verify --deep --strict "$APP" && echo "signature verifies"
 
       - name: Package the portable layout
@@ -164,16 +189,21 @@ jobs:
             dist-release/*macos-arm64*
           if-no-files-found: error
 
-      # No `latest.json` entry for macOS: the portable self-update swaps a launcher file, which is
-      # a Windows mechanism (`build_windows_swap_command`). Publishing updater metadata for a
-      # layout whose updater is not implemented would make the UI promise an update it cannot
-      # perform — worse than reporting, honestly, that updates are not configured for this build.
+      # No `latest.json` entry for macOS: the portable self-update swaps a
+      # launcher file, which is
+      # a Windows mechanism (`build_windows_swap_command`). Publishing updater
+      # metadata for a
+      # layout whose updater is not implemented would make the UI promise an
+      # update it cannot
+      # perform — worse than reporting, honestly, that updates are not
+      # configured for this build.
       - name: Publish the macOS asset
         uses: softprops/action-gh-release@v2
         with:
-          # Explicit, so the action attaches to THIS tag's release instead of inferring one and
-          # possibly creating a second release object for the same tag — the race that left v0.6.31
-          # with two releases, the empty one winning the tag.
+          # Explicit, so the action attaches to THIS tag's release
+          # instead of inferring one and possibly creating a second
+          # release object for the same tag — the race that left
+          # v0.6.31 with two releases, the empty one winning the tag.
           tag_name: ${{ github.ref_name }}
           files: |
             dist-release/*macos-arm64*
@@ -184,15 +214,20 @@ jobs:
     # Build and publish release artefacts when a v* tag is pushed.
     #
     # Windows only, and that is a deliberate, recorded limitation rather than an
-    # oversight. Upstream browser kernel downloads and verification are Windows-only;
+    # oversight. Upstream browser kernel downloads and verification are
+    # Windows-only;
     # shipping unverified platform builds is worse than not shipping them.
     #
-    # macOS (arm64) and Linux targets are configured (bundle.macOS.signingIdentity="-" ad-hoc,
-    # linux categories/targets), but configuration only — no artefacts published (R10).
+    # macOS (arm64) and Linux targets are configured
+    # (bundle.macOS.signingIdentity="-" ad-hoc,
+    # linux categories/targets), but configuration only — no artefacts published
+    # (R10).
     # Note that macOS ad-hoc signing is configured though unsigned here.
     #
-    # Matrix entries for ubuntu-latest and macos-14 remain commented out below: upstream
-    # platform kernel downloads and host test harnesses are not available in CI, and shipping
+    # Matrix entries for ubuntu-latest and macos-14 remain commented out below:
+    # upstream
+    # platform kernel downloads and host test harnesses are not available in CI,
+    # and shipping
     # unverified platform builds is worse than not shipping them.
     #
     # matrix:
@@ -201,13 +236,15 @@ jobs:
     #   - os: macos-14
     #     platform: mac
     if: startsWith(github.ref, 'refs/tags/v')
-    # `release-macos` is a prerequisite, not a sibling. Both jobs publish to the SAME tag via
-    # `action-gh-release`, and running them in parallel raced: on v0.6.31 the macOS job created the
-    # release first, the Windows job was told "Release 394468367 is not yet discoverable by tag
-    # v0.6.31, retrying...", then created its OWN release object and uploaded all five assets there.
-    # The tag ended up resolving to the empty release, so `gh release view` and the API both
-    # reported 0 assets while the asset URLs still served the files from the duplicate. Every
-    # earlier release escaped this only by timing.
+    # `release-macos` is a prerequisite, not a sibling. Both jobs publish
+    # to the SAME tag via `action-gh-release`, and running them in
+    # parallel raced: on v0.6.31 the macOS job created the release first,
+    # the Windows job was told "Release 394468367 is not yet discoverable
+    # by tag v0.6.31, retrying...", then created its OWN release object
+    # and uploaded all five assets there. The tag ended up resolving to
+    # the empty release, so `gh release view` and the API both reported
+    # 0 assets while the asset URLs still served the files from the
+    # duplicate. Every earlier release escaped this only by timing.
     needs: [test, sdk, release-macos]
     strategy:
       fail-fast: false
@@ -236,10 +273,14 @@ jobs:
       - name: Verify Tauri CLI
         run: npx tauri --version
 
-      # BEFORE typecheck, and this ordering is the fix: `mcp/src` imports `@antidetect/sdk`, whose
-      # `dist/` is gitignored and produced only by the SDK's own build. The npm `pretest` hook
-      # builds it, which is why the test job never noticed — but `typecheck` has no such hook, so
-      # running it first fails on a clean checkout with "Cannot find module '@antidetect/sdk'".
+      # BEFORE typecheck, and this ordering is the fix: `mcp/src` imports
+      # `@antidetect/sdk`, whose
+      # `dist/` is gitignored and produced only by the SDK's own build. The npm
+      # `pretest` hook
+      # builds it, which is why the test job never noticed — but `typecheck` has
+      # no such hook, so
+      # running it first fails on a clean checkout with "Cannot find module
+      # '@antidetect/sdk'".
       # Reproduced on a macos-14 runner before fixing.
       - name: Build the SDK
         run: npm run build:sdk
@@ -247,11 +288,16 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
-      # Build BEFORE testing. `mcpBundle.test.ts` exercises the bundle builder, which reads the
-      # compiled `mcp/dist/mcp/src/index.js` and vendors from `dist/node_modules` — neither
-      # exists on a fresh checkout. The `test` job has always built first; this job tested
-      # first, so the suite passed locally (a developer's tree is already built) and failed on
-      # every tag, taking the whole release with it. Same order as `test`, deliberately.
+      # Build BEFORE testing. `mcpBundle.test.ts` exercises the bundle builder,
+      # which reads the
+      # compiled `mcp/dist/mcp/src/index.js` and vendors from
+      # `dist/node_modules` — neither
+      # exists on a fresh checkout. The `test` job has always built first; this
+      # job tested
+      # first, so the suite passed locally (a developer's tree is already built)
+      # and failed on
+      # every tag, taking the whole release with it. Same order as `test`,
+      # deliberately.
       - name: Build backend, renderer and vendored runtime
         run: npm run build && npm run copy:prod-deps && npm run vendor:node
 
@@ -267,32 +313,51 @@ jobs:
       - name: Test Tauri Rust shell
         run: cargo test --manifest-path src-tauri/Cargo.toml
 
-      # Both artefacts land in the same directory: `tauri build` writes the NSIS installer,
-      # and `tauri:build:portable` compiles our own portable launcher beside it. There is no
-      # separate portable output directory — an earlier revision globbed a path nothing
+      # Both artefacts land in the same directory: `tauri build` writes the NSIS
+      # installer,
+      # and `tauri:build:portable` compiles our own portable launcher beside it.
+      # There is no
+      # separate portable output directory — an earlier revision globbed a path
+      # nothing
       # created, which would have published an empty release.
       #
-      # Updater metadata. Signed with a minisign key whose PUBLIC half is embedded in
-      # src-tauri/tauri.conf.json. The private key must be a repository secret; without it
-      # the step is skipped rather than emitting an unsigned manifest, because a latest.json
-      # with an empty signature makes the updater refuse every release while the UI reports
+      # Updater metadata. Signed with a minisign key whose PUBLIC half is
+      # embedded in
+      # src-tauri/tauri.conf.json. The private key must be a repository secret;
+      # without it
+      # the step is skipped rather than emitting an unsigned manifest, because a
+      # latest.json
+      # with an empty signature makes the updater refuse every release while the
+      # UI reports
       # the check as fine — worse than having no updater metadata at all.
-      # Written in PowerShell because the runner is Windows and the step is declared
-      # `shell: pwsh`. The previous version was a mixture: a bash `$(ls ... | head -1)`
-      # assignment followed by backtick line continuations and a `.Replace()` call, which
-      # pwsh cannot parse. It never ran, because the step is skipped without a signing key —
-      # so the first release that actually had secrets was the first to fail here.
+      # Written in PowerShell because the runner is Windows and the step is
+      # declared
+      # `shell: pwsh`. The previous version was a mixture: a bash `$(ls ... |
+      # head -1)`
+      # assignment followed by backtick line continuations and a `.Replace()`
+      # call, which
+      # pwsh cannot parse. It never ran, because the step is skipped without a
+      # signing key —
+      # so the first release that actually had secrets was the first to fail
+      # here.
       # A signing failure must degrade the release, not destroy it.
       #
-      # The step above already treats a MISSING key as an honest degraded state: the
-      # installers publish without `latest.json`, and the app reports updates as "not
-      # configured" instead of failing. A key that is PRESENT but cannot sign — a wrong
-      # password, a rotated key — used to take the other path and fail the whole job, so a
+      # The step above already treats a MISSING key as an honest degraded state:
+      # the
+      # installers publish without `latest.json`, and the app reports updates as
+      # "not
+      # configured" instead of failing. A key that is PRESENT but cannot sign —
+      # a wrong
+      # password, a rotated key — used to take the other path and fail the whole
+      # job, so a
       # release produced nothing at all while the build itself had succeeded.
       #
-      # Both cases now land in the same documented state. The failure is still loud
-      # (`::warning::` plus the signer's own error in the log), and it is visible in the app,
-      # so nothing is silently broken — the operator simply gets the installer they built.
+      # Both cases now land in the same documented state. The failure is still
+      # loud
+      # (`::warning::` plus the signer's own error in the log), and it is
+      # visible in the app,
+      # so nothing is silently broken — the operator simply gets the installer
+      # they built.
       - name: Build updater manifest
         id: manifest
         continue-on-error: true
@@ -304,10 +369,14 @@ jobs:
           if (-not $setup) { throw 'NSIS installer not found; cannot build the updater manifest.' }
           $version = '${{ github.ref_name }}'.Replace('v', '')
           $leaf = Split-Path $setup -Leaf
-          # The portable launcher is named NullTrace-<version>-portable-win-x64.exe — NOT
-          # `..._x64-portable.exe`. The underscore form matches nothing, which would publish
-          # `latest.json` without the portable entry and leave every portable build with no
-          # update path at all — silently, because an absent key reads as "no update available".
+          # The portable launcher is named
+          # NullTrace-<version>-portable-win-x64.exe — NOT
+          # `..._x64-portable.exe`. The underscore form matches nothing, which
+          # would publish
+          # `latest.json` without the portable entry and leave every portable
+          # build with no
+          # update path at all — silently, because an absent key reads as "no
+          # update available".
           $portable = (Get-ChildItem src-tauri/target/release/bundle/nsis -Filter 'NullTrace-*-portable-win-x64.exe' | Select-Object -First 1).FullName
           $cmd = @(
             'scripts/build-updater-manifest.mjs',
@@ -326,9 +395,12 @@ jobs:
           node @cmd
         shell: pwsh
 
-      # The signer's own output distinguishes the two cases, and the warning must repeat what
-      # it actually said rather than assume a password problem: a missing key and a wrong
-      # password need different fixes, and pointing at the wrong one wastes a tag.
+      # The signer's own output distinguishes the two cases, and the warning
+      # must repeat what
+      # it actually said rather than assume a password problem: a missing key
+      # and a wrong
+      # password need different fixes, and pointing at the wrong one wastes a
+      # tag.
       - name: Report missing updater metadata
         if: steps.manifest.outcome == 'failure'
         run: |
@@ -346,14 +418,18 @@ jobs:
 
       # Publish release assets to GitHub release on tagged push.
       #
-      # `latest.json` and the `.sig` are included when they were produced above; the updater
-      # endpoint resolves to `releases/latest/download/latest.json`, so the asset must sit at
-      # the release root. Without a signing key they are simply absent and the app reports
+      # `latest.json` and the `.sig` are included when they were produced above;
+      # the updater
+      # endpoint resolves to `releases/latest/download/latest.json`, so the
+      # asset must sit at
+      # the release root. Without a signing key they are simply absent and the
+      # app reports
       # updates as "not configured" — an honest state rather than a failing one.
       - name: Publish release assets
         uses: softprops/action-gh-release@v2
         with:
-          # Same reason as the macOS job: pin the tag so this attaches to the existing release
+          # Same reason as the macOS job: pin the tag so this attaches to the
+          # existing release
           # rather than racing to create another one.
           tag_name: ${{ github.ref_name }}
           files: |
