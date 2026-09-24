@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.6.36] - 2026-09-24
+
+### Added
+- **Auto / Real per noise surface.** The NOISE section of the profile editor now
+  lets each surface (Canvas, Fonts, Audio, Client rects, WebGL/GPU) be left on
+  Auto — engine spoofing from the profile seed — or set to Real, which tells the
+  kernel to stand down for that surface via `--disable-spoofing`. Sensors stays
+  informational: it only exists on mobile profiles and the kernel has no switch
+  for it.
+
+### Changed
+- **The section tab strip is gone.** The form's own headings label each group, so
+  the strip was a second navigation surface for a form that already fits.
+- The fingerprint summary no longer claims noise is always on; it reports the
+  actual choice.
+
 ## [0.6.35] - 2026-09-24
 
 ### Added

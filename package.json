@@ -1,6 +1,6 @@
 {
   "name": "antidetect-browser",
-  "version": "0.6.35",
+  "version": "0.6.36",
   "private": true,
   "description": "NullTrace — zero footprint, infinite scale. Personal antidetect browser with an AdsPower-compatible Local API.",
   "workspaces": [
