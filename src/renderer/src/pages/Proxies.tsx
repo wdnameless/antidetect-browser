@@ -4,19 +4,7 @@ import { ProxiesIcon, PlusIcon, TrashIcon, RefreshIcon } from '../icons';
 import { EmptyState } from '../components/EmptyState';
 import { useColumnResize } from '../useColumnResize';
 import { useI18n } from '../i18n';
-
-/**
- * Flag emoji for an ISO country code, computed rather than stored: the regional-indicator symbols
- * are derived from the letters, so no image assets and no dependency are needed. Returns an empty
- * string for anything that is not a two-letter code, so a malformed value renders as nothing rather
- * than as a broken box.
- */
-function flagOf(country: string | null | undefined): string {
-  if (!country) return '';
-  const code = country.trim().toUpperCase();
-  if (!/^[A-Z]{2}$/.test(code)) return '';
-  return String.fromCodePoint(...[...code].map((ch) => 0x1f1e6 + ch.charCodeAt(0) - 65));
-}
+import { flagOf } from '../proxyGeo';
 
 export function Proxies() {
   const { t } = useI18n();

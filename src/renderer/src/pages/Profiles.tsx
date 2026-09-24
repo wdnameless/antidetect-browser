@@ -15,6 +15,7 @@ import {
   type CookieFarmProgress,
 } from '../api';
 import { useI18n } from '../i18n';
+import { geoLabel } from '../proxyGeo';
 import { computeRunningCount } from '../sidebarLogic';
 import { Dropdown } from '../components/Dropdown';
 import { useColumnResize } from '../useColumnResize';
@@ -111,6 +112,9 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
   const [blockedPorts, setBlockedPorts] = useState<number[]>([]);
   const [portInput, setPortInput] = useState<string>('');
   const [webrtcPolicy, setWebrtcPolicy] = useState<'default' | 'disable_non_proxied_udp' | 'proxy'>('default');
+  // Display mode. Headless profiles launch without a window, which is what an agent-driven
+  // profile wants and what a human operator never does by accident from this form.
+  const [headlessMode, setHeadlessMode] = useState(false);
 
   // Proxy state in modal: mode = 'none' | 'saved' | 'custom'
   const [proxyMode, setProxyMode] = useState<'none' | 'saved' | 'custom'>('none');
@@ -751,6 +755,7 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
         setDoNotTrack((d.do_not_track as 'off' | 'on' | 'auto') || 'auto');
         setBlockedPorts(Array.isArray(d.blocked_ports) ? d.blocked_ports.map(Number).filter((n) => !isNaN(n) && n > 0 && n <= 65535) : []);
         setWebrtcPolicy((d.webrtc_policy as 'default' | 'disable_non_proxied_udp' | 'proxy') || 'default');
+        setHeadlessMode(d.headless === true);
         if (typeof d.fingerprint?.hardwareConcurrency === 'number') setCores(d.fingerprint.hardwareConcurrency);
         setPortInput('');
         setName(d.name || '');
@@ -861,6 +866,7 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
           do_not_track: doNotTrack,
           blocked_ports: blockedPorts,
           webrtc_policy: webrtcPolicy,
+          headless: headlessMode,
         });
         if (res.code === 0) {
           // The chosen language lives in the fingerprint's config blob, not on the profile row,
@@ -892,6 +898,7 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
           do_not_track: doNotTrack,
           blocked_ports: blockedPorts,
           webrtc_policy: webrtcPolicy,
+          headless: headlessMode,
         });
         if (res.code === 0) {
           // Same reason as the create branch: the language is part of the fingerprint config, and
@@ -2015,10 +2022,17 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
                   <td>
                     <div className="row-dense__meta">
                       {p.proxy_host ? (
-                        <div className="proxy-tag">
-                          <span className="proxy-type-badge">{(p.proxy_type || 'HTTP').toUpperCase()}</span>
-                          <span>{p.proxy_host}:{p.proxy_port}</span>
-                          {p.proxy_country ? <span style={{ color: 'var(--accent)', fontSize: 11 }}>({p.proxy_country})</span> : null}
+                        /* Geography leads and the transport moved into the tooltip: the table
+                           answers "where does this profile exit", and the protocol is a property
+                           of the proxy rather than something the operator scans a column for. */
+                        <div className="proxy-tag" title={`${(p.proxy_type || 'HTTP').toUpperCase()} · ${p.proxy_host}:${p.proxy_port}`}>
+                          {geoLabel({ country: p.proxy_country, city: p.proxy_city }) ? (
+                            <span style={{ color: 'var(--accent)', fontSize: 12 }}>{geoLabel({ country: p.proxy_country, city: p.proxy_city })}</span>
+                          ) : (
+                            /* No geo resolved yet: name the transport rather than invent a location. */
+                            <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{(p.proxy_type || 'HTTP').toUpperCase()}</span>
+                          )}
+                          <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>{p.proxy_host}:{p.proxy_port}</span>
                         </div>
                       ) : (
                         <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>Direct (No Proxy)</span>
@@ -2791,6 +2805,23 @@ export function Profiles({ initialGroupId }: { initialGroupId?: string | null } 
                         <option value="disable_non_proxied_udp">{t('Disable non-proxied UDP')}</option>
                         <option value="proxy">{t('Proxy only')}</option>
                       </select>
+                    </div>
+                    <div className="form-group">
+                      <label>{t('Display mode')}</label>
+                      <label
+                        style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 13, color: 'var(--text-secondary)' }}
+                      >
+                        <input
+                          type="checkbox"
+                          data-testid="headless-mode"
+                          checked={headlessMode}
+                          onChange={(e) => setHeadlessMode(e.target.checked)}
+                        />
+                        {t('Headless — launch without a window')}
+                      </label>
+                      <span style={{ fontSize: 11.5, color: 'var(--text-muted)', display: 'block', marginTop: 4 }}>
+                        {t('For agent and automation profiles. A profile you drive by hand should stay headed.')}
+                      </span>
                     </div>
                     <div className="form-group">
                       <label>{t('Do Not Track')}</label>

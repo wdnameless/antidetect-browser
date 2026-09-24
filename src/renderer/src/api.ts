@@ -23,6 +23,7 @@ export interface ProfileListItem {
   proxy_host?: string | null;
   proxy_port?: number | null;
   proxy_country?: string | null;
+  proxy_city?: string | null;
   fingerprint_seed?: number | null;
   platform?: string | null;
   device_name?: string | null;
@@ -45,6 +46,8 @@ export interface ProfileDetails {
   do_not_track?: 'off' | 'on' | 'auto' | null;
   blocked_ports?: number[] | null;
   webrtc_policy?: 'default' | 'disable_non_proxied_udp' | 'proxy' | null;
+  /** Display mode from the detail endpoint: true = launches without a window. */
+  headless?: boolean;
   proxy?: {
     id: string;
     type: 'http' | 'https' | 'socks5' | 'ssh';
@@ -621,6 +624,8 @@ export const api = {
     do_not_track?: 'off' | 'on' | 'auto' | null;
     blocked_ports?: number[];
     webrtc_policy?: 'default' | 'disable_non_proxied_udp' | 'proxy' | null;
+    /** Launch without a window. Owned by the launcher, not by launch_args. */
+    headless?: boolean;
   }) =>
     request<{ user_id: string }>('/api/v1/browser-profile/create', {
       method: 'POST',
@@ -651,6 +656,8 @@ export const api = {
     do_not_track?: 'off' | 'on' | 'auto' | null;
     blocked_ports?: number[] | null;
     webrtc_policy?: 'default' | 'disable_non_proxied_udp' | 'proxy' | null;
+    /** Launch without a window. Owned by the launcher, not by launch_args. */
+    headless?: boolean;
   }) =>
     request<Record<string, never>>('/api/v1/browser-profile/update', {
       method: 'POST',

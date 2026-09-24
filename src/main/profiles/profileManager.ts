@@ -215,6 +215,7 @@ export interface ProfileListItem {
   proxy_host?: string | null;
   proxy_port?: number | null;
   proxy_country?: string | null;
+  proxy_city?: string | null;
   fingerprint_seed?: number | null;
   platform?: string | null;
   device_name?: string | null;
@@ -236,6 +237,8 @@ export interface ProfileDetails {
   do_not_track: string | null;
   blocked_ports: number[];
   webrtc_policy: string | null;
+  /** Display mode: true when the profile launches without a window. NULL/0 means headed. */
+  headless: boolean;
   proxy?: {
     id: string;
     type: ProxyType;
@@ -811,6 +814,9 @@ export function getProfileDetails(id: string): ProfileDetails | null {
     do_not_track: p.do_not_track ?? null,
     blocked_ports: parseBlockedPortsColumn(p.blocked_ports),
     webrtc_policy: p.webrtc_policy ?? null,
+    // Normalised here rather than in each caller: the column is 1/0/NULL on disk, and an
+    // editor checkbox handed the raw column would treat NULL as unchecked only by accident.
+    headless: p.headless === 1,
     proxy,
     fingerprint,
     device,
@@ -1467,7 +1473,8 @@ export function listProfiles(
   const rows = db // pi-lens-ignore: sql-injection
     .prepare(
       `SELECT p.id, p.name, p.status, p.group_id, p.color,
-              px.type AS proxy_type, px.host AS proxy_host, px.port AS proxy_port, px.country AS proxy_country,
+              px.type AS proxy_type, px.host AS proxy_host, px.port AS proxy_port,
+              px.country AS proxy_country, px.city AS proxy_city,
               fp.seed AS fingerprint_seed,
               dev.platform AS platform, dev.name AS device_name
        FROM profiles p
@@ -1486,6 +1493,7 @@ export function listProfiles(
     proxy_host: string | null;
     proxy_port: number | null;
     proxy_country: string | null;
+    proxy_city: string | null;
     fingerprint_seed: number | null;
     platform: string | null;
     device_name: string | null;
@@ -1527,6 +1535,7 @@ export function listProfiles(
       proxy_host: r.proxy_host,
       proxy_port: r.proxy_port,
       proxy_country: r.proxy_country,
+      proxy_city: r.proxy_city,
       fingerprint_seed: r.fingerprint_seed,
       platform: r.platform,
       device_name: r.device_name,
