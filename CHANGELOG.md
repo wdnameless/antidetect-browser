@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.6.34] - 2026-09-24
+
+### Fixed
+- **A profile could open no window while reporting success.** A stored
+  `--headless=new` launch argument was appended last and so overrode the
+  launcher's own display mode: the profile page showed "running", automation
+  connected, and no browser window ever appeared. Display mode belongs to the
+  `headless` column, and `--headless` can no longer be set as a launch argument.
+  Profiles that already carry it are healed on read rather than left stuck.
+
 ## [0.6.33] - 2026-09-24
 
 ### Changed — the repository is now NullTrace Antidetect Browser
