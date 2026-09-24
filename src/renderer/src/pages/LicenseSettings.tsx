@@ -330,14 +330,14 @@ export function LicenseSettings() {
             </button>
           </div>
         </div>
-      ) : (
+      ) : state?.email ? (
         <div className="setting-row">
           <span className="setting-label">{t('Actions')}</span>
           <button className="btn" onClick={() => void deactivate()} disabled={busy}>
             {t('Deactivate')}
           </button>
         </div>
-      )}
+      ) : null}
 
       {msg ? <p className="hint" style={err ? { color: 'var(--warn)' } : undefined}>{msg}</p> : null}
       <p className="hint">

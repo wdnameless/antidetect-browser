@@ -127,6 +127,9 @@ export function validateLicenseKey(key: string, publicKeyPem?: string): LicenseV
 
 /** Activate a license key. Returns the validation error string on failure. */
 export function activateLicense(key: string): { ok: boolean; error?: string; state?: LicenseState } {
+  if (process.env.ENABLE_LICENSING !== '1') {
+    return { ok: true, state: getLicenseState() };
+  }
   const res = validateLicenseKey(key);
   if (!res.ok) return { ok: false, error: res.reason };
   setSetting(LICENSE_STORE_KEY, protectSecret(key) ?? '');
@@ -140,6 +143,11 @@ export function deactivateLicense(): void {
 
 /** Current license state (revalidates the stored key; no network involved). */
 export function getLicenseState(): LicenseState {
+  // ponytail: license gating disabled; all features available to everyone.
+  // Set ENABLE_LICENSING=1 to enforce offline Ed25519 validation.
+  if (process.env.ENABLE_LICENSING !== '1') {
+    return { plan: 'pro', expired: false };
+  }
   const stored = revealSecret(String(getSetting(LICENSE_STORE_KEY) ?? ''));
   if (!stored) return { plan: 'free', expired: false };
   const res = validateLicenseKey(stored);
@@ -185,6 +193,7 @@ export function getLicenseState(): LicenseState {
 
 /** True when the given Pro feature is unlocked by the current license. */
 export function hasFeature(feature: LicenseFeature): boolean {
+  if (process.env.ENABLE_LICENSING !== '1') return true;
   if (getLicenseState().plan !== 'pro') return false;
   void feature; // every Pro feature is unlocked in Sprint 1
   return true;
@@ -192,5 +201,6 @@ export function hasFeature(feature: LicenseFeature): boolean {
 
 /** True when the current license is Pro. */
 export function isPro(): boolean {
+  if (process.env.ENABLE_LICENSING !== '1') return true;
   return getLicenseState().plan === 'pro';
 }

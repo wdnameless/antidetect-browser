@@ -14,7 +14,6 @@ import {
   computeRunningCount,
 } from './sidebarLogic';
 import { Profiles } from './pages/Profiles';
-import { Groups } from './pages/Groups';
 import { Proxies } from './pages/Proxies';
 import { Devices } from './pages/Devices';
 import { Extensions } from './pages/Extensions';
@@ -32,7 +31,6 @@ import { AutomationPanel } from './components/AutomationPanel';
 import { ToastStack } from './components/Toasts';
 import {
   ProfilesIcon,
-  FolderIcon,
   ProxiesIcon,
   DevicesIcon,
   ExtensionsIcon,
@@ -45,7 +43,6 @@ import {
 } from './icons';
 type Page =
   | 'profiles'
-  | 'groups'
   | 'proxies'
   | 'devices'
   | 'extensions'
@@ -90,20 +87,9 @@ export const NAV_DESTINATIONS: NavDestination[] = [
     icon: ProfilesIcon,
     group: 'WORKSPACE',
   },
-  // Groups and Trash are siblings of Profiles rather than pills inside it.
-  //
-  // The operator asked for the sub-tab row to go («сверху Profiles, Groups и Trash можешь убрать,
-  // треш добавь отдельно в workspace»). The row was redundant chrome — it restated the current
-  // page in a strip that occupied a full line of vertical space above every table — and it was
-  // also the ONLY way to reach Groups or Trash, since neither had a navigation entry of its own.
-  // Promoting them to destinations keeps both reachable by exactly the route the operator named,
-  // and matches what this file already does for Devices and Extensions below.
-  {
-    key: 'groups',
-    label: 'Groups',
-    icon: FolderIcon,
-    group: 'WORKSPACE',
-  },
+  // Trash is a sibling of Profiles in the WORKSPACE section.
+  // Groups was removed from the sidebar per user request because groups are managed
+  // directly inside the Profiles page via the Groups modal button and filter dropdown.
   {
     key: 'trash',
     label: 'Trash',
@@ -379,10 +365,6 @@ export function App() {
   }
 
   const activeNav = NAV_DESTINATIONS.find((n) => n.key === page);
-  const handleSelectGroupAndGoToProfiles = (groupId: string) => {
-    setSelectedGroupId(groupId);
-    setPage('profiles');
-  };
 
   return (
     <div className="app">
@@ -628,8 +610,6 @@ export function App() {
           ) : null}
           {page === 'profiles' ? (
             <Profiles initialGroupId={selectedGroupId} />
-          ) : page === 'groups' ? (
-            <Groups onSelectGroup={handleSelectGroupAndGoToProfiles} />
           ) : page === 'proxies' ? (
             <Proxies />
           ) : page === 'devices' ? (

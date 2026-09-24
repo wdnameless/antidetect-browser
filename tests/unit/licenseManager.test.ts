@@ -39,6 +39,7 @@ describe('licenseManager: Ed25519 offline validation', () => {
     fs.mkdirSync(testSettingsDir, { recursive: true });
     process.env.ANTIDETECT_SETTINGS_DIR = testSettingsDir;
     delete process.env.ANTIDETECT_PACKAGED;
+    process.env.ENABLE_LICENSING = '1';
   });
 
   afterEach(() => {
@@ -53,6 +54,7 @@ describe('licenseManager: Ed25519 offline validation', () => {
     } else {
       delete process.env.ANTIDETECT_SETTINGS_DIR;
     }
+    delete process.env.ENABLE_LICENSING;
     if (fs.existsSync(testSettingsDir)) {
       try {
         fs.rmSync(testSettingsDir, { recursive: true, force: true });
@@ -61,6 +63,14 @@ describe('licenseManager: Ed25519 offline validation', () => {
       }
     }
   });
+  it('when ENABLE_LICENSING is not set, all features are unlocked for everyone by default', () => {
+    delete process.env.ENABLE_LICENSING;
+    expect(getLicenseState().plan).toBe('pro');
+    expect(isPro()).toBe(true);
+    expect(hasFeature('teams')).toBe(true);
+    expect(hasFeature('sync')).toBe(true);
+  });
+
 
   it('accepts a validly-signed Pro key with runtime public key', () => {
     const key = signLicensePayload({ plan: 'pro', email: 'dev@example.com' }, runtimeKeyPair.privateKey);

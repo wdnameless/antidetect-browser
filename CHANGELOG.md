@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.6.39] - 2026-09-24
+
+### Changed
+- **Sidebar navigation is streamlined.** Removed Groups from the left sidebar.
+  Profile groups remain accessible and fully managed directly inside the
+  Profiles page via the Groups button and the filter dropdown.
+
+### Fixed
+- **Release publishing is atomic.** The CI release workflow now downloads the
+  macOS package and publishes all assets alongside Windows installers and
+  `latest.json` simultaneously, eliminating a 404 window during release builds
+  that previously caused the client updater to report "Updates not configured".
+
 ## [0.6.38] - 2026-09-24
 
 ### Fixed

@@ -127,7 +127,9 @@ describe('navigation is compact and complete', () => {
     const profiles = navEntries().find((e) => e.key === 'profiles');
     expect(profiles, 'the Profiles destination must exist').toBeDefined();
     expect(profiles!.tabs, 'Profiles must expose no sub-tabs').toEqual([]);
-    for (const child of ['groups', 'trash']) {
+    // Trash is promoted to WORKSPACE entry. Groups was removed per operator request,
+    // as groups are managed directly inside the Profiles page via the modal and filter.
+    for (const child of ['trash']) {
       expect(
         navEntries().some((e) => e.key === child),
         `${child} must be a destination of its own after losing its sub-tab`
