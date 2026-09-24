@@ -2,6 +2,7 @@ import { invalidateTransportCache } from './transportPolicy';
 // Proxy manager: CRUD, connectivity check (http/https/socks5/ssh) and
 // automatic timezone detection from the proxy's egress IP.
 import { randomUUID } from 'crypto';
+import * as dns from 'node:dns/promises';
 import * as http from 'http';
 import { getDb } from '../db';
 import { HttpProxyAgent } from 'http-proxy-agent';
@@ -9,6 +10,7 @@ import { SocksProxyAgent } from 'socks-proxy-agent';
 import fetch from 'node-fetch';
 import { createSshTunnel, SshTunnel } from './sshTunnel';
 import { protectSecret, revealSecret } from '../util/secretStore';
+import { isPrivateOrLocal } from '../util/ipInfo';
 
 export type ProxyType = 'http' | 'https' | 'socks5' | 'ssh';
 
@@ -143,6 +145,23 @@ export async function checkProxy(proxy: ProxyRow): Promise<ProxyCheckResult> {
   let tunnel: SshTunnel | undefined;
 
   try {
+    /*
+     * Resolve the host ourselves before dialing it.
+     *
+     * Measured reason: a residential proxy configured as `lime.proxyhub.team:8080` failed with
+     * `connect ETIMEDOUT 10.250.249.66:8080`. That address is RFC1918, so the request never left
+     * the machine — the operator's resolver had answered with a private address, and the error
+     * named a network timeout. Reported as a timeout, it sent the operator to the provider, who
+     * was not at fault and whose proxy worked when dialed directly.
+     *
+     * A private, loopback or link-local answer for a public proxy host is never correct, so it is
+     * reported as the DNS problem it is, naming the host AND the address it wrongly resolved to.
+     */
+    if (proxy.type !== 'ssh') {
+      const bad = await describeUnreachableResolution(proxy.host);
+      if (bad) return { ok: false, error: bad };
+    }
+
     if (proxy.type === 'ssh') {
       tunnel = await createSshTunnel({
         host: proxy.host,
@@ -164,34 +183,83 @@ export async function checkProxy(proxy: ProxyRow): Promise<ProxyCheckResult> {
       agent = new HttpProxyAgent(`http://${auth}${proxy.host}:${proxy.port}`) as unknown as http.Agent;
     }
 
-    const res = await fetch(CHECK_URL, { agent, timeout: 15000 });
-    const body = (await res.json()) as {
-      status?: string;
-      query?: string;
-      country?: string;
-      city?: string;
-      timezone?: string;
-      lat?: number;
-      lon?: number;
-    };
+    /*
+     * Two attempts. A rotating residential gateway occasionally returns a malformed response —
+     * measured here as `Parse Error: Missing expected CR after response line`, which succeeded on
+     * the very next request and never repeated against the same proxy. A single attempt reported
+     * that transient noise as a dead proxy.
+     *
+     * Only transport-level failures are retried. A well-formed answer that says the proxy is bad,
+     * or an auth rejection, is a fact about the proxy and is returned immediately.
+     */
+    let lastError = '';
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      try {
+        const res = await fetch(CHECK_URL, { agent, timeout: 15000 });
+        const body = (await res.json()) as {
+          status?: string;
+          query?: string;
+          country?: string;
+          city?: string;
+          timezone?: string;
+          lat?: number;
+          lon?: number;
+        };
 
-    if (body.status !== 'success') {
-      return { ok: false, error: 'proxy check failed' };
+        if (body.status !== 'success') {
+          return { ok: false, error: 'proxy check failed' };
+        }
+        return {
+          ok: true,
+          ip: body.query,
+          country: body.country,
+          city: body.city,
+          timezone: body.timezone,
+          latitude: body.lat,
+          longitude: body.lon,
+          latencyMs: Date.now() - started,
+        };
+      } catch (err) {
+        lastError = (err as Error).message;
+        if (attempt === 2 || !isTransientProxyError(lastError)) break;
+      }
     }
-    return {
-      ok: true,
-      ip: body.query,
-      country: body.country,
-      city: body.city,
-      timezone: body.timezone,
-      latitude: body.lat,
-      longitude: body.lon,
-      latencyMs: Date.now() - started,
-    };
+    return { ok: false, error: lastError };
   } catch (err) {
     return { ok: false, error: (err as Error).message };
   } finally {
     if (tunnel) await tunnel.close();
+  }
+}
+
+/** A failure that a second attempt can plausibly clear, unlike a rejection or a bad credential. */
+function isTransientProxyError(message: string): boolean {
+  return /Parse Error|ECONNRESET|socket hang up|ETIMEDOUT|EAI_AGAIN|other side closed/i.test(message);
+}
+
+/**
+ * Describe a hostname that resolves somewhere a public proxy cannot be, or null when it is fine.
+ *
+ * Deliberately says "DNS", not "network": the operator cannot fix a resolver by retrying, and the
+ * message has to point at the machine rather than at the provider.
+ */
+async function describeUnreachableResolution(host: string): Promise<string | null> {
+  const isIpLiteral = /^\d{1,3}(\.\d{1,3}){3}$/.test(host) || host.includes(':');
+  if (isIpLiteral) {
+    return isPrivateOrLocal(host)
+      ? `proxy address ${host} is a private address; a public proxy cannot be reached there`
+      : null;
+  }
+  try {
+    const { address } = await dns.lookup(host);
+    if (!isPrivateOrLocal(address)) return null;
+    return (
+      `${host} resolved to the private address ${address}, so the request never left this machine. ` +
+      `This is a DNS problem on this computer, not a fault in the proxy — check the resolver, ` +
+      `the hosts file, or a VPN/route that is intercepting the name.`
+    );
+  } catch (err) {
+    return `${host} could not be resolved: ${(err as Error).message}`;
   }
 }
 

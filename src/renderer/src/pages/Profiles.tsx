@@ -16,6 +16,7 @@ import {
 } from '../api';
 import { useI18n } from '../i18n';
 import { geoLabel } from '../proxyGeo';
+import { parseProxyInput } from '../proxyParse';
 import { computeRunningCount } from '../sidebarLogic';
 import { Dropdown } from '../components/Dropdown';
 import { useColumnResize } from '../useColumnResize';
@@ -2986,9 +2987,29 @@ const NOISE_SURFACES = [
                         <div className="form-group">
                           <label>Host / IP</label>
                           <input
-                            placeholder="1.2.3.4 or proxy.example.com"
+                            placeholder="user:pass@host:port, or 1.2.3.4, or proxy.example.com"
                             value={customProxyHost}
-                            onChange={(e) => setCustomProxyHost(e.target.value)}
+                            data-testid="custom-proxy-host"
+                            onChange={(e) => {
+                              /* A provider hands the operator one line —
+                                 `login:password@country-…:8080` — while this form asks for four
+                                 separate fields. Pasting it whole fills them, because taking that
+                                 string apart by hand is where the port ends up inside the host, or
+                                 a password containing `@` splits at the wrong separator.
+
+                                 A bare hostname is left exactly as typed: `parseProxyInput`
+                                 returns null for it by design, so the ordinary case is untouched. */
+                              const parsed = parseProxyInput(e.target.value);
+                              if (!parsed) {
+                                setCustomProxyHost(e.target.value);
+                                return;
+                              }
+                              setCustomProxyHost(parsed.host);
+                              if (parsed.port) setCustomProxyPort(String(parsed.port));
+                              if (parsed.type) setCustomProxyType(parsed.type);
+                              if (parsed.username) setCustomProxyUser(parsed.username);
+                              if (parsed.password) setCustomProxyPass(parsed.password);
+                            }}
                           />
                         </div>
                         <div className="form-group">
