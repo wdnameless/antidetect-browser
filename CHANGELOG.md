@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.6.38] - 2026-09-24
+
+### Fixed
+- **A proxy check could fail for a reason it did not report.** A hostname resolving
+  to a private address produced `connect ETIMEDOUT 10.250.249.66`, which reads as a
+  network or provider fault. It is a local DNS problem, and the check now says so,
+  naming the host and the address it wrongly resolved to instead of blaming the
+  proxy.
+- **Transient failures are retried once.** A rotating residential gateway
+  occasionally returns a malformed response; a single bad reply was reported as a
+  dead proxy.
+
+### Added
+- **The proxy form accepts what providers hand out.** Pasting
+  `login:password@host:port` (with or without a scheme) fills host, port, username
+  and password in one go, instead of asking the operator to take the line apart.
+
 ## [0.6.37] - 2026-09-24
 
 ### Changed
