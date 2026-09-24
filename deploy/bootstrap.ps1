@@ -1,7 +1,7 @@
 # =============================================================================
 # Antidetect Browser - dedicated server bootstrap (Windows Server / Win10/11)
 # One command:
-#   irm https://raw.githubusercontent.com/wdnameless/antidetect-browser/main/deploy/bootstrap.ps1 -OutFile bootstrap.ps1
+#   irm https://raw.githubusercontent.com/wdnameless/nulltrace-antidetect-browser/main/deploy/bootstrap.ps1 -OutFile bootstrap.ps1
 #   .\bootstrap.ps1 -Peers 3
 # Installs: Node LTS, git, the app (built), WireGuard (10.8.0.1 + N peers),
 # firewall rule, logon-start task for the service. Prints next steps.
@@ -10,7 +10,7 @@
 param(
   [int]$Peers = 2,
   [string]$InstallDir = "C:\antidetect",
-  [string]$Repo = "https://github.com/wdnameless/antidetect-browser.git"
+  [string]$Repo = "https://github.com/wdnameless/nulltrace-antidetect-browser.git"
 )
 $ErrorActionPreference = 'Stop'
 

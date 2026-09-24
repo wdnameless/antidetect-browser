@@ -9,7 +9,7 @@
 ## Задача: развернуть Antidetect Browser как серверный сервис
 
 Разверни на этой машине антидетект-браузер из репозитория
-https://github.com/wdnameless/antidetect-browser по инструкции
+https://github.com/wdnameless/nulltrace-antidetect-browser по инструкции
 docs/SERVER_DEPLOY.ru.md (она в репо, прочитай её первой).
 
 Архитектура: браузер и его данные живут ТОЛЬКО здесь, на сервере.
@@ -46,7 +46,7 @@ WireGuard / Node.js / Docker, свободное место на C:, публи�
 
 ### Шаг 2. Приложение
 1. Установи Node LTS (winget install OpenJS.NodeJS.LTS).
-2. git clone https://github.com/wdnameless/antidetect-browser.git C:\antidetect
+2. git clone https://github.com/wdnameless/nulltrace-antidetect-browser.git C:\antidetect
 3. В C:\antidetect: npm ci; npm run build:main; npm run ensure-kernel; npm run ensure-chromedriver
 4. Проверка руками: задай env ANTIDETECT_SERVER_MODE=1, ANTIDETECT_TRUSTED_HOSTS=10.8.0.1,
    запусти node dist/src/main/index.js — должен напечатать «ready» и API key. Останови процесс.
