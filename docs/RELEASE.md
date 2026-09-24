@@ -9,7 +9,7 @@
 - CI (`test` job) гоняет typecheck, unit-тесты, сборку и Rust-тесты на каждый push в `main` и на PR.
 - `release` job собирает NSIS-установщик и портативный `.exe` и прикрепляет их к GitHub Release.
 - Публичная половина minisign-ключа вшита в `src-tauri/tauri.conf.json`, а endpoint обновлений
-  указывает на `https://github.com/wdnameless/antidetect-browser/releases/latest/download/latest.json`
+  указывает на `https://github.com/wdnameless/nulltrace-antidetect-browser/releases/latest/download/latest.json`
   (совпадает с `git remote`).
 
 ## Настройка подписи с нуля
