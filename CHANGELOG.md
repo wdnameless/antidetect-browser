@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.6.37] - 2026-09-24
+
+### Changed
+- **Profile row actions are one consistent size.** Preflight keeps its place in the
+  row but is now a 32px square like its neighbours instead of a wide text badge;
+  Settings is a gear (the pencil read as "rename"); warm-up and Note moved into
+  the ⋯ menu.
+- **The ⋯ menu no longer lists a function twice.** "Run Preflight Check" was the
+  same action as the preflight badge already in that row, so it was removed.
+- **The PROXY column shows where a profile exits, never its protocol or address.**
+  The address moved into the tooltip. A proxy whose check failed shows a red cross
+  rather than a stale location, and an unchecked one says "Not checked yet" so the
+  two cannot be confused.
+
+### Added
+- **New proxies are checked the moment they are added**, so the row arrives with
+  its geography — or with the cross if the proxy does not work.
+
 ## [0.6.36] - 2026-09-24
 
 ### Added
