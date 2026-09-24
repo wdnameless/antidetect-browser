@@ -14,10 +14,15 @@ packages/sdk-node/src/*.js.map
 packages/sdk-node/src/*.d.ts
 packages/sdk-node/src/*.d.ts.map
 
-# Legacy opencode harness dirs (codebase-index MCP data; moved to ~/.omp host mode 'pi')
-.opencode/
-.codebase-index/
-profiles/
+# Legacy opencode harness dirs (codebase-index MCP data; moved to ~/.omp host mode 'pi').
+#
+# Anchored at the repository root deliberately. A bare `profiles/` also matches
+# `src/main/profiles/`, which is SOURCE: a new file there would be silently ignored — the
+# tracked files survive only because git keeps what it already has — and the omission would
+# surface later as a broken build or a lost change.
+/.opencode/
+/.codebase-index/
+/profiles/
 
 # Rust build output — never commit compiled artefacts.
 target/
