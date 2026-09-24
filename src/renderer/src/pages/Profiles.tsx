@@ -28,7 +28,7 @@ import type { PreflightVerdict, PreflightStatus } from '../preflight';
 import {
   PlayIcon,
   StopIcon,
-  EditIcon,
+  SettingsIcon,
   DiceIcon,
   CookieIcon,
   FingerprintIcon,
@@ -2072,17 +2072,35 @@ const NOISE_SURFACES = [
                   <td>
                     <div className="row-dense__meta">
                       {p.proxy_host ? (
-                        /* Geography leads and the transport moved into the tooltip: the table
-                           answers "where does this profile exit", and the protocol is a property
-                           of the proxy rather than something the operator scans a column for. */
-                        <div className="proxy-tag" title={`${(p.proxy_type || 'HTTP').toUpperCase()} · ${p.proxy_host}:${p.proxy_port}`}>
-                          {geoLabel({ country: p.proxy_country, city: p.proxy_city }) ? (
-                            <span style={{ color: 'var(--accent)', fontSize: 12 }}>{geoLabel({ country: p.proxy_country, city: p.proxy_city })}</span>
+                        /* Geography ONLY — no protocol, no host:port.
+                           The column answers one question, "where does this profile exit", and the
+                           transport plus address were noise in it (the address is still reachable
+                           in the tooltip). A proxy whose last check FAILED shows a cross instead of
+                           a location: it has no exit to report, and printing a stale country next
+                           to a dead proxy would be worse than printing nothing. */
+                        <div
+                          className="proxy-tag"
+                          title={`${(p.proxy_type || 'HTTP').toUpperCase()} · ${p.proxy_host}:${p.proxy_port}`}
+                        >
+                          {p.proxy_status === 'fail' ? (
+                            <span
+                              data-testid="proxy-failed"
+                              style={{ color: 'var(--danger)', fontSize: 13, fontWeight: 700, lineHeight: 1 }}
+                              title={t('Proxy check failed — no exit location')}
+                            >
+                              ✕
+                            </span>
+                          ) : geoLabel({ country: p.proxy_country, city: p.proxy_city }) ? (
+                            <span style={{ color: 'var(--accent)', fontSize: 12 }}>
+                              {geoLabel({ country: p.proxy_country, city: p.proxy_city })}
+                            </span>
                           ) : (
-                            /* No geo resolved yet: name the transport rather than invent a location. */
-                            <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{(p.proxy_type || 'HTTP').toUpperCase()}</span>
+                            /* No result yet. Named rather than left blank, so an unchecked proxy is
+                               distinguishable from a failed one. */
+                            <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                              {t('Not checked yet')}
+                            </span>
                           )}
-                          <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>{p.proxy_host}:{p.proxy_port}</span>
                         </div>
                       ) : (
                         <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>Direct (No Proxy)</span>
@@ -2119,42 +2137,32 @@ const NOISE_SURFACES = [
                           <PlayIcon size={13} />
                         </button>
                       )}
+                      {/* Preflight stays a first-class row action: it is the check the operator
+                          runs before a launch, and burying it in the menu would hide the reason a
+                          profile refuses to start. Compact form, so the column is one row of
+                          buttons of the same size. */}
                       <PreflightBadge
+                        compact
                         status={preflightCache[p.user_id]?.status}
                         verdict={preflightCache[p.user_id]?.verdict}
                         onClick={() => void inspectPreflight(p.user_id, p.name || undefined)}
                         onRun={() => void runPreflight(p.user_id, p.name || undefined, true)}
                       />
-                      <button
-                        type="button"
-                        className="btn-icon"
-                        onClick={() => void handleRunCookieFarm(p.user_id, p.name || undefined)}
-                        disabled={busy}
-                        title={t('Warm up profile (cookie farm)')}
-                      >
-                        <CookieIcon size={14} />
-                      </button>
-
-
+                      {/* Settings is the control an operator reaches for constantly, so it keeps a
+                          visible button — drawn as a gear, because the edit pencil read as "rename"
+                          rather than "open this profile's settings". Warm-up and Note moved into the
+                          menu: both are occasional, and the row had grown to six buttons of three
+                          different shapes. */}
                       <button
                         type="button"
                         className="btn-icon"
                         onClick={() => void openEditModal(p)}
                         disabled={busy}
-                        title="Edit Profile Settings (Proxy / Fingerprint)"
+                        title={t('Profile settings')}
                       >
-                        <EditIcon size={14} />
+                        <SettingsIcon size={14} />
                       </button>
 
-                      <button
-                        type="button"
-                        className="btn-icon"
-                        onClick={() => void openNoteModal(p)}
-                        disabled={busy}
-                        title={t('Note')}
-                      >
-                        <NoteIcon size={14} />
-                      </button>
 
                       {/* Kebab Action Menu */}
                       <div style={{ position: 'relative' }}>
@@ -2319,13 +2327,35 @@ const NOISE_SURFACES = [
                                 }}
                                 onClick={() => {
                                   setActiveMenuId(null);
-                                    void inspectPreflight(p.user_id, p.name || undefined);
+                                  void handleRunCookieFarm(p.user_id, p.name || undefined);
                                 }}
                               >
-                                <ShieldCheckIcon size={13} />
-                                <span>Run Preflight Check</span>
+                                <CookieIcon size={13} />
+                                <span>{t('Warm up profile (cookie farm)')}</span>
                               </button>
-
+                              <button
+                                type="button"
+                                style={{
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: 8,
+                                  padding: '7px 12px',
+                                  background: 'transparent',
+                                  border: 'none',
+                                  color: 'var(--text)',
+                                  fontSize: 12,
+                                  cursor: 'pointer',
+                                  textAlign: 'left',
+                                  width: '100%',
+                                }}
+                                onClick={() => {
+                                  setActiveMenuId(null);
+                                  void openNoteModal(p);
+                                }}
+                              >
+                                <NoteIcon size={13} />
+                                <span>{t('Note')}</span>
+                              </button>
 
                               <button
                                 type="button"

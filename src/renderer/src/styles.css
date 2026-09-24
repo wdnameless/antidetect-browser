@@ -2190,6 +2190,22 @@ tr.row-dense:focus-within .row-dense__actions {
   to { transform: rotate(360deg); }
 }
 
+/* Compact preflight badge for a table row.
+ *
+ * Shares `.btn-icon` for the 32px square, the border and the hover, so it lines up with the play
+ * / settings / kebab buttons beside it. Only the status colour is added here: the row previously
+ * mixed a 32px icon button with a wide text badge, which is why the column looked uneven. The
+ * labelled form above is unchanged and still used inside the modal.
+ */
+.preflight-badge-compact {
+  font-family: var(--font-mono);
+}
+.preflight-badge-compact.pass { color: var(--ok); border-color: var(--ok-bg); background: var(--ok-bg); }
+.preflight-badge-compact.warn { color: var(--warn); border-color: var(--warn-bg); background: var(--warn-bg); }
+.preflight-badge-compact.fail { color: var(--danger); border-color: var(--danger-bg); background: var(--danger-bg); }
+.preflight-badge-compact.error { color: var(--danger); border-color: var(--danger-bg); background: var(--danger-bg); }
+.preflight-badge-compact.loading { color: var(--text-muted); }
+
 .preflight-badge-btn {
   display: inline-flex;
   align-items: center;

@@ -24,6 +24,8 @@ export interface ProfileListItem {
   proxy_port?: number | null;
   proxy_country?: string | null;
   proxy_city?: string | null;
+  /** Proxy health from the last check: 'ok' | 'fail' | 'unknown'. */
+  proxy_status?: string | null;
   fingerprint_seed?: number | null;
   platform?: string | null;
   device_name?: string | null;

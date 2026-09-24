@@ -216,6 +216,7 @@ export interface ProfileListItem {
   proxy_port?: number | null;
   proxy_country?: string | null;
   proxy_city?: string | null;
+  proxy_status?: string | null;
   fingerprint_seed?: number | null;
   platform?: string | null;
   device_name?: string | null;
@@ -1474,7 +1475,7 @@ export function listProfiles(
     .prepare(
       `SELECT p.id, p.name, p.status, p.group_id, p.color,
               px.type AS proxy_type, px.host AS proxy_host, px.port AS proxy_port,
-              px.country AS proxy_country, px.city AS proxy_city,
+              px.country AS proxy_country, px.city AS proxy_city, px.status AS proxy_status,
               fp.seed AS fingerprint_seed,
               dev.platform AS platform, dev.name AS device_name
        FROM profiles p
@@ -1494,6 +1495,7 @@ export function listProfiles(
     proxy_port: number | null;
     proxy_country: string | null;
     proxy_city: string | null;
+    proxy_status: string | null;
     fingerprint_seed: number | null;
     platform: string | null;
     device_name: string | null;
@@ -1536,6 +1538,7 @@ export function listProfiles(
       proxy_port: r.proxy_port,
       proxy_country: r.proxy_country,
       proxy_city: r.proxy_city,
+      proxy_status: r.proxy_status,
       fingerprint_seed: r.fingerprint_seed,
       platform: r.platform,
       device_name: r.device_name,

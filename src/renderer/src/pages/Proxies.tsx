@@ -109,6 +109,7 @@ export function Proxies() {
 
       const res = await api.proxyCreate(body);
       if (res.code === 0) {
+        const newId = res.data?.proxy_id;
         setShowModal(false);
         setHost('');
         setPort('');
@@ -116,6 +117,23 @@ export function Proxies() {
         setPass('');
         setPrivateKey('');
         await load();
+        // Check it immediately. A proxy with no result has no geography, so an operator who adds
+        // one and sees an empty LOCATION cell cannot tell "not checked yet" from "broken proxy" —
+        // and would press Test anyway. Doing it here means the row arrives with its answer,
+        // including the cross when it does not work.
+        //
+        // Awaited, not fired-and-forgotten, so `busy` covers the check: otherwise the modal closes,
+        // the list reloads, and the row quietly changes again a second later.
+        if (newId) {
+          try {
+            const chk = await api.proxyCheck(newId);
+            if (chk.code === 0) setCheckResult((prev) => ({ ...prev, [newId]: chk.data }));
+          } catch {
+            // A failed CHECK must not read as a failed CREATE. `setProxyResult` has already stored
+            // 'fail' server-side, which is what the row renders.
+          }
+          await load();
+        }
       } else {
         setError(res.msg);
       }
@@ -494,6 +512,18 @@ export function Proxies() {
                             {flagOf(p.country) ? `${flagOf(p.country)} ` : ''}
                             {[p.country, p.city].filter(Boolean).join(' · ')}
                             {p.timezone ? ` · ${p.timezone}` : ''}
+                          </span>
+                        ) : p.status === 'fail' ? (
+                          /* The stored verdict survives a reload, unlike a session check result.
+                             A failed proxy has no exit location, so it must not fall through to
+                             "Not detected yet" — that reads as "never tried", the opposite of what
+                             happened. */
+                          <span
+                            data-testid="proxy-failed"
+                            style={{ fontSize: 12, color: 'var(--danger)', fontWeight: 600 }}
+                            title={t('Proxy check failed — no exit location')}
+                          >
+                            ✕ {t('Failed')}
                           </span>
                         ) : (
                           <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>

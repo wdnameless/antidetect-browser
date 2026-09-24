@@ -20,9 +20,36 @@ export interface PreflightBadgeProps {
   onClick?: () => void;
   onRun?: () => void;
   title?: string;
+  /**
+   * Square, label-less form for a table row: the same 32px footprint as the play / settings /
+   * kebab buttons beside it, with the status carried by the colour and the title.
+   *
+   * The labelled form is kept for the modal, where there is room for words. A row that mixed a
+   * 32px icon button with a wide text badge was the reason this column looked uneven.
+   */
+  compact?: boolean;
 }
 
-export function PreflightBadge({ status, verdict, onClick, onRun, title }: PreflightBadgeProps) {
+export function PreflightBadge({ status, verdict, onClick, onRun, title, compact }: PreflightBadgeProps) {
+  if (compact) {
+    const tone = !status ? 'idle' : status;
+    const icon = !status ? '✓' : status === 'loading' ? '◌' : status === 'warn' ? '⚠' : status === 'fail' ? '✕' : status === 'error' ? '!' : '✓';
+    const label = !status ? 'Check' : status === 'loading' ? 'CHECKING' : status.toUpperCase();
+    const issues = verdict ? checksOf(verdict).filter((c) => c.status === 'fail' || c.status === 'warn').length : 0;
+    return (
+      <button
+        type="button"
+        className={`btn-icon preflight-badge-compact ${tone}`}
+        data-testid="preflight-compact"
+        onClick={status ? onClick || onRun : onRun || onClick}
+        disabled={status === 'loading'}
+        title={title || (verdict ? `Preflight: ${verdict.overall.toUpperCase()} (${issues} issue${issues === 1 ? '' : 's'})` : `Preflight: ${label}`)}
+      >
+        <span aria-hidden="true" style={{ fontWeight: 700, fontSize: 14, lineHeight: 1 }}>{icon}</span>
+      </button>
+    );
+  }
+
   if (!status) {
     return (
       <button
