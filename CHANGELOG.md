@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.6.47] - 2026-09-25
+
+### Added — one-button Google Drive synchronization with client-side E2E encryption
+
+- **One-click Google Drive synchronization.** Connects to Google Drive using a preconfigured OAuth 2.0 Client ID without requiring per-operator Google Cloud Console setup.
+- **End-to-end client-side encryption.** All profile configurations, cookies, notes, vault credentials, groups, tags, and scripts are sealed with AES-256-GCM under a scrypt-derived key before upload to Google Drive (`nulltrace data` folder).
+- **Cross-machine portability.** Connecting on a second PC with the same Google account and entering the passphrase seamlessly synchronizes and restores all profiles and data.
+- **Automatic background synchronization.** Debounced sync triggers on data changes, automatic sync on launch and graceful flush on shutdown.
+
 ## [0.6.46] - 2026-09-25
 
 ### Fixed
