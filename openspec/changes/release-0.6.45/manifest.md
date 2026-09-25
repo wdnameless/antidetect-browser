@@ -4,19 +4,19 @@
 
 | # | Requirement (verbatim) | Status | Evidence |
 |---|---|---|---|
-| R1 | «Пофикси все сам» — close the three issues 0.6.44 left open | Met | All three fixed and each guard red-checked; see R2–R4. |
-| R2 | «чтобы я мог обновиться через приложение» — in-app update must work for the operator | **Blocked by a mistake of mine — see R5.** The chain itself is proven working (`latest.json` published, signature valid against the shipped key). The operator's installed build cannot use it without one manual reinstall. | |
+| R01 | «Пофикси все сам» — close the three issues 0.6.44 left open | Met | All three fixed and each guard red-checked; see R02–R05. |
+| R02 | «чтобы я мог обновиться через приложение» — in-app update must work for the operator | **Blocked by a mistake of mine — see R06.** The chain itself is proven working (`latest.json` published, signature valid against the shipped key). The operator's installed build cannot use it without one manual reinstall. | |
 
 ## The three deferred defects
 
 | # | Defect | Proof it was real |
 |---|---|---|
-| R2 | The preflight Fix wrote bare language subtags (`de`) that the language select cannot represent | The select matches options by exact value. A bare subtag matched nothing, rendered "Auto", and the next Save wrote the empty string over it. Table now holds full locales only. |
-| R2a | **My first fix for R2 introduced the identical bug**: six proposed locales (`uk-UA`, `be-BY`, `kk-KZ`, `pt-PT`, `en-IN`, `en-SG`) are not locales the catalog derives, so the select could not show them either | Caught by measuring the table against the served list before shipping. Guarded: a test checks the whole table against `GET /api/v1/browser-profile/languages`. |
-| R3 | `/status` declared a 50 req/s limit it never applied | The route is registered before the global `rateLimitMiddleware` (it is an unauthenticated health check and must answer before the auth gate), so the declared limit was dead configuration. Middleware is now attached at the route — moving the route behind the global middleware was rejected, as that would put a health check behind authentication. |
-| R4 | Duplicating a profile — and moving one between machines — dropped most of its configuration | Measured round trip: a clone lost `start_urls`, `launch_args`, `color`, `blocked_ports`, `webrtc_policy`, `headless`; the bundle lost the same seven. Both builders had their own copy of the mapping, which is how they dropped the same fields independently; they now share one mapper. |
+| R07 | The preflight Fix wrote bare language subtags (`de`) that the language select cannot represent | The select matches options by exact value. A bare subtag matched nothing, rendered "Auto", and the next Save wrote the empty string over it. Table now holds full locales only. |
+| R08 | **My first fix for R2 introduced the identical bug**: six proposed locales (`uk-UA`, `be-BY`, `kk-KZ`, `pt-PT`, `en-IN`, `en-SG`) are not locales the catalog derives, so the select could not show them either | Caught by measuring the table against the served list before shipping. Guarded: a test checks the whole table against `GET /api/v1/browser-profile/languages`. |
+| R09 | `/status` declared a 50 req/s limit it never applied | The route is registered before the global `rateLimitMiddleware` (it is an unauthenticated health check and must answer before the auth gate), so the declared limit was dead configuration. Middleware is now attached at the route — moving the route behind the global middleware was rejected, as that would put a health check behind authentication. |
+| R10 | Duplicating a profile — and moving one between machines — dropped most of its configuration | Measured round trip: a clone lost `start_urls`, `launch_args`, `color`, `blocked_ports`, `webrtc_policy`, `headless`; the bundle lost the same seven. Both builders had their own copy of the mapping, which is how they dropped the same fields independently; they now share one mapper. |
 
-## R5 — my own mistake, recorded
+## R06 — my own mistake, recorded
 
 The updater signing key was rotated in 0.6.44 because `docs/RELEASE.md` stated the password was
 wrong and `latest.json` was not being published. **Both claims were stale.** CI had been signing
