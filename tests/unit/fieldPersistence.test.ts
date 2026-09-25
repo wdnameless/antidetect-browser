@@ -16,6 +16,7 @@ import {
   duplicateProfile,
   exportProfileBundle,
   importProfileBundle,
+  updateProfileFingerprint,
 } from '../../src/main/profiles/profileManager';
 import { bindExtensions, getProfileExtensionIds } from '../../src/main/extensions/extensionManager';
 
@@ -115,7 +116,8 @@ describe('a copy or a transferred bundle keeps the operator\'s configuration', (
 
   /** The configuration fields, as the detail payload reports them. */
   const configOf = (id: string) => {
-    const d = getProfileDetails(id) as Record<string, unknown>;
+    const d = getProfileDetails(id);
+    if (!d) throw new Error(`no detail for ${id}`);
     return {
       start_urls: d.start_urls,
       launch_args: d.launch_args,
@@ -164,5 +166,37 @@ describe('a copy or a transferred bundle keeps the operator\'s configuration', (
     const restored = importProfileBundle(legacy);
     expect(getProfileDetails(restored)?.user_id).toBe(restored);
     expect(configOf(restored).headless).toBe(false);
+  });
+  it('carries the fingerprint settings a clone would otherwise regenerate', () => {
+    // Found by an independent reviewer, not by me. `createProfile` derives a fresh fingerprint for
+    // the seed it is handed, which is right for a new profile and wrong for a copy: the operator's
+    // own overrides live in `fingerprints.config_json` and were replaced wholesale. Measured before
+    // the fix: a source with an explicit `de-DE` and a per-surface noise choice produced a clone
+    // reporting `id-ID` with no noise settings — the same defect as the dropped profile fields,
+    // one level deeper.
+    const src = createProfile({ name: 'fp-src' });
+    updateProfileFingerprint(src, { lang: 'de-DE', disableSpoofing: 'canvas,webgl' });
+
+    const db = getDb();
+    const fpOf = (id: string): { seed: number; cfg: Record<string, unknown> } => {
+      const fid = (db.prepare('SELECT fingerprint_id AS f FROM profiles WHERE id = ?').get(id) as { f: string }).f;
+      const row = db.prepare('SELECT seed, config_json FROM fingerprints WHERE id = ?').get(fid) as {
+        seed: number;
+        config_json: string;
+      };
+      return { seed: row.seed, cfg: JSON.parse(row.config_json) as Record<string, unknown> };
+    };
+
+    const before = fpOf(src);
+    const clone = duplicateProfile(src);
+    expect(clone).not.toBeNull();
+    const after = fpOf(clone as string);
+
+    expect(after.cfg.lang).toBe('de-DE');
+    expect(after.cfg.disableSpoofing).toBe('canvas,webgl');
+    // The seed travels too: a clone reporting the source's GPU but a different CPU would be
+    // incoherent, which is what the shared config builder exists to prevent.
+    expect(after.cfg.family).toBe(before.cfg.family);
+    expect(after.seed).toBe(before.seed);
   });
 });

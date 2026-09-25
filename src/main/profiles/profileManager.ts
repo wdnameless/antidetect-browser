@@ -798,7 +798,7 @@ export function duplicateProfile(userId: string, newName?: string): string | nul
 
   const targetName = newName?.trim() || (source.name ? `${source.name} (Copy)` : 'Profile (Copy)');
 
-  return createProfile({
+  const newId = createProfile({
     name: targetName,
     group_id: source.group_id || undefined,
     proxy_id: source.proxy_id || undefined,
@@ -818,6 +818,39 @@ export function duplicateProfile(userId: string, newName?: string): string | nul
     // 1/0/NULL on disk; `createProfile` expects a real boolean.
     headless: source.headless === 1,
   });
+
+  /*
+   * Carry the operator's fingerprint settings across.
+   *
+   * `createProfile` derives a fresh coherent fingerprint from the seed it is given, which is right
+   * for a new profile and wrong for a copy: everything the operator had changed by hand lives in
+   * `fingerprints.config_json`, and the derived config replaces it wholesale. Measured: a source
+   * with an explicit `de-DE` and a per-surface noise choice produced a clone reporting `id-ID`
+   * with no noise settings at all — same defect as the other dropped fields, one level deeper.
+   *
+   * This mirrors what `importProfileBundle` does for the same reason. The SEED is copied too, so the
+   * clone shares the source's hardware vector rather than only its overrides — a clone that reports
+   * the source's GPU but a different CPU would be incoherent, which is the failure mode
+   * `buildFingerprintConfig` exists to prevent.
+   */
+  const db = getDb();
+  if (source.fingerprint_id) {
+    const src = db
+      .prepare('SELECT seed, config_json FROM fingerprints WHERE id = ?')
+      .get(source.fingerprint_id) as { seed: number; config_json: string } | undefined;
+    const dst = db.prepare('SELECT fingerprint_id FROM profiles WHERE id = ?').get(newId) as
+      | { fingerprint_id: string }
+      | undefined;
+    if (src && dst?.fingerprint_id) {
+      db.prepare('UPDATE fingerprints SET seed = ?, config_json = ? WHERE id = ?').run(
+        src.seed,
+        src.config_json,
+        dst.fingerprint_id
+      );
+    }
+  }
+
+  return newId;
 }
 
 export function getProfile(id: string): ProfileRow | undefined {

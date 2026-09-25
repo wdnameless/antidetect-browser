@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.6.46] - 2026-09-25
+
+### Fixed
+- **Duplicating a profile discarded the operator's fingerprint settings.** The clone regenerated a
+  fingerprint from a seed instead of copying the source's, so everything changed by hand in
+  `fingerprints.config_json` was replaced wholesale. Measured: a source profile with an explicit
+  `de-DE` and a per-surface noise choice (`canvas,webgl`) produced a clone reporting `id-ID` with no
+  noise settings at all.
+  - Found by an independent reviewer during acceptance of 0.6.45, not by me — my own field-coverage
+    fix in that release had stopped one layer short, at the profile row rather than the fingerprint
+    beside it. The clone now carries the source's `seed` and `config_json`, mirroring what
+    `importProfileBundle` already did for the same reason, so the copy shares the source's whole
+    hardware vector rather than only its overrides.
+  - Verified after the fix: language, noise, family and seed all carried. Guard added and
+    red-checked — reverting it fails with `expected 'vi-VN' to be 'de-DE'`.
+
 ## [0.6.45] - 2026-09-25
 
 ### Fixed — the three issues left open by 0.6.44
