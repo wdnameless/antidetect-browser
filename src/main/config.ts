@@ -427,7 +427,10 @@ export const API_PORT = Number(process.env.API_PORT || 50325);
  * client. Without this check, a dev build would attempt OAuth against an invalid client ID rather
  * than letting the operator supply their own credentials in the UI.
  */
-export const SHIPPED_GDRIVE_CLIENT_ID: string = (process.env.SHIPPED_GDRIVE_CLIENT_ID || '').trim();
+export const SHIPPED_GDRIVE_CLIENT_ID: string = (
+  process.env.SHIPPED_GDRIVE_CLIENT_ID ||
+  '609547936669-fm40tf7a3l9jflrv96vc55p6cg3ph7ha.apps.googleusercontent.com'
+).trim();
 
 /**
  * The running application version, read from package.json.

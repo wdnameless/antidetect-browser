@@ -120,7 +120,7 @@ export function saveGDriveCredentials(creds: GDriveClientCredentials): void {
  * publisher's OAuth client ID injected at build time (`SHIPPED_GDRIVE_CLIENT_ID`).
  * Operator-stored credentials always take precedence over the shipped client.
  */
-export function getGDriveCredentials(): GDriveClientCredentials | null {
+export function getCustomGDriveCredentials(): GDriveClientCredentials | null {
   const encClientId = activeStorage.get(KEY_CLIENT_ID);
   if (encClientId) {
     const clientId = revealSecret(encClientId);
@@ -130,6 +130,12 @@ export function getGDriveCredentials(): GDriveClientCredentials | null {
       return { clientId: clientId.trim(), clientSecret };
     }
   }
+  return null;
+}
+
+export function getGDriveCredentials(): GDriveClientCredentials | null {
+  const custom = getCustomGDriveCredentials();
+  if (custom) return custom;
 
   if (SHIPPED_GDRIVE_CLIENT_ID && SHIPPED_GDRIVE_CLIENT_ID.trim().length > 0) {
     return { clientId: SHIPPED_GDRIVE_CLIENT_ID.trim() };

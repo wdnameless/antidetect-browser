@@ -1477,7 +1477,6 @@ export function importProfileBundle(bundle: ProfileBundle, opts?: { exactName?: 
     // "explicitly cleared".
     launch_args: src.launch_args?.length ? src.launch_args : undefined,
     color: src.color ?? undefined,
-    notes: src.notes ?? undefined,
     do_not_track: (src.do_not_track as 'off' | 'on' | 'auto' | null | undefined) ?? undefined,
     blocked_ports: src.blocked_ports?.length ? src.blocked_ports : undefined,
     webrtc_policy: (src.webrtc_policy as 'default' | 'disable_non_proxied_udp' | 'proxy' | null | undefined) ?? undefined,

@@ -15,6 +15,7 @@ import * as path from 'path';
 import {
   saveGDriveCredentials,
   getGDriveCredentials,
+  getCustomGDriveCredentials,
   validateClientCredentials,
   saveGDriveRefreshToken,
   getGDriveRefreshToken,
@@ -158,7 +159,7 @@ describe('client credentials', () => {
 
     purgeGDriveConfiguration();
 
-    expect(getGDriveCredentials()).toBeNull();
+    expect(getCustomGDriveCredentials()).toBeNull();
     expect(getGDriveRefreshToken()).toBeNull();
     expect(getGDriveFolderId()).toBeNull();
   });
