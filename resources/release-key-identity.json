@@ -1,0 +1,15 @@
+{
+  "_comment": "The minisign key identity this project SHIPS. A test fails if the pubkey in src-tauri/tauri.conf.json stops matching this id. Replacing the publishing key is a breaking event for every installed build: they embed the previous public key and will reject new releases at download time, so it must be a deliberate, recorded decision and never a side effect of regenerating a key to work around a password problem.",
+  "active": {
+    "keyId": "5BEF02FE54378830",
+    "since": "0.6.44",
+    "note": "Regenerated without a password on 2026-09-25 because the previous key's password had been lost. CONSEQUENCE, recorded rather than hidden: builds <=0.6.42 embed the previous key id 29F423F8EFA4DD7F and cannot auto-update across this boundary - they need one manual reinstall."
+  },
+  "retired": [
+    {
+      "keyId": "29F423F8EFA4DD7F",
+      "usedFor": "releases up to 0.6.42",
+      "note": "Private key still exists at ~/.tauri/nulltrace.key, but its password is unrecoverable, so it can no longer sign. Kept for reference: it identifies which published signatures came from it."
+    }
+  ]
+}

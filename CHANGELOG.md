@@ -1,5 +1,54 @@
 # Changelog
 
+## [0.6.45] - 2026-09-25
+
+### Fixed — the three issues left open by 0.6.44
+
+- **The preflight Fix wrote a browser language the UI could not represent.** Its country→language
+  table mapped to bare subtags (`de`, `fr`, `ru`). A profile stores a full locale (`de-DE`), and the
+  Browser-language select matches options by exact value — so the Fix wrote `de`, the select could
+  not match it, rendered "Auto", and the next Save wrote the empty string over it. The same defect
+  class as the language list itself, reachable through the Fix button. The table now holds full
+  locales, and every value is one the fingerprint catalog actually derives.
+  - The first attempt at this fix introduced the identical bug in a new place: six of the proposed
+    locales (`uk-UA`, `be-BY`, `kk-KZ`, `pt-PT`, `en-IN`, `en-SG`) are not locales the catalog can
+    assign, so they too would have been unrepresentable and therefore destructive. Measured before
+    shipping, and now guarded: a test checks the whole table against the list the API serves.
+- **`/status` declared a rate limit it never applied.** The route is registered before the global
+  `rateLimitMiddleware` on purpose — it is an unauthenticated health check that must answer before
+  the auth gate — so the 50 req/s limit in `rateLimit.ts` was dead configuration. The middleware is
+  now attached to the route, which keeps the contract (no auth, answers early) and makes the
+  declared limit real. Moving the route behind the global middleware was rejected because that
+  would put a health check behind authentication.
+- **Duplicating a profile, and moving one between machines, dropped most of its configuration.**
+  `duplicateProfile` carried nine of nineteen fields and the export bundle omitted the same seven:
+  a clone reverted to a headed window and lost its start pages, launch arguments, colour, blocked
+  ports, WebRTC policy and Do-Not-Track; a bundle arrived as a default shell. Both builders had
+  their own copy of the field mapping, which is how they dropped the same things independently —
+  they now share one mapper, so the two cannot drift apart again.
+  - `notes` deliberately does NOT travel with a clone: a note describes that profile's history
+    ("banned on FB", "warmup done") and copying it onto a fresh profile states something untrue
+    about the new one. It DOES travel in a bundle, which reproduces a profile rather than forking it.
+  - Bundle fields are optional on read, so a bundle written by an older build still imports.
+
+### Fixed — the updater key rotation, and how it was found
+
+- **The shipped updater key changed in 0.6.44, and that was a mistake on my part.** The release
+  notes in `docs/RELEASE.md` described a signing failure caused by a lost password, and I trusted
+  that document instead of checking whether releases were actually being signed. They were: CI had
+  been signing successfully — v0.6.42's published installer verifies against the key it shipped. The
+  working key was replaced anyway, and the password secret overwritten in the process, so it cannot
+  be restored. The consequence is recorded rather than hidden:
+  - **Builds up to 0.6.42 embed the previous public key and cannot auto-update from 0.6.45.**
+    They will show "Update available" and then fail at download, because Tauri verifies the
+    signature only in `download()`, against the key compiled into the running build. One manual
+    reinstall of 0.6.45 is required; every release from 0.6.45 onward updates normally.
+  - `resources/release-key-identity.json` now records which key the project ships, with the retired
+    key kept on record so old signatures stay attributable, and a test fails if the pubkey is ever
+    swapped without updating it. That guard was verified by swapping the key back and watching it
+    fail. A silent rotation is exactly what went unnoticed here, so it is now impossible.
+  - `docs/RELEASE.md` no longer presents the password failure as the current state.
+
 ## [0.6.44] - 2026-09-25
 
 ### Fixed

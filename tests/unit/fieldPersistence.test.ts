@@ -13,6 +13,9 @@ import {
   updateProfile,
   createGroup,
   updateGroup,
+  duplicateProfile,
+  exportProfileBundle,
+  importProfileBundle,
 } from '../../src/main/profiles/profileManager';
 import { bindExtensions, getProfileExtensionIds } from '../../src/main/extensions/extensionManager';
 
@@ -85,5 +88,81 @@ describe('a setting a form shows is a setting the API must return', () => {
     bindExtensions(id, Array.from(new Set([...current, 'ext_b'])));
 
     expect(getProfileExtensionIds(id).sort()).toEqual(['ext_a', 'ext_b']);
+  });
+});
+
+describe('a copy or a transferred bundle keeps the operator\'s configuration', () => {
+  // The clone dropped seven fields and the export bundle dropped the same seven: a duplicated
+  // profile reverted to a headed window, and a profile moved between machines arrived without its
+  // start pages, launch arguments, colour, ports, WebRTC policy or Do-Not-Track. Both builders had
+  // their own copy of the mapping, which is how they dropped the same things independently — they
+  // now share one mapper, and this is the guard that would have caught the original gap.
+  const configured = () => ({
+    name: 'configured',
+    browser_type: 'chromium' as const,
+    user_agent: 'UA/1',
+    timezone: 'Europe/Berlin',
+    start_urls: ['https://a.example', 'https://b.example'],
+    mobile_model_id: 'pixel-7',
+    launch_args: ['--lang=en-US'],
+    color: '#112233',
+    notes: 'warmup done',
+    do_not_track: 'on' as const,
+    blocked_ports: [1234, 5678],
+    webrtc_policy: 'disable_non_proxied_udp' as const,
+    headless: true,
+  });
+
+  /** The configuration fields, as the detail payload reports them. */
+  const configOf = (id: string) => {
+    const d = getProfileDetails(id) as Record<string, unknown>;
+    return {
+      start_urls: d.start_urls,
+      launch_args: d.launch_args,
+      color: d.color,
+      do_not_track: d.do_not_track,
+      blocked_ports: d.blocked_ports,
+      webrtc_policy: d.webrtc_policy,
+      headless: d.headless,
+    };
+  };
+
+  it('duplicating a profile carries its configuration, but not the note', () => {
+    const src = createProfile(configured());
+    const clone = duplicateProfile(src);
+    expect(clone).not.toBeNull();
+
+    expect(configOf(clone as string)).toEqual(configOf(src));
+    // A note describes that profile's history; copying it onto a fresh profile states something
+    // untrue about the new one.
+    expect(getProfileDetails(clone as string)?.notes).toBeNull();
+  });
+
+  it('exporting and re-importing a bundle reproduces the configuration exactly', () => {
+    const src = createProfile(configured());
+    const bundle = exportProfileBundle(src);
+    expect(bundle).not.toBeNull();
+    // Through JSON, as the real file round trip does.
+    const restored = importProfileBundle(JSON.parse(JSON.stringify(bundle)));
+
+    expect(configOf(restored)).toEqual(configOf(src));
+    expect(getProfileDetails(restored)?.mobile_model_id).toBe('pixel-7');
+    expect(getProfileDetails(restored)?.notes).toBe('warmup done');
+  });
+
+  it('reads a bundle written by an older build, which lacks the new fields', () => {
+    // A bundle outlives the app version that wrote it, so the fields had to be optional. An older
+    // bundle must still import rather than throw.
+    const src = createProfile(configured());
+    const bundle = exportProfileBundle(src);
+    expect(bundle).not.toBeNull();
+    const legacy = JSON.parse(JSON.stringify(bundle)) as { profile: Record<string, unknown> };
+    for (const key of ['launch_args', 'color', 'notes', 'do_not_track', 'blocked_ports', 'webrtc_policy', 'headless']) {
+      delete legacy.profile[key];
+    }
+
+    const restored = importProfileBundle(legacy);
+    expect(getProfileDetails(restored)?.user_id).toBe(restored);
+    expect(configOf(restored).headless).toBe(false);
   });
 });

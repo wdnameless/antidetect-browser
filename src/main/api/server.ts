@@ -120,7 +120,15 @@ export function createApp(): Express {
   // Health check (no auth). The version is read from package.json rather than hardcoded:
   // it previously reported a literal '0.0.1' that matched no release, so any client asking
   // the service what it was got an answer that could not be trusted.
-  app.get('/status', (_req, res) => {
+  //
+  // `rateLimitMiddleware` is attached HERE rather than relying on the global `app.use` further
+  // down: this route is registered early on purpose, because it is an unauthenticated health
+  // check that must answer before the auth gate, so the global middleware never reached it and
+  // the 50 req/s limit `rateLimit.ts` declares for '/status' was dead configuration. Attaching it
+  // at the route keeps the route's contract (no auth, answers early) while making the declared
+  // limit real — the alternative, moving the route behind the global middleware, would have put
+  // a health check behind authentication.
+  app.get('/status', rateLimitMiddleware, (_req, res) => {
     res.json({ code: 0, msg: 'success', data: { status: 'ok', version: APP_VERSION } });
   });
 

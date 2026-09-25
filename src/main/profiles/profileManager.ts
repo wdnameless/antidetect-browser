@@ -366,6 +366,26 @@ export function parseBlockedPortsColumn(raw: string | null | undefined): number[
   }
 }
 
+/**
+ * Parses the stored JSON start-URL array back into strings.
+ *
+ * Same contract as `parseBlockedPortsColumn`: a legacy or hand-edited value degrades to an empty
+ * list instead of throwing, because this is read while copying a profile and a corrupt column must
+ * not make the copy impossible. Non-string entries are dropped rather than cast — the array is fed
+ * straight back into `createProfile`, which would otherwise persist junk of a type it does not
+ * declare.
+ */
+export function parseStartUrlsColumn(raw: string | null | undefined): string[] {
+  if (typeof raw !== 'string' || raw.length === 0) return [];
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((u): u is string => typeof u === 'string' && u.length > 0);
+  } catch {
+    return [];
+  }
+}
+
 /** '[XX] ' prefix for the launched window title; '' without a color. */
 export function formatBadgeTitlePrefix(color: string | null | undefined, name: string | null | undefined): string {
   if (!color) return '';
@@ -758,6 +778,20 @@ function fnv1a(value: string): number {
 }
 
 
+/**
+ * Copy a profile.
+ *
+ * Every operator-set field travels, because a clone that silently drops settings is worse than no
+ * clone: the copy looks right in the list and then behaves differently at launch. Previously only
+ * nine of nineteen fields were carried, so a duplicate reverted to a headed window and lost its
+ * note, colour, start pages, launch arguments, blocked ports, WebRTC policy and Do-Not-Track —
+ * measured, not inferred.
+ *
+ * `notes` deliberately does NOT travel: a note describes that specific profile's history ("banned
+ * on FB", "warmup done"), and copying it onto a fresh profile states something untrue about the
+ * new one. Everything else is configuration the operator chose for the profile as a shape, which
+ * is exactly what duplicating means.
+ */
 export function duplicateProfile(userId: string, newName?: string): string | null {
   const source = getLiveProfile(userId);
   if (!source) return null;
@@ -774,6 +808,15 @@ export function duplicateProfile(userId: string, newName?: string): string | nul
     timezone: source.timezone || undefined,
     geolocation: source.geolocation || undefined,
     mobile_model_id: source.mobile_model_id || undefined,
+    // --- fields the clone used to drop ---
+    start_urls: parseStartUrlsColumn(source.start_urls),
+    launch_args: parseLaunchArgsColumn(source.launch_args),
+    color: source.color ?? null,
+    do_not_track: (source.do_not_track as 'off' | 'on' | 'auto' | null) ?? null,
+    blocked_ports: parseBlockedPortsColumn(source.blocked_ports),
+    webrtc_policy: (source.webrtc_policy as 'default' | 'disable_non_proxied_udp' | 'proxy' | null) ?? null,
+    // 1/0/NULL on disk; `createProfile` expects a real boolean.
+    headless: source.headless === 1,
   });
 }
 
@@ -854,15 +897,8 @@ export function getProfileDetails(id: string): ProfileDetails | null {
     // Sent so the Edit modal can show the pinned model instead of reading `undefined` and
     // writing null back over it. See the field's note on `ProfileDetails`.
     mobile_model_id: p.mobile_model_id ?? null,
-    launch_args: parseLaunchArgsColumn(p.launch_args),
-    color: p.color ?? null,
-    notes: p.notes ?? null,
-    do_not_track: p.do_not_track ?? null,
-    blocked_ports: parseBlockedPortsColumn(p.blocked_ports),
-    webrtc_policy: p.webrtc_policy ?? null,
-    // Normalised here rather than in each caller: the column is 1/0/NULL on disk, and an
-    // editor checkbox handed the raw column would treat NULL as unchecked only by accident.
-    headless: p.headless === 1,
+    // One shared mapper for the operator-set columns; see `operatorConfigColumns`.
+    ...operatorConfigColumns(p),
     proxy,
     fingerprint,
     device,
@@ -1101,6 +1137,23 @@ export interface ProfileBundle {
     geolocation: string | null;
     start_urls: string[];
     mobile_model_id: string | null;
+    /**
+     * The rest of the operator's profile configuration.
+     *
+     * Optional because bundles exported by an older build do not carry them — a bundle is a file
+     * that outlives the app version that wrote it, so adding required fields would make every
+     * previously exported bundle unreadable. Import treats a missing value as "not set".
+     *
+     * These were absent entirely, so a profile moved between machines arrived headed, with no
+     * note, colour, start pages, launch arguments, blocked ports, WebRTC policy or Do-Not-Track.
+     */
+    launch_args?: string[];
+    color?: string | null;
+    notes?: string | null;
+    do_not_track?: string | null;
+    blocked_ports?: number[];
+    webrtc_policy?: string | null;
+    headless?: boolean;
     fingerprint: { seed: number; config: Record<string, unknown> } | null;
     device: { device_id: string; name: string; platform: string; config: Record<string, unknown> } | null;
     proxy: {
@@ -1112,6 +1165,39 @@ export interface ProfileBundle {
       private_key?: string;
     } | null;
     cookies: Array<Record<string, unknown>>;
+  };
+}
+
+/**
+ * The operator-set profile configuration, read from a row in the shape every caller needs.
+ *
+ * Extracted because the detail payload and the export bundle were building this same object
+ * separately, and both had already dropped the same fields once. A copy of this mapping is how a
+ * setting silently stops travelling: the clone dropped seven fields, the bundle dropped seven, and
+ * each had to be found by measuring a round trip rather than by reading either builder.
+ *
+ * `headless` is normalised here for the same reason it was normalised inline before: the column is
+ * 1/0/NULL on disk, and a checkbox handed the raw column treats NULL as unchecked only by accident.
+ */
+function operatorConfigColumns(row: ProfileRow): {
+  launch_args: string[];
+  color: string | null;
+  notes: string | null;
+  do_not_track: string | null;
+  blocked_ports: number[];
+  webrtc_policy: string | null;
+  headless: boolean;
+  start_urls: string[];
+} {
+  return {
+    launch_args: parseLaunchArgsColumn(row.launch_args),
+    color: row.color ?? null,
+    notes: row.notes ?? null,
+    do_not_track: row.do_not_track ?? null,
+    blocked_ports: parseBlockedPortsColumn(row.blocked_ports),
+    webrtc_policy: row.webrtc_policy ?? null,
+    headless: row.headless === 1,
+    start_urls: parseStartUrlsColumn(row.start_urls),
   };
 }
 
@@ -1167,14 +1253,6 @@ export function exportProfileBundle(id: string): ProfileBundle | null {
     } catch { /* ignore */ }
   }
 
-  let startUrls: string[] = [];
-  if (p.start_urls) {
-    try {
-      const parsed = JSON.parse(p.start_urls);
-      if (Array.isArray(parsed)) startUrls = parsed as string[];
-    } catch { /* ignore */ }
-  }
-
   return {
     version: 1,
     exported_at: Date.now(),
@@ -1184,8 +1262,10 @@ export function exportProfileBundle(id: string): ProfileBundle | null {
       user_agent: p.user_agent,
       timezone: p.timezone,
       geolocation: p.geolocation,
-      start_urls: startUrls,
       mobile_model_id: p.mobile_model_id,
+      // Carried so a profile moved between machines arrives as configured, not as a
+      // default shell. One shared mapper, so this cannot drift from the detail payload.
+      ...operatorConfigColumns(p),
       fingerprint,
       device,
       proxy,
@@ -1223,6 +1303,16 @@ export function importProfileBundle(bundle: ProfileBundle): string {
     geolocation: src.geolocation || undefined,
     start_urls: src.start_urls?.length ? src.start_urls : undefined,
     mobile_model_id: src.mobile_model_id || undefined,
+    // The rest of the configuration travels with the bundle. Each is optional because a bundle
+    // written by an older build predates it, and an absent value means "not set" rather than
+    // "explicitly cleared".
+    launch_args: src.launch_args?.length ? src.launch_args : undefined,
+    color: src.color ?? undefined,
+    notes: src.notes ?? undefined,
+    do_not_track: (src.do_not_track as 'off' | 'on' | 'auto' | null | undefined) ?? undefined,
+    blocked_ports: src.blocked_ports?.length ? src.blocked_ports : undefined,
+    webrtc_policy: (src.webrtc_policy as 'default' | 'disable_non_proxied_udp' | 'proxy' | null | undefined) ?? undefined,
+    headless: src.headless === true,
     device_id: deviceId,
     fingerprint_seed: src.fingerprint?.seed,
     proxy: src.proxy

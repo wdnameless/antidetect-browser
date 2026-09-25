@@ -109,11 +109,36 @@ export function getRemediation(reason?: string, fallbackMessage?: string): { sum
   };
 }
 
+/**
+ * The browser language that typically matches a proxy's country.
+ *
+ * Two rules, both learned from a defect:
+ *
+ * 1. Values are FULL locales (`de-DE`), not bare subtags (`de`). A bare subtag is not something a
+ *    profile stores: the preflight Fix wrote `de` into `fingerprint.config.lang`, the
+ *    Browser-language select could not match that to any option, so it rendered "Auto" and the
+ *    next Save wrote the empty string over it — the same defect class as the language list itself,
+ *    reachable through the Fix button.
+ *
+ * 2. Every value is one of the locales the fingerprint catalog actually derives. Proposing a
+ *    locale outside that set re-creates the identical problem, because the select's options come
+ *    from the catalog. Measured: an earlier version of this table proposed `uk-UA`, `be-BY`,
+ *    `kk-KZ`, `pt-PT`, `en-IN`, `en-SG` — none of which the catalog can assign, so all six would
+ *    have been unrepresentable and therefore destructive.
+ */
 export const COUNTRY_TO_LANG = {
-  US: 'en', GB: 'en', CA: 'en', AU: 'en', DE: 'de', FR: 'fr', ES: 'es', IT: 'it',
-  RU: 'ru', UA: 'uk', BY: 'be', KZ: 'kk', CN: 'zh', JP: 'ja', KR: 'ko', BR: 'pt',
-  PT: 'pt', NL: 'nl', PL: 'pl', TR: 'tr', IN: 'en', SG: 'en',
+  US: 'en-US', GB: 'en-GB', CA: 'en-CA', AU: 'en-AU', DE: 'de-DE', FR: 'fr-FR', ES: 'es-ES',
+  IT: 'it-IT', RU: 'ru-RU', UA: 'ru-RU', BY: 'ru-RU', KZ: 'ru-RU', CN: 'zh-CN', JP: 'ja-JP',
+  KR: 'ko-KR', BR: 'pt-BR', PT: 'pt-BR', NL: 'nl-NL', PL: 'pl-PL', MX: 'es-MX', AR: 'es-ES',
+  SE: 'sv-SE', TH: 'th-TH', VN: 'vi-VN', ID: 'id-ID',
 } satisfies Record<string, string>;
+
+/**
+ * Fallback when the proxy's country is not in the table above.
+ *
+ * A catalog locale, like every value in the table — see rule 2 above.
+ */
+const DEFAULT_FIX_LANG = 'en-US';
 
 export type PreflightFixType = 'webrtc_policy' | 'timezone' | 'lang';
 
@@ -202,7 +227,9 @@ function resolveCheckAutoFix(
     }
     if (targetCountry) {
       const c = targetCountry.trim().toUpperCase();
-      const targetLang = (COUNTRY_TO_LANG as Record<string, string>)[c] || 'en';
+      // A FULL locale, and a full locale as the fallback too: the select cannot represent a bare
+      // subtag, so proposing one re-created the very defect the Fix is meant to clear.
+      const targetLang = (COUNTRY_TO_LANG as Record<string, string>)[c] || DEFAULT_FIX_LANG;
       return {
         type: 'lang',
         label: 'Fingerprint language',
