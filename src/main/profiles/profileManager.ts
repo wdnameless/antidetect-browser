@@ -239,6 +239,16 @@ export interface ProfileDetails {
   browser_type: string;
   user_agent: string | null;
   timezone: string | null;
+  /**
+   * The fixed Android phone model, or null for "Auto (from seed)".
+   *
+   * It MUST be part of this payload: the Edit modal reads it back into its select and then sends
+   * `mobile_model_id: mobileModelId || null` on save. Omitting it here made the field read as
+   * `undefined` → the select showed "Auto" → saving ANY unrelated edit (a rename) wrote null over
+   * a model the operator had deliberately pinned. Verified: a profile created with `pixel-7` came
+   * back null after a rename.
+   */
+  mobile_model_id: string | null;
   launch_args: string[];
   color: string | null;
   notes: string | null;
@@ -439,6 +449,53 @@ function parseLaunchArgsColumn(raw: string | null): string[] {
   }
 }
 
+/**
+ * Parse a stored `fingerprints.config_json` into an object.
+ *
+ * A malformed blob yields `{}` rather than throwing: this is read on the launch path, and a
+ * browser that refuses to start over a corrupt config is worse than one that falls back to
+ * derived defaults. Extracted because three writers read this column and each had its own
+ * copy of the try/catch.
+ */
+function parseFingerprintConfig(raw: string | null): Record<string, unknown> {
+  if (!raw) return {};
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      return parsed as Record<string, unknown>;
+    }
+  } catch {
+    // fall through to an empty config
+  }
+  return {};
+}
+
+/**
+ * The coherent fingerprint config for a seed.
+ *
+ * Family, locale and every hardware field derive from the ONE seed, which is what keeps a
+ * profile's declared GPU and screen consistent with the CPU and RAM it reports — the coherence
+ * check that gates a launch compares exactly these. Three code paths needed this (create, rotate,
+ * randomize) and two of them had grown their own partial version; the partial one is how
+ * "randomize" ended up writing a seed whose family disagreed with the config beside it.
+ */
+function buildFingerprintConfig(seed: number, base: Record<string, unknown> = {}): Record<string, unknown> {
+  const family = selectFamilyBySeed(seed, EXTENDED_FINGERPRINT_CATALOG);
+  const hwVector = deriveHardwareVector(seed, EXTENDED_FINGERPRINT_CATALOG);
+  const locale = family.localePool[(seed >>> 0) % family.localePool.length] ?? 'en-US';
+  return {
+    ...base,
+    platform: family.coherenceConstraints.platform,
+    brand: 'Chrome',
+    family: family.id,
+    hardwareConcurrency: hwVector.cpuCores,
+    deviceMemory: hwVector.ramGB,
+    lang: locale,
+    gpu: family.gpu,
+    screen: family.screen,
+  };
+}
+
 export function createProfile(input: CreateProfileInput): string {
   const db = getDb();
   const now = Date.now();
@@ -465,12 +522,16 @@ export function createProfile(input: CreateProfileInput): string {
       'unknown',
       now
     );
-    // The row exists and has no geography yet. Nothing else would ever ask for it: this path is
-    // reached by the SDKs, agent-created profiles, batch create and imports, none of which run the
-    // Proxies page's own check. Queued rather than awaited so a 142-line import cannot open 142
-    // concurrent lookups, and queued AFTER the insert so the worker always finds the row.
-    queueGeoChecks([proxyId]);
   }
+
+  // Queued for EVERY door that ends with a proxy bound, not just the inline one. A proxy chosen
+  // from the saved list arrives as `proxy_id` and nobody had asked where it exits, so a profile the
+  // operator had just created with a working proxy read "Not checked yet" indefinitely — the
+  // reported defect, and the one path the earlier sweep left open. Reached by the SDKs, agents,
+  // batch create and imports too, none of which run the Proxies page's own check. Queued rather
+  // than awaited so a 142-line import cannot open 142 concurrent lookups, and queued AFTER the
+  // insert so the worker always finds the row. Idempotent, and free for a row already resolved.
+  if (proxyId) queueGeoChecks([proxyId]);
 
   const seed = typeof input.fingerprint_seed === 'number' && input.fingerprint_seed > 0
     ? input.fingerprint_seed
@@ -480,19 +541,7 @@ export function createProfile(input: CreateProfileInput): string {
   // Coherent archetype sampling (catalog task 3.1): family is chosen
   // weighted-by-market-share from the full catalog by the profile seed, and
   // every hardware field derives from the same family + seed vector.
-  const family = selectFamilyBySeed(seed, EXTENDED_FINGERPRINT_CATALOG);
-  const hwVector = deriveHardwareVector(seed, EXTENDED_FINGERPRINT_CATALOG);
-  const locale = family.localePool[(seed >>> 0) % family.localePool.length] ?? 'en-US';
-  const defaultFpConfig = JSON.stringify({
-    platform: family.coherenceConstraints.platform,
-    brand: 'Chrome',
-    family: family.id,
-    hardwareConcurrency: hwVector.cpuCores,
-    deviceMemory: hwVector.ramGB,
-    lang: locale,
-    gpu: family.gpu,
-    screen: family.screen,
-  });
+  const defaultFpConfig = JSON.stringify(buildFingerprintConfig(seed));
   db.prepare(
     'INSERT INTO fingerprints (id, label, seed, config_json, created_at) VALUES (?, ?, ?, ?, ?)'
   ).run(fpId, 'default', seed, defaultFpConfig, now);
@@ -576,12 +625,7 @@ export function updateProfileFingerprint(userId: string, config: Record<string, 
     .prepare('SELECT config_json FROM fingerprints WHERE id = ?')
     .get(profile.fingerprint_id) as { config_json: string } | undefined;
   if (!fp) return false;
-  let cfg: Record<string, unknown> = {};
-  try {
-    cfg = JSON.parse(fp.config_json || '{}') as Record<string, unknown>;
-  } catch {
-    cfg = {};
-  }
+  const cfg = parseFingerprintConfig(fp.config_json);
   const merged = { ...cfg, ...config };
   db.prepare('UPDATE fingerprints SET config_json = ? WHERE id = ?').run(
     JSON.stringify(merged),
@@ -650,30 +694,14 @@ export function rotateFingerprints(
       results.push({ user_id: userId, ok: false, error: 'not_found' });
       continue;
     }
-    let cfg: Record<string, unknown> = {};
-    try {
-      cfg = JSON.parse(fp.config_json || '{}') as Record<string, unknown>;
-    } catch {
-      cfg = {};
-    }
+    const cfg = parseFingerprintConfig(fp.config_json);
 
     if (mode === 'rotate') {
       // Deterministic replay: seedHint + profile id hash drives the new draw.
       const base = seedHint !== undefined ? Math.abs(seedHint) : randomInt(1, 2147483647);
       const seed = ((base ^ fnv1a(userId)) % 2147483646) + 1;
       const family = selectFamilyBySeed(seed, EXTENDED_FINGERPRINT_CATALOG);
-      const hwVector = deriveHardwareVector(seed, EXTENDED_FINGERPRINT_CATALOG);
-      const locale = family.localePool[(seed >>> 0) % family.localePool.length] ?? 'en-US';
-      const newCfg = {
-        platform: family.coherenceConstraints.platform,
-        brand: 'Chrome',
-        family: family.id,
-        hardwareConcurrency: hwVector.cpuCores,
-        deviceMemory: hwVector.ramGB,
-        lang: locale,
-        gpu: family.gpu,
-        screen: family.screen,
-      };
+      const newCfg = buildFingerprintConfig(seed);
       db.prepare('UPDATE fingerprints SET seed = ?, config_json = ? WHERE id = ?').run(
         seed,
         JSON.stringify(newCfg),
@@ -788,8 +816,7 @@ export function getProfileDetails(id: string): ProfileDetails | null {
   if (p.fingerprint_id) {
     const fp = db.prepare('SELECT seed, config_json FROM fingerprints WHERE id = ?').get(p.fingerprint_id) as { seed: number; config_json: string } | undefined;
     if (fp) {
-      let cfg: Record<string, unknown> = {};
-      try { cfg = JSON.parse(fp.config_json || '{}'); } catch { /* ignore */ }
+      const cfg = parseFingerprintConfig(fp.config_json);
       fingerprint = {
         seed: fp.seed,
         platform: typeof cfg.platform === 'string' ? cfg.platform : 'windows',
@@ -824,6 +851,9 @@ export function getProfileDetails(id: string): ProfileDetails | null {
     browser_type: p.browser_type || 'chromium',
     user_agent: p.user_agent,
     timezone: p.timezone,
+    // Sent so the Edit modal can show the pinned model instead of reading `undefined` and
+    // writing null back over it. See the field's note on `ProfileDetails`.
+    mobile_model_id: p.mobile_model_id ?? null,
     launch_args: parseLaunchArgsColumn(p.launch_args),
     color: p.color ?? null,
     notes: p.notes ?? null,
@@ -1096,8 +1126,7 @@ export function exportProfileBundle(id: string): ProfileBundle | null {
       .prepare('SELECT seed, config_json FROM fingerprints WHERE id = ?')
       .get(p.fingerprint_id) as { seed: number; config_json: string } | undefined;
     if (fp) {
-      let config: Record<string, unknown> = {};
-      try { config = JSON.parse(fp.config_json || '{}'); } catch { /* ignore */ }
+      const config = parseFingerprintConfig(fp.config_json);
       fingerprint = { seed: fp.seed, config };
     }
   }
@@ -1278,12 +1307,15 @@ export function updateProfile(
       'unknown',
       Date.now()
     );
-    // Same reason as `createProfile`: a proxy can arrive through the update path too, and it is
-    // just as unchecked there.
-    queueGeoChecks([effectiveProxyId]);
   } else if (updates.proxy === null) {
     effectiveProxyId = null;
   }
+
+  // Same reason as `createProfile`, and the same gap: a proxy bound through the update path —
+  // including one picked from the saved list, which arrives as `proxy_id` — was never checked.
+  // `queueGeoChecks` is idempotent and skips a row that already carries its code, so repeating a
+  // proxy the operator did not change cannot spend a second lookup.
+  if (effectiveProxyId) queueGeoChecks([effectiveProxyId]);
 
   const sets: string[] = [];
   const params: unknown[] = [];
@@ -1377,8 +1409,32 @@ export function randomizeProfileFingerprint(id: string): number | null {
   const profile = getProfile(id);
   if (!profile || !profile.fingerprint_id) return null;
 
+  const fp = db
+    .prepare('SELECT config_json FROM fingerprints WHERE id = ?')
+    .get(profile.fingerprint_id) as { config_json: string } | undefined;
+  if (!fp) return null;
+
+  const cfg = parseFingerprintConfig(fp.config_json);
+
   const newSeed = randomInt(1, 2147483647);
-  db.prepare('UPDATE fingerprints SET seed = ? WHERE id = ?').run(newSeed, profile.fingerprint_id);
+  // Derive the WHOLE vector for the new seed, not just the seed.
+  //
+  // Writing only `seed` left the stored config describing the OLD draw, and the two halves then
+  // disagreed: measured on a real profile, the new seed selected `win-intel-uhd-620-laptop` while
+  // `config.family` still said `win-intel-iris-plus-g4-laptop`, and coherence validation rejected
+  // it ("Screen resolution 1366x768 not in family allowed resolutions"). Preflight gates a launch
+  // on that check, so the operator's "randomize" produced a profile that could no longer start.
+  //
+  // This is the same derivation the `rotate` path in `rotateFingerprints` performs, kept in step
+  // with it deliberately: two writers of `fingerprints.config_json` must not describe the same
+  // seed differently.
+  const newCfg = buildFingerprintConfig(newSeed, cfg);
+
+  db.prepare('UPDATE fingerprints SET seed = ?, config_json = ? WHERE id = ?').run(
+    newSeed,
+    JSON.stringify(newCfg),
+    profile.fingerprint_id
+  );
   return newSeed;
 }
 
@@ -1488,7 +1544,7 @@ export function listProfiles(
   const total = (db.prepare( // pi-lens-ignore: sql-injection
     `SELECT COUNT(*) AS c FROM profiles p
         LEFT JOIN proxies px ON px.id = p.proxy_id
-        LEFT JOIN devices dev ON dev.id = p.device_id${where}`).get(...params) as { c: number }).c;
+        LEFT JOIN devices dev ON dev.id = p.device_id${where}`).get(...params) as { c: number }).c; // pi-lens-ignore: sql-injection
   const rows = db // pi-lens-ignore: sql-injection
     .prepare(
       `SELECT p.id, p.name, p.status, p.group_id, p.color, p.proxy_id,
@@ -1588,12 +1644,7 @@ export function resolveLaunchConfig(id: string): LaunchConfig {
       .get(profile.fingerprint_id) as { seed: number; config_json: string } | undefined;
     if (fp) {
       fingerprintSeed = migrateLegacySeed(id, fp.seed);
-      let fpCfg: Record<string, unknown> = {};
-      try {
-        fpCfg = JSON.parse(fp.config_json || '{}') as Record<string, unknown>;
-      } catch {
-        fpCfg = {};
-      }
+      const fpCfg = parseFingerprintConfig(fp.config_json);
       const hwVector = deriveHardwareVector(fingerprintSeed);
       fingerprint = {
         seed: fingerprintSeed,

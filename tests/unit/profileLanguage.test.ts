@@ -105,4 +105,58 @@ describe('profile save reaches every field the modal collects', () => {
       `these set the language to a concrete value where Auto is meant: ${nonEmpty.join(', ')}`,
     ).toEqual([]);
   });
+
+  it('offers every locale a profile can actually hold, and never a shorter hand-written list', () => {
+    // The reported defect. The select held seven hard-coded options while the catalog derives
+    // twenty-one locales, and a `<select>` whose value matches no option renders its FIRST
+    // option instead. So a profile whose language was es-MX opened on "Auto", and Save — which
+    // writes `profileLang` unconditionally — put that empty value back over the real one. The
+    // browser then fell back to the machine locale: "язык не меняется".
+    //
+    // The list now comes from the backend, where the catalog lives, so it cannot drift again.
+    expect(
+      /api\.browserLanguages\(\)/.test(source),
+      'the modal must read the language list from the backend (the fingerprint catalog is the ' +
+        'only source of truth); a hand-written list silently loses every locale it omits, and ' +
+        'saving such a profile wipes its language',
+    ).toBe(true);
+    expect(
+      /setBrowserLanguages\(res\.data\.list\)/.test(source),
+      'the fetched language list must be stored in state, or the select keeps the stale fallback',
+    ).toBe(true);
+    // The options must come from that state, not from a literal list in the JSX.
+    const selectStart = source.indexOf("t('Browser language')");
+    expect(selectStart, 'the Browser language control was not found').toBeGreaterThan(-1);
+    const selectEnd = source.indexOf('</select>', selectStart);
+    const select = source.slice(selectStart, selectEnd);
+    expect(
+      /browserLanguages/.test(select),
+      'the language options must be rendered from browserLanguages, not a hard-coded list',
+    ).toBe(true);
+    // A stored value that is not in the list (an import, an older build, a hand-edited database)
+    // must still be renderable, or simply OPENING that profile and pressing Save destroys it.
+    expect(
+      /\.\.\.\(profileLang \? \[profileLang\] : \[\]\)/.test(select),
+      "the select must also include the profile's own value, so a locale outside the list is " +
+        'still representable instead of silently collapsing to "Auto"',
+    ).toBe(true);
+  });
+
+  it('creates a profile into the group the operator is looking at', () => {
+    // Reported: "если создаешь профиль внутри группы то он сразу должен создаваться в
+    // определенной группе, сейчас создается просто во вкладке ALL".
+    //
+    // `openCreateModal` reset `groupId` to '' regardless of the active filter, so a profile
+    // created while filtered to a group was stored ungrouped and disappeared from the list the
+    // operator was still standing in.
+    const start = source.indexOf('const openCreateModal');
+    expect(start, 'openCreateModal not found — this test needs updating').toBeGreaterThan(-1);
+    const nextFn = source.indexOf('\n  const ', start + 10);
+    const body = source.slice(start, nextFn === -1 ? source.length : nextFn);
+    expect(
+      /setGroupId\(selectedGroupFilter/.test(body),
+      "openCreateModal must seed the group from the active filter; resetting it to '' files " +
+        'the new profile under ALL instead of the group being viewed',
+    ).toBe(true);
+  });
 });

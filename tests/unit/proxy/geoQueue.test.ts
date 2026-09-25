@@ -23,7 +23,7 @@ import {
   stopGeoFill,
   onProxyGeoResolved,
 } from '../../../src/main/proxy/proxyManager';
-import { createProfile } from '../../../src/main/profiles/profileManager';
+import { createProfile, updateProfile } from '../../../src/main/profiles/profileManager';
 import { initDb, getDb } from '../../../src/main/db';
 
 /*
@@ -210,6 +210,45 @@ describe('proxy geo queue', () => {
     const row = getProxy(bound.proxy_id);
     expect(row?.status).toBe('ok');
     expect(row?.country_code).toBe('DE');
+  });
+
+  it('checks a SAVED proxy bound by id on create, which no page check ever reached', async () => {
+    // The reported defect, and the one door the earlier sweep left open. A proxy already in the
+    // library — picked from "Choose Proxy from List" — arrives as `proxy_id` with no inline
+    // credentials to insert. Every queue call lived in the INLINE branch, so this proxy was never
+    // looked up and the profile's PROXY column read "Not checked yet" indefinitely, which is
+    // precisely what the operator reported.
+    const db = getDb();
+    const savedId = 'x_saved_geo_create';
+    db.prepare(
+      `INSERT INTO proxies (id, type, host, port, status, created_at)
+       VALUES (?, 'http', '127.0.0.1', ?, 'unknown', ?)`
+    ).run(savedId, port, Date.now());
+
+    const pending = waitForGeo(savedId);
+    createProfile({ name: 'geo-saved-proxy', proxy_id: savedId });
+    await pending;
+
+    const row = getProxy(savedId);
+    expect(row?.status).toBe('ok');
+    expect(row?.country_code).toBe('DE');
+  });
+
+  it('checks a SAVED proxy bound by id on update, the other door that was open', async () => {
+    // Same defect through the edit modal, which binds an existing proxy by id just as create does.
+    const db = getDb();
+    const savedId = 'x_saved_geo_update';
+    db.prepare(
+      `INSERT INTO proxies (id, type, host, port, status, created_at)
+       VALUES (?, 'http', '127.0.0.1', ?, 'unknown', ?)`
+    ).run(savedId, port, Date.now());
+
+    const profileId = createProfile({ name: 'geo-saved-update' });
+    const pending = waitForGeo(savedId);
+    updateProfile(profileId, { proxy_id: savedId });
+    await pending;
+
+    expect(getProxy(savedId)?.country_code).toBe('DE');
   });
 
   it('walks a batch one request at a time, never opening them all at once', async () => {

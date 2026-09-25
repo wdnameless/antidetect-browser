@@ -3,9 +3,15 @@ import { initDb, getDb, closeDb } from '../../src/main/db';
 import {
   createProfile,
   rotateFingerprints,
+  randomizeProfileFingerprint,
   setRunningChecker,
 } from '../../src/main/profiles/profileManager';
 import { EXTENDED_FINGERPRINT_CATALOG } from '../../src/main/fingerprints/catalog';
+import {
+  selectFamilyBySeed,
+  deriveHardwareVector,
+  validateCoherence,
+} from '../../src/main/fingerprints/derivation';
 
 function readFingerprint(userId: string): { seed: number; cfg: Record<string, unknown> } | null {
   const profile = getDb()
@@ -24,6 +30,34 @@ describe('bulk fingerprint rotation (parity program)', () => {
     closeDb();
     await initDb();
     setRunningChecker(() => false);
+  });
+
+  /**
+   * `randomizeProfileFingerprint` wrote only the seed, leaving `config_json` describing the
+   * PREVIOUS draw. The two halves then disagreed — measured on a real profile, the new seed
+   * selected `win-intel-uhd-620-laptop` while the config still said `win-intel-iris-plus-g4-laptop`,
+   * and `validateCoherence` rejected it over the screen resolution. Preflight gates a launch on
+   * that check, so "randomize" produced a profile that could no longer start.
+   */
+  it('keeps the stored config coherent with the seed it randomizes to', () => {
+    const userId = createProfile({ name: 'randomize-coherence' });
+    const seed = randomizeProfileFingerprint(userId);
+    expect(seed).not.toBeNull();
+
+    const fp = readFingerprint(userId);
+    expect(fp).not.toBeNull();
+    // The family the seed actually selects must be the family the config declares.
+    const expectedFamily = selectFamilyBySeed(seed as number, EXTENDED_FINGERPRINT_CATALOG);
+    expect(fp?.cfg.family).toBe(expectedFamily.id);
+
+    // And the whole vector must pass the same coherence gate preflight runs.
+    const vector = deriveHardwareVector(seed as number, EXTENDED_FINGERPRINT_CATALOG);
+    const verdict = validateCoherence({
+      ...vector,
+      familyId: expectedFamily.id,
+      locale: String(fp?.cfg.lang),
+    });
+    expect(verdict.valid, `incoherent after randomize: ${verdict.violations.join('; ')}`).toBe(true);
   });
 
   afterAll(() => {

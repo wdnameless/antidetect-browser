@@ -16,7 +16,6 @@ export function Groups({ onSelectGroup }: { onSelectGroup?: (groupId: string) =>
 
   const [editingGroupId, setEditingGroupId] = useState<string | null>(null);
   const [editGroupName, setEditGroupName] = useState('');
-  const [editBookmarks, setEditBookmarks] = useState<{ title: string; url: string }[]>([]);
   const [newBmTitle, setNewBmTitle] = useState('');
   const [newBmUrl, setNewBmUrl] = useState('');
   const [bmError, setBmError] = useState('');
@@ -62,11 +61,16 @@ export function Groups({ onSelectGroup }: { onSelectGroup?: (groupId: string) =>
     setBusy(true);
     setError('');
     try {
-      const res = await api.groupUpdate(editingGroupId, editGroupName.trim(), editBookmarks);
+      // `bookmarks` is deliberately NOT sent. `updateGroup` changes a column only when the
+      // argument is not `undefined`, and this form has no bookmark editor — `editBookmarks` is
+      // always `[]`. Sending it therefore wrote an empty array over whatever the group had:
+      // renaming a group silently destroyed its shared bookmarks. Verified: a group holding one
+      // bookmark came back as `[]` after a rename through this handler. The Group form edits the
+      // NAME only, so that is all it sends.
+      const res = await api.groupUpdate(editingGroupId, editGroupName.trim());
       if (res.code === 0) {
         setEditingGroupId(null);
         setEditGroupName('');
-        setEditBookmarks([]);
         await loadData();
       } else {
         setError(res.msg);

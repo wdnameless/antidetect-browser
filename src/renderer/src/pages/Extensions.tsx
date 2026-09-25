@@ -99,7 +99,14 @@ export function Extensions() {
     setBusy(true);
     setError('');
     try {
-      const res = await api.profileExtensionsBind(bindTarget.profileId, [bindTarget.extId]);
+      // `bindExtensions` REPLACES the profile's whole binding set, so sending only the clicked
+      // extension silently unbound every other one the profile had. Verified: binding A, then
+      // binding B, left the profile with B alone. The current set is read first and the new
+      // extension added to it, which is what "Bind to Profile" means to the operator.
+      const current = await api.profileExtensions(bindTarget.profileId);
+      const existing = current.code === 0 ? current.data.extension_ids : [];
+      const merged = Array.from(new Set([...existing, bindTarget.extId]));
+      const res = await api.profileExtensionsBind(bindTarget.profileId, merged);
       if (res.code !== 0) setError(res.msg);
       setBindTarget(null);
     } catch (err) {

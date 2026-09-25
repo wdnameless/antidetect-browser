@@ -128,7 +128,7 @@ describe('UDP Relay Core (RFC 1928 SOCKS5 UDP ASSOCIATE)', () => {
   it('fails with auth-failed when upstream proxy rejects credentials', async () => {
     mockSocksServer = net.createServer((socket) => {
       let state = 'AUTH_SELECT';
-      socket.on('data', (chunk) => {
+      socket.on('data', (_chunk) => {
         if (state === 'AUTH_SELECT') {
           socket.write(Buffer.from([0x05, 0x02]));
           state = 'AUTH_VERIFY';

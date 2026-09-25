@@ -1,15 +1,14 @@
 import { invalidateTransportCache } from './transportPolicy';
+import { createProxyTransport } from './proxyTransport';
 // Proxy manager: CRUD, connectivity check (http/https/socks5/ssh) and
 // automatic timezone detection from the proxy's egress IP.
 import { randomUUID } from 'crypto';
 import * as dns from 'node:dns/promises';
 import * as http from 'http';
 import { getDb } from '../db';
-import { HttpProxyAgent } from 'http-proxy-agent';
-import { SocksProxyAgent } from 'socks-proxy-agent';
 import fetch from 'node-fetch';
-import { createSshTunnel, SshTunnel } from './sshTunnel';
-import { protectSecret, revealSecret } from '../util/secretStore';
+import type { SshTunnel } from './sshTunnel';
+import { protectSecret } from '../util/secretStore';
 import { isPrivateOrLocal } from '../util/ipInfo';
 
 export type ProxyType = 'http' | 'https' | 'socks5' | 'ssh';
@@ -187,27 +186,11 @@ export async function checkProxy(proxy: ProxyRow): Promise<ProxyCheckResult> {
 
   try {
     const targetHost = await resolveProxyHost(proxy.host);
-
-    if (proxy.type === 'ssh') {
-      tunnel = await createSshTunnel({
-        host: targetHost,
-        port: proxy.port,
-        username: proxy.username ?? undefined,
-        password: revealSecret(proxy.password),
-        privateKey: revealSecret(proxy.private_key),
-      });
-      // SAFETY: SocksProxyAgent implements http.Agent interface compatible with node-fetch
-      agent = new SocksProxyAgent(`socks5://127.0.0.1:${tunnel.port}`) as unknown as http.Agent;
-    } else if (proxy.type === 'socks5') {
-      const auth = proxy.username ? `${encodeURIComponent(proxy.username)}:${encodeURIComponent(revealSecret(proxy.password) ?? '')}@` : '';
-      // SAFETY: SocksProxyAgent implements http.Agent interface compatible with node-fetch
-      agent = new SocksProxyAgent(`socks5://${auth}${targetHost}:${proxy.port}`) as unknown as http.Agent;
-    } else {
-      // http / https
-      const auth = proxy.username ? `${encodeURIComponent(proxy.username)}:${encodeURIComponent(revealSecret(proxy.password) ?? '')}@` : '';
-      // SAFETY: HttpProxyAgent implements http.Agent interface compatible with node-fetch
-      agent = new HttpProxyAgent(`http://${auth}${targetHost}:${proxy.port}`) as unknown as http.Agent;
-    }
+    // `targetHost` is passed rather than read inside the builder: resolving a private local answer
+    // to its public address is this caller's rule, and checkSingleProxyHealth must not inherit it.
+    const transport = await createProxyTransport(proxy, targetHost);
+    tunnel = transport.tunnel;
+    agent = transport.agent;
 
     /*
      * Two attempts. A rotating residential gateway occasionally returns a malformed response —
@@ -581,18 +564,3 @@ export function startGeoFill(options?: { force?: boolean }): GeoFillStatus {
   queueGeoChecks(ids);
   return { ...geoFillStatus };
 }
-
-export {
-  checkSingleProxyHealth,
-  checkProxiesBulk,
-  getCachedHealth,
-  clearHealthCache,
-  recordProxyUsage,
-  getProfileProxyUsage,
-  checkCandidateProxyDrift,
-  classifyError,
-  type HealthReasonCode,
-  type ProxyHealthResult,
-  type ProxyUsageRecord,
-  type ProxyUsageResponse,
-} from './proxyHealth';

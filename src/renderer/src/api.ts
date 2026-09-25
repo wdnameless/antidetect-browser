@@ -45,6 +45,15 @@ export interface ProfileDetails {
   browser_type: string;
   user_agent: string | null;
   timezone: string | null;
+  /**
+   * The pinned Android phone model, or null for "Auto (from seed)".
+   *
+   * The Edit modal loads this into its Phone Model select and sends it back on save, so leaving
+   * it out of the type is what forced the read below into an `as any` — and the cast hid the real
+   * defect underneath it: the server did not send the field at all, the select fell back to
+   * "Auto", and saving any unrelated edit nulled a model the operator had pinned.
+   */
+  mobile_model_id?: string | null;
   /** Profile badge colour (canonical hex or null). Returned by the detail endpoint. */
   color?: string | null;
   notes?: string | null;
@@ -838,6 +847,14 @@ export const api = {
     request<{ list: Array<{ id: string; name: string; model: string; androidVersion: string; gpu: string }> }>(
       '/api/v1/device/mobile-presets'
     ),
+  /**
+   * Every browser language the fingerprint catalog can assign.
+   *
+   * Read from the backend rather than hard-coded in the modal: the catalog is the single source of
+   * truth, and a hand-written list had already fallen 14 locales behind it — which made a real
+   * profile's stored language unrepresentable in the select.
+   */
+  browserLanguages: () => request<{ list: string[] }>('/api/v1/browser-profile/languages'),
   extensionList: () => request<{ list: ExtensionItem[]; total: number }>('/api/v1/extension/list'),
   extensionImport: (name: string, path: string) =>
     request<{ extension_id: string }>('/api/v1/extension/import', {

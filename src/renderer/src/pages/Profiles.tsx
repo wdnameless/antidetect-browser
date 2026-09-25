@@ -47,8 +47,40 @@ import {
   UsersIcon,
   ShieldCheckIcon,
 } from '../icons';
+/**
+ * Fallback browser languages, used until the API answers.
+ *
+ * The real list comes from `api.browserLanguages()` — the fingerprint catalog is the single
+ * source of truth, and it lives on the backend. The list used to be hand-written here with seven
+ * entries while the catalog derives twenty-one, and that is the reported defect: the select could
+ * not represent a profile whose language was `es-MX`, so it rendered "Auto" and Save wrote that
+ * empty value over the real one.
+ *
+ * This fallback is deliberately the catalog's CORE set rather than the old seven, so a failed
+ * request cannot silently make a stored language unrepresentable.
+ */
+export const FALLBACK_BROWSER_LANGUAGES: readonly string[] = [
+  'de-DE', 'en-AU', 'en-CA', 'en-GB', 'en-US', 'es-ES', 'es-MX', 'fr-FR', 'id-ID', 'it-IT',
+  'ja-JP', 'ko-KR', 'nl-NL', 'pl-PL', 'pt-BR', 'ru-RU', 'sv-SE', 'th-TH', 'tr-TR', 'vi-VN', 'zh-CN',
+];
+
+/**
+ * The common IANA zones offered in the Timezone select.
+ *
+ * A convenience list, NOT the set of valid values: a profile's timezone can also be filled from
+ * the proxy's geo, so the select always renders the profile's own zone alongside these. See the
+ * control itself for why that matters.
+ */
+export const COMMON_TIMEZONES: readonly string[] = [
+  'America/New_York', 'America/Chicago', 'America/Denver', 'America/Los_Angeles',
+  'America/Sao_Paulo', 'Europe/London', 'Europe/Berlin', 'Europe/Paris', 'Europe/Madrid',
+  'Europe/Warsaw', 'Europe/Moscow', 'Asia/Dubai', 'Asia/Kolkata', 'Asia/Singapore',
+  'Asia/Tokyo', 'Australia/Sydney', 'UTC',
+];
+
 export function Profiles({ initialGroupId }: { initialGroupId?: string | null } = {}) {
   const { t } = useI18n();
+  const [browserLanguages, setBrowserLanguages] = useState<readonly string[]>(FALLBACK_BROWSER_LANGUAGES);
   const [profiles, setProfiles] = useState<ProfileListItem[]>([]);
   const [groups, setGroups] = useState<GroupItem[]>([]);
   const [proxies, setProxies] = useState<ProxyItem[]>([]);
@@ -236,6 +268,19 @@ const NOISE_SURFACES = [
       const res = await api.mobilePresets();
       if (res.code === 0) setMobilePresets(res.data.list);
     } catch { /* ignore */ }
+  }, []);
+
+  /**
+   * The selectable browser languages, from the fingerprint catalog.
+   *
+   * A failure leaves the fallback in place rather than emptying the list: an empty select would
+   * make every stored language unrepresentable, which is the very defect being fixed here.
+   */
+  const loadBrowserLanguages = useCallback(async () => {
+    try {
+      const res = await api.browserLanguages();
+      if (res.code === 0 && res.data.list.length > 0) setBrowserLanguages(res.data.list);
+    } catch { /* keep the fallback */ }
   }, []);
 
   const loadExtensions = useCallback(async () => {
@@ -684,7 +729,8 @@ const NOISE_SURFACES = [
     void loadMobilePresets();
     void loadExtensions();
     void loadTags();
-  }, [loadProfiles, loadGroups, loadProxies, loadDevices, loadMobilePresets, loadExtensions, loadTags]);
+    void loadBrowserLanguages();
+  }, [loadProfiles, loadGroups, loadProxies, loadDevices, loadMobilePresets, loadExtensions, loadTags, loadBrowserLanguages]);
 
   /**
    * Status refresh.
@@ -747,7 +793,11 @@ const NOISE_SURFACES = [
     setModalMode('create');
     setProfileId('');
     setName('');
-    setGroupId('');
+    // Pre-selected to the group the operator is looking at. Creating while filtered to a group
+    // used to reset this to '', so the profile landed in ALL and immediately vanished from the
+    // filtered list the operator was still standing in — the profile looked lost. The Group
+    // Assignment select still overrides it, and with no group filter this is simply empty.
+    setGroupId(selectedGroupFilter || '');
     setDeviceId('');
     setSeed(Math.floor(Math.random() * 2000000000) + 100000000);
     setMobileModelId('');
@@ -827,7 +877,7 @@ const NOISE_SURFACES = [
         setGroupId(d.group_id || '');
         setDeviceId(d.device_id || '');
         setSeed(d.fingerprint?.seed || p.fingerprint_seed || 123456789);
-        setMobileModelId((d as any).mobile_model_id || '');
+        setMobileModelId(d.mobile_model_id || '');
         setCores(d.fingerprint?.hardwareConcurrency || 8);
         setUserAgent(d.user_agent || 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36');
 
@@ -2770,26 +2820,52 @@ const NOISE_SURFACES = [
                       <label>{t('Timezone')}</label>
                       <select value={profileTimezone} onChange={(e) => setProfileTimezone(e.target.value)}>
                         <option value="">{t('Auto (from proxy geo)')}</option>
-                        <option value="America/New_York">America/New_York</option>
-                        <option value="Europe/London">Europe/London</option>
-                        <option value="Europe/Berlin">Europe/Berlin</option>
-                        <option value="Europe/Moscow">Europe/Moscow</option>
-                        <option value="Asia/Dubai">Asia/Dubai</option>
-                        <option value="Asia/Singapore">Asia/Singapore</option>
-                        <option value="America/Los_Angeles">America/Los_Angeles</option>
+                        {/*
+                          The profile's own zone leads, then the common set.
+
+                          Same defect as the language select beside it: the options are a short
+                          list while a timezone can arrive from anywhere — the proxy's geo, an
+                          import, another build — and a `<select>` whose value matches no option
+                          renders its first option. That showed "Auto" for a profile that really
+                          had a zone, and Save wrote the empty value back over it. Keeping the
+                          profile's own value as an option means opening a profile can never
+                          misrepresent or destroy what it holds.
+                        */}
+                        {Array.from(new Set([...(profileTimezone ? [profileTimezone] : []), ...COMMON_TIMEZONES])).map(
+                          (zone) => (
+                            <option key={zone} value={zone}>
+                              {zone}
+                            </option>
+                          ),
+                        )}
                       </select>
                     </div>
                     <div className="form-group">
                       <label>{t('Browser language')}</label>
                       <select value={profileLang} onChange={(e) => setProfileLang(e.target.value)}>
                         <option value="">{t('Auto (from proxy geo)')}</option>
-                        <option value="en-US">en-US</option>
-                        <option value="en-GB">en-GB</option>
-                        <option value="de-DE">de-DE</option>
-                        <option value="fr-FR">fr-FR</option>
-                        <option value="es-ES">es-ES</option>
-                        <option value="ru-RU">ru-RU</option>
-                        <option value="pt-BR">pt-BR</option>
+                        {/*
+                          Every locale the fingerprint catalog can derive, plus the profile's own
+                          value when it is not in that list.
+
+                          The list used to hold seven entries while the catalog can produce
+                          twenty-one. A `<select>` whose `value` matches no `<option>` renders the
+                          FIRST option instead — the operator opened the modal on a profile whose
+                          language was `es-MX`, saw "Auto", and pressing Save wrote that empty value
+                          back over the real one. The browser then fell back to the machine's
+                          locale, which is the reported "язык не меняется".
+
+                          The extra entry covers a locale that arrived from an import, an older
+                          build or a hand-edited database: without it, reading such a profile is
+                          still destructive, so the stored value is always renderable.
+                        */}
+                        {Array.from(new Set([...browserLanguages, ...(profileLang ? [profileLang] : [])]))
+                          .sort()
+                          .map((code) => (
+                            <option key={code} value={code}>
+                              {code}
+                            </option>
+                          ))}
                       </select>
                     </div>
                   </div>

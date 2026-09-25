@@ -27,18 +27,28 @@ describe('flagOf', () => {
 });
 
 describe('geoLabel', () => {
-  it('flags the code and names the place', () => {
-    expect(geoLabel({ code: 'DE', country: 'Germany', city: 'Berlin' })).toBe('\u{1F1E9}\u{1F1EA} Germany · Berlin');
+  it('flags the code, prints the code, and names the place', () => {
+    // The operator scans this column for the two letters, so they are shown and not just stored.
+    expect(geoLabel({ code: 'DE', country: 'Germany', city: 'Berlin' })).toBe('\u{1F1E9}\u{1F1EA} DE · Germany · Berlin');
   });
 
   it('shows the code alone when no name was resolved, never an empty cell', () => {
     expect(geoLabel({ code: 'DE' })).toBe('\u{1F1E9}\u{1F1EA} DE');
   });
 
+  it('uppercases a lowercase code rather than printing it as stored', () => {
+    expect(geoLabel({ code: 'us', country: 'United States' })).toBe('\u{1F1FA}\u{1F1F8} US · United States');
+  });
+
   it('still shows a name resolved before the code existed, just without a flag', () => {
     // Rows written before `country_code` existed are exactly this shape. They must keep showing
     // where they exit rather than reading as unresolved.
     expect(geoLabel({ country: 'Germany', city: 'Berlin' })).toBe('Germany · Berlin');
+  });
+
+  it('does not print a malformed code as if it were a country', () => {
+    expect(geoLabel({ code: 'Germany', country: 'Germany' })).toBe('Germany');
+    expect(geoLabel({ code: 'X', country: 'Germany' })).toBe('Germany');
   });
 
   it('shows a city alone when that is all that resolved', () => {

@@ -1,11 +1,9 @@
 import type { Agent } from 'http';
 import { getDb } from '../db';
-import { getProxy, listProxies, type ProxyRow } from './proxyManager';
-import { HttpProxyAgent } from 'http-proxy-agent';
-import { SocksProxyAgent } from 'socks-proxy-agent';
+import { createProxyTransport } from './proxyTransport';
+import type { ProxyRow } from './proxyManager';
 import fetch from 'node-fetch';
-import { createSshTunnel, type SshTunnel } from './sshTunnel';
-import { revealSecret } from '../util/secretStore';
+import type { SshTunnel } from './sshTunnel';
 import { randomUUID } from 'crypto';
 
 export type HealthReasonCode =
@@ -175,25 +173,12 @@ export async function checkSingleProxyHealth(
   try {
     let agent: Agent | undefined;
 
-    if (proxy.type === 'ssh') {
-      tunnel = await createSshTunnel({
-        host: proxy.host,
-        port: proxy.port,
-        username: proxy.username ?? undefined,
-        password: revealSecret(proxy.password),
-        privateKey: revealSecret(proxy.private_key),
-      });
-      agent = new SocksProxyAgent(`socks5://127.0.0.1:${tunnel.port}`) as unknown as Agent;
-    } else if (proxy.type === 'socks5') {
-      const password = revealSecret(proxy.password) ?? '';
-      const auth = proxy.username ? `${encodeURIComponent(proxy.username)}:${encodeURIComponent(password)}@` : '';
-      agent = new SocksProxyAgent(`socks5://${auth}${proxy.host}:${proxy.port}`) as unknown as Agent;
-    } else {
-      // http / https
-      const password = revealSecret(proxy.password) ?? '';
-      const auth = proxy.username ? `${encodeURIComponent(proxy.username)}:${encodeURIComponent(password)}@` : '';
-      agent = new HttpProxyAgent(`http://${auth}${proxy.host}:${proxy.port}`) as unknown as Agent;
-    }
+    // No `resolveProxyHost` here on purpose: this health check reports on the proxy as configured.
+    // Rewriting a private local hostname to its public address is the liveness check's rule, and
+    // inheriting it silently would change which address this one is measured against.
+    const transport = await createProxyTransport(proxy, proxy.host);
+    tunnel = transport.tunnel;
+    agent = transport.agent;
 
     const res = await fetch(checkUrl, {
       agent,

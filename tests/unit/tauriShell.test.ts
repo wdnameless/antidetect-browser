@@ -7,7 +7,6 @@ describe('Tauri Desktop Shell', () => {
   const tauriConfPath = path.join(rootDir, 'src-tauri/tauri.conf.json');
   const cargoTomlPath = path.join(rootDir, 'src-tauri/Cargo.toml');
   const readmePath = path.join(rootDir, 'README.md');
-  const packageJsonPath = path.join(rootDir, 'package.json');
   const ciWorkflowPath = path.join(rootDir, '.github/workflows/ci.yml');
 
   it('tauri.conf.json exists and parses as valid JSON', () => {
@@ -95,5 +94,64 @@ describe('macOS ad-hoc signing is configured for the shell too', () => {
     const conf = JSON.parse(raw);
     const macos = conf.bundle?.macos || conf.bundle?.macOS;
     expect(macos?.signingIdentity).toBe('-');
+  });
+});
+
+describe('the shipped version is consistent across every file that carries one', () => {
+  const rootDir = path.resolve(__dirname, '../..');
+  const read = (rel: string): string => fs.readFileSync(path.join(rootDir, rel), 'utf8');
+  const packageJsonPath = path.join(rootDir, 'package.json');
+
+  /** The `version` field of a parsed package manifest, or a failure naming the file. */
+  const versionField = (rel: string): string => {
+    const parsed: unknown = JSON.parse(read(rel));
+    if (!parsed || typeof parsed !== 'object' || !('version' in parsed)) {
+      throw new Error(`${rel} has no version field`);
+    }
+    const value = parsed.version;
+    if (typeof value !== 'string') throw new Error(`${rel} version is not a string`);
+    return value;
+  };
+
+  /** The version in a JSON manifest read from an absolute path. */
+  const versionAt = (abs: string): string => {
+    const parsed: unknown = JSON.parse(fs.readFileSync(abs, 'utf8'));
+    if (!parsed || typeof parsed !== 'object' || !('version' in parsed)) {
+      throw new Error(`${abs} has no version field`);
+    }
+    const value = parsed.version;
+    if (typeof value !== 'string') throw new Error(`${abs} version is not a string`);
+    return value;
+  };
+
+  const cargoVersion = (): string => {
+    const m = read('src-tauri/Cargo.toml').match(/^\s*version\s*=\s*"([^"]+)"/m);
+    if (!m) throw new Error('src-tauri/Cargo.toml has no package version');
+    return m[1];
+  };
+
+  it('package.json, tauri.conf.json and Cargo.toml agree', () => {
+    // Nothing enforced this before, and the drift is not cosmetic. `updater.rs` compiles
+    // `env!("CARGO_PKG_VERSION")` into the anti-rollback check as the INSTALLED version, so a
+    // Cargo.toml left behind at 0.6.42 makes a 0.6.44 build accept an update "to" 0.6.43 —
+    // the downgrade guard silently stops working while the version shown to the user comes
+    // from tauri.conf.json and looks perfectly correct. Every release before this one happened
+    // to have all three in sync.
+    const shipped = versionField('src-tauri/tauri.conf.json');
+    expect(
+      cargoVersion(),
+      'Cargo.toml must match tauri.conf.json: updater.rs uses CARGO_PKG_VERSION as the ' +
+        'installed version for the anti-rollback check, so a stale value disables it',
+    ).toBe(shipped);
+    expect(versionAt(packageJsonPath)).toBe(shipped);
+  });
+
+  it('the compiled crate entry in Cargo.lock carries the same version', () => {
+    // Cargo rewrites this on build, but the committed lock is what CI resolves against.
+    const m = read('src-tauri/Cargo.lock').match(
+      /name = "nulltrace-tauri-shell"\r?\nversion = "([^"]+)"/,
+    );
+    if (!m) throw new Error('Cargo.lock has no entry for the shell crate');
+    expect(m[1]).toBe(versionField('src-tauri/tauri.conf.json'));
   });
 });

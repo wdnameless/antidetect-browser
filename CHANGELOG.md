@@ -1,5 +1,87 @@
 # Changelog
 
+## [0.6.44] - 2026-09-25
+
+### Fixed
+- **A stored browser language could be silently destroyed by opening the profile.** The language
+  select held seven hand-written options while the fingerprint catalog derives twenty-one
+  locales. A `<select>` whose value matches no `<option>` renders its FIRST option — so a profile
+  whose language was `es-MX` (or `en-CA`, `zh-CN`, `ja-JP`, `pl-PL`, `id-ID`, …) opened showing
+  "Auto", and Save writes that value unconditionally: the empty string went back over the real
+  language and the browser fell back to the machine's locale. Reported as "язык не меняется".
+  Measured on the live database: **15 of 74 profiles** held a locale the select could not display,
+  so merely opening and saving any of them wiped its language.
+  - The list now comes from the backend (`GET /api/v1/browser-profile/languages`), derived from the
+    catalog that assigns the language in the first place, so the two cannot drift apart again.
+  - The profile's own value is always included as an option, so a locale that arrived from an
+    import, an older build or a hand-edited database is still representable rather than
+    collapsing to "Auto" and being overwritten.
+- **The Timezone select had the same defect, from a wider set.** Its seven options could never
+  contain a zone filled from the proxy's geo, so a profile holding `Europe/Paris` displayed "Auto"
+  and saving wrote the empty string over it. It now renders the profile's own zone alongside a
+  common list.
+- **A profile created inside a group was filed under ALL.** `openCreateModal` reset the group to
+  empty regardless of the active filter, so a profile created while looking at a group was stored
+  ungrouped and vanished from the list the operator was still standing in. The create form now
+  starts on the group being viewed, and the Group Assignment select still overrides it.
+- **Renaming a profile destroyed its pinned Android phone model.** `getProfileDetails` never
+  returned `mobile_model_id`, so the Edit modal read `undefined`, its Phone Model select fell back
+  to "Auto", and Save sent `null` over the stored value. Measured: a profile created with
+  `pixel-7` came back `null` after a rename. The field is now returned, typed on both sides, and
+  the `as any` that hid the gap is gone.
+- **Renaming a group silently deleted its bookmarks.** The rename form held `editBookmarks` (always
+  `[]` — there is no bookmark editor in it) and passed it to `updateGroup`, which writes any value
+  that is not `undefined`. Measured: a group with one bookmark came back `[]` after a rename. The
+  form now sends the name only.
+- **Binding a second extension silently unbound the first.** `bindExtensions` REPLACES a profile's
+  whole binding set and the Extensions page sent only the clicked id. Measured: binding A then B
+  left B alone. The current set is now read and merged.
+- **"Randomize fingerprint" produced a profile that could fail preflight.** It wrote only the new
+  `seed` and left `config_json` describing the previous draw. Measured: the new seed selected
+  `win-intel-uhd-620-laptop` while the config still declared `win-intel-iris-plus-g4-laptop`, and
+  coherence validation rejected it over the screen resolution — the check preflight gates a launch
+  on. It now derives the whole vector, through the same shared builder the create and rotate paths
+  use (three copies of that logic had drifted; there is now one).
+- **The desktop shell's version could silently disable the updater's downgrade guard.**
+  `updater.rs` compiles `env!("CARGO_PKG_VERSION")` as the INSTALLED version for its anti-rollback
+  check, and `src-tauri/Cargo.toml` was left at 0.6.42 while the app reported 0.6.44 from
+  `tauri.conf.json`. A 0.6.44 build would therefore have accepted an "update" to 0.6.43 — the guard
+  stops working while the version shown to the user looks correct. Nothing enforced the three-way
+  match; a test does now.
+
+### Changed
+- **A proxy picked from the saved list was never checked, so the column said "Not checked yet"
+  forever.** The geo check was queued only on the path that INSERTs a proxy inline with the
+  profile; a proxy already in the library arrives as `proxy_id` instead, and no queue call reached
+  it. That is the normal UI flow — "Choose Proxy from List" — so a profile created with a working
+  proxy reported no geography at all, and neither create nor edit ever asked. Both paths now queue
+  the check, `queueGeoChecks` being idempotent so re-sending an unchanged proxy costs nothing.
+- **The PROXY column never showed the two-letter country.** It rendered the provider's display
+  name alone (`🇩🇪 Germany · Falkenstein`), while the code was what the column is scanned for. It
+  now reads `🇩🇪 DE · Germany · Falkenstein`, and a malformed code still cannot print as if it were
+  a country.
+- **One transport builder instead of two copies.** `checkProxy` and `checkSingleProxyHealth` each
+  built their own proxy agent, and the copies had already drifted — different casts, and only one
+  of them decrypting the credentials once into a local. Both now call `createProxyTransport`. The
+  target host stays a parameter on purpose: rewriting a private local hostname to its public
+  address is the liveness check's rule, and the health check must not inherit it silently.
+- **Deleted a dead re-export block** in `proxyManager` that forwarded twelve health symbols nobody
+  imported from there (every consumer imports `proxyHealth` directly). It was also the return half
+  of a circular import between the two modules.
+
+### Known issues (found in the release bug hunt, not fixed here)
+- The preflight Fix's country→language table (`COUNTRY_TO_LANG` in `preflight.ts`) maps to bare
+  codes (`en`, `de`) while every profile stores a full locale (`en-US`, `de-DE`). Such a value is
+  not selectable in the modal, so it is subject to the same wipe. The honest fix changes what the
+  Fix button writes, so it belongs in its own change.
+- `/status` is registered before `rateLimitMiddleware`, so the 50 req/s limit declared for it in
+  `rateLimit.ts` is never applied. The handler returns a constant, so the practical impact is
+  negligible; noted rather than silently "fixed" by moving a route.
+- `duplicateProfile` and the profile-bundle export/import carry a subset of the profile's fields,
+  so a clone or a transferred bundle does not reproduce `launch_args`, `color`, `notes`,
+  `do_not_track`, `blocked_ports`, `webrtc_policy` or `headless`. Closing it needs a decision about
+  which fields a clone should inherit.
+
 ## [0.6.42] - 2026-09-24
 
 ### Fixed

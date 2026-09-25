@@ -5,6 +5,10 @@ import * as launcher from '../../launcher/chromium';
 import * as firefox from '../../launcher/firefox';
 import { checkProxy } from '../../proxy/proxyManager';
 import { MOBILE_PRESETS as mobilePresets } from '../../devices/mobilePresets';
+import {
+  EXTENDED_FINGERPRINT_CATALOG,
+  WINDOWS_FINGERPRINT_CATALOG,
+} from '../../fingerprints/catalog';
 import { SERVER_MODE } from '../../config';
 import * as androidRuntime from '../../android/instance';
 import type { StartResult } from '../../launcher/chromium';
@@ -694,6 +698,22 @@ router.get('/api/v1/browser/firefox/title', async (req, res) => {
 // Mobile preset pool (fixed "phone" for long-lived accounts).
 router.get('/api/v1/device/mobile-presets', (_req, res) => {
   res.json({ code: 0, msg: 'success', data: { list: mobilePresets } });
+});
+
+// Every browser language a profile's fingerprint can carry.
+//
+// Served rather than duplicated in the renderer. The modal used to hold its own hand-written list
+// of seven while the catalog derives twenty-one, and a `<select>` whose value matches no option
+// renders its first option instead — so a profile whose language was `es-MX` opened on "Auto" and
+// Save wrote that empty value over the real one, leaving the browser on the machine's locale.
+// The catalog is the single source of truth here, so the list cannot drift from it again.
+router.get('/api/v1/browser-profile/languages', (_req, res) => {
+  const locales = Array.from(
+    new Set(
+      [...WINDOWS_FINGERPRINT_CATALOG, ...EXTENDED_FINGERPRINT_CATALOG].flatMap((f) => f.localePool),
+    ),
+  ).sort();
+  res.json({ code: 0, msg: 'success', data: { list: locales } });
 });
 
 export default router;

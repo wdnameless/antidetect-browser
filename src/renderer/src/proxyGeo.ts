@@ -27,10 +27,12 @@ export function flagOf(countryCode: string | null | undefined): string {
 /**
  * The geography a row should show, or an empty string when nothing was resolved.
  *
- * `code` leads and is what the flag comes from; `country`/`city` are the readable place. A row
- * resolved before the code existed still shows its name, just without a flag, rather than
- * pretending it has no location. Everything is tolerated as missing: a row with only a city, or
- * only a timezone, is still more useful than the protocol name this replaced.
+ * `code` leads and is what the flag comes from; `country`/`city` are the readable place. The CODE
+ * is printed next to the flag, not just the name: the operator scans this column for the two
+ * letters (`DE`, `US`, `FR`) and the provider's name only arrived as a side effect of the same
+ * lookup. A row resolved before the code existed still shows its name, just without a flag or a
+ * code, rather than pretending it has no location. Everything is tolerated as missing: a row with
+ * only a city, or only a timezone, is still more useful than the protocol name this replaced.
  */
 export function geoLabel(parts: {
   code?: string | null;
@@ -39,11 +41,12 @@ export function geoLabel(parts: {
   timezone?: string | null;
 }): string {
   const flag = flagOf(parts.code);
+  // Printed only when `flagOf` accepted the same value, so a malformed code cannot pass as one.
+  const raw = typeof parts.code === 'string' ? parts.code.trim().toUpperCase() : '';
+  const code = flag ? raw : '';
   const place = [parts.country, parts.city].filter(Boolean).join(' · ');
-  // With no name the code carries the label on its own, so a two-letter answer never renders as
-  // an empty cell.
-  const text = place || parts.code?.trim().toUpperCase() || '';
-  const label = [flag, text].filter(Boolean).join(' ');
+  const head = [flag, code].filter(Boolean).join(' ');
+  const label = [head, place].filter(Boolean).join(' · ');
   if (!label && parts.timezone) return parts.timezone;
   return label;
 }
