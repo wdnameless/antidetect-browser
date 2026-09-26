@@ -31,7 +31,6 @@ export const FARM_SITES: readonly FarmSite[] = [
   { url: 'https://www.etsy.com', category: 'commerce', weight: 2 },
   { url: 'https://www.aliexpress.com', category: 'commerce', weight: 3 },
   { url: 'https://www.ozon.ru', category: 'commerce', weight: 3 },
-  { url: 'https://www.walmart.com', category: 'commerce', weight: 2 },
 
   // News portals: CMP consent records, ad-network identifiers, and paywall counters
   { url: 'https://www.cnn.com', category: 'news', weight: 2 },
@@ -64,6 +63,63 @@ export const FARM_SITES: readonly FarmSite[] = [
   { url: 'https://dev.to', category: 'dev', weight: 1 },
   { url: 'https://medium.com', category: 'dev', weight: 2 },
   { url: 'https://www.npmjs.com', category: 'dev', weight: 1 },
+
+  /*
+   * Second wave, added after MEASURING each candidate against a real browser rather than assuming
+   * it would be useful. Every entry below was loaded headless, allowed to settle, and kept only if
+   * it set cookies without authentication — the count in the comment is that measurement.
+   *
+   * Three candidates were dropped for a specific reason worth recording: `producthunt.com`,
+   * `ikea.com` and `stackexchange.com` all answered with a Cloudflare interstitial ("Just a
+   * moment...", "Attention Required!") instead of content. They set a challenge cookie, not a
+   * normal browsing footprint, and the robot treats a challenge page as a skip — so listing them
+   * would spend a page visit to collect nothing. `quora.com`, `bbc.co.uk`, `news.ycombinator.com`
+   * and `angel.co` set no cookies at all and were dropped for that.
+   *
+   * Cookie count is the weight: a site leaving 15+ cookies seeds a richer footprint than one
+   * leaving 3, and the weighted selection favours them without excluding the rest.
+   */
+
+  // Commerce — the heaviest cookie setters measured (cart sessions, currency, ad tokens)
+  { url: 'https://www.walmart.com', category: 'commerce', weight: 3 },      // 17
+  { url: 'https://www.target.com', category: 'commerce', weight: 3 },       // 17
+  { url: 'https://www.alibaba.com', category: 'commerce', weight: 3 },      // 15
+  { url: 'https://www.flipkart.com', category: 'commerce', weight: 3 },     // 15
+  { url: 'https://www.rakuten.com', category: 'commerce', weight: 3 },      // 13
+  { url: 'https://www.airbnb.com', category: 'commerce', weight: 2 },       // 9
+  { url: 'https://www.booking.com', category: 'commerce', weight: 2 },      // 7-9
+
+  // News — CMP consent records and ad-network identifiers
+  { url: 'https://edition.cnn.com', category: 'news', weight: 3 },          // 21
+  { url: 'https://www.forbes.com', category: 'news', weight: 3 },           // 11
+  { url: 'https://www.wired.com', category: 'news', weight: 2 },            // 7
+  { url: 'https://arstechnica.com', category: 'news', weight: 1 },          // 2
+  { url: 'https://www.theverge.com', category: 'news', weight: 2 },         // 6
+
+  // Media & streaming — player preferences, analytics, recommendation state
+  { url: 'https://www.last.fm', category: 'media', weight: 3 },             // 14
+  { url: 'https://www.metacritic.com', category: 'media', weight: 2 },      // 9
+  { url: 'https://www.rottentomatoes.com', category: 'media', weight: 2 },  // 9
+  { url: 'https://www.deezer.com', category: 'media', weight: 1 },          // 4
+  { url: 'https://www.ign.com', category: 'media', weight: 1 },             // 5
+  { url: 'https://store.steampowered.com', category: 'media', weight: 1 },  // 3
+
+  // Reference & weather — location and language preference cookies
+  { url: 'https://www.accuweather.com', category: 'reference', weight: 3 }, // 11
+  { url: 'https://weather.com', category: 'reference', weight: 2 },         // 7
+  { url: 'https://www.trustpilot.com', category: 'reference', weight: 1 },  // 3
+  { url: 'https://www.g2.com', category: 'reference', weight: 1 },          // 3
+  { url: 'https://www.crunchbase.com', category: 'reference', weight: 1 },  // 3
+  { url: 'https://www.timeanddate.com', category: 'reference', weight: 1 }, // 1
+
+  // Dev infrastructure — CDN routing and session tokens
+  { url: 'https://www.digitalocean.com', category: 'dev', weight: 3 },      // 13
+  /* namecheap.com set 13-15 cookies in one pass and served a Cloudflare challenge in
+     another. A coin-flip site wastes a page visit and logs a spurious error, so it is excluded
+     until its challenge rate is zero. */
+  /* cloudflare.com measured 3 cookies but is unusable here: its own URL contains the word
+     "cloudflare", which the robot's challenge detector matches, so every visit would be
+     skipped as a challenge and reported as an error. */
 ] as const;
 
 /**

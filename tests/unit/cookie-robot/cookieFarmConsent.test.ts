@@ -6,9 +6,9 @@ import {
   matchesConsentVerb,
   isForbiddenText,
   normalizeConsentText,
-  CMP_SELECTORS,
   CONSENT_VERBS,
   AUTH_DENYLIST,
+  FORBIDDEN_CONSENT_FRAGMENTS,
 } from '../../../src/main/scripts/modules/cookieFarm/consent';
 import {
   selectFarmSites,
@@ -159,7 +159,7 @@ describe('Cookie Farm Consent Module', () => {
         tagName: 'BUTTON',
         innerText: 'Принять все',
         textContent: 'Принять все',
-        getAttribute: (attr: string) => null,
+        getAttribute: (_attr: string) => null,
         className: 'btn-primary',
         id: 'btn-accept',
         getBoundingClientRect: () => ({ width: 100, height: 40 }),
@@ -205,7 +205,7 @@ describe('Cookie Farm Consent Module', () => {
         tagName: 'BUTTON',
         innerText: 'Accept all cookies and close',
         textContent: 'Accept all cookies and close',
-        getAttribute: (attr: string) => null,
+        getAttribute: (_attr: string) => null,
         className: 'btn-secondary',
         id: 'btn-long',
         getBoundingClientRect: () => ({ width: 200, height: 40 }),
@@ -216,7 +216,7 @@ describe('Cookie Farm Consent Module', () => {
         tagName: 'BUTTON',
         innerText: 'OK',
         textContent: 'OK',
-        getAttribute: (attr: string) => null,
+        getAttribute: (_attr: string) => null,
         className: 'btn-primary',
         id: 'btn-short',
         getBoundingClientRect: () => ({ width: 60, height: 36 }),
@@ -237,7 +237,8 @@ describe('Cookie Farm Consent Module', () => {
       const result = evaluateTextConsent(
         CONSENT_VERBS as unknown as string[],
         AUTH_DENYLIST as unknown as string[],
-        40
+        40,
+        FORBIDDEN_CONSENT_FRAGMENTS as unknown as string[]
       );
 
       expect(result).toEqual({
@@ -351,7 +352,7 @@ describe('Cookie Farm Consent Module', () => {
         tagName: 'BUTTON',
         innerText: 'Sign in with Google',
         textContent: 'Sign in with Google',
-        getAttribute: (attr: string) => null,
+        getAttribute: (_attr: string) => null,
         className: 'google-login',
         id: 'google-auth',
         getBoundingClientRect: () => ({ width: 150, height: 40 }),
@@ -372,7 +373,8 @@ describe('Cookie Farm Consent Module', () => {
       const result = evaluateTextConsent(
         CONSENT_VERBS as unknown as string[],
         AUTH_DENYLIST as unknown as string[],
-        40
+        40,
+        FORBIDDEN_CONSENT_FRAGMENTS as unknown as string[]
       );
 
       expect(result).toEqual({ clicked: false });
@@ -467,4 +469,196 @@ describe('Cookie Farm Consent Module', () => {
       expect(categories.size).toBe(7);
     });
   });
+});
+
+describe('the farm site pool stays usable and unambiguous', () => {
+  it('lists no URL twice', () => {
+    // A duplicate is not cosmetic: `selectFarmSites` removes a chosen entry from its pool, so two
+    // entries for one URL let a single run visit the same site twice and report it as two domains.
+    // Caught when the measured second wave was added and re-listed walmart.com.
+    const urls = FARM_SITES.map((s) => s.url);
+    const duplicates = urls.filter((u, i) => urls.indexOf(u) !== i);
+    expect(duplicates, `duplicate farm sites: ${duplicates.join(', ')}`).toEqual([]);
+  });
+
+  it('can satisfy the largest page count a run can request, across many categories', () => {
+    // The runner asks for up to `maxPages` sites (default 20). If the pool were smaller than a
+    // request, a run would silently visit fewer sites than the operator asked for.
+    const selected = selectFarmSites(4242, 20);
+    expect(selected).toHaveLength(20);
+    expect(new Set(selected.map((s) => s.url)).size, 'a run must not repeat a site').toBe(20);
+    // Category round-robin is the reason the pool is spread rather than deep: a footprint that
+    // only ever touches shopping sites is not a browsing history.
+    expect(new Set(selected.map((s) => s.category)).size).toBeGreaterThanOrEqual(5);
+  });
+
+  it('every site is an https URL', () => {
+    // An http entry would send the profile's traffic in the clear, which contradicts the point of
+    // warming a profile behind a proxy.
+    const insecure = FARM_SITES.filter((s) => !s.url.startsWith('https://'));
+    expect(insecure.map((s) => s.url)).toEqual([]);
+  });
+});
+
+describe('the two consent matchers agree', () => {
+  /*
+   * `matchesConsentVerb` runs in Node; `evaluateTextConsent` is serialized into Chromium by
+   * Puppeteer and cannot call it. Two implementations of one rule is exactly how the prefix rule
+   * was added to one copy and not the other, so this pins them together: any label either accepts
+   * or refuses, both must agree. When they diverge, the unit tests describe behaviour the real
+   * browser run does not have — the failure mode this test exists to prevent.
+   */
+  const LABELS = [
+    'Accept All', 'Accept all cookies and continue', 'I accept the use of cookies',
+    'Agree and continue', 'Alle akzeptieren und weiter', 'Принять все и продолжить',
+    'Tout accepter et continuer', 'Aceptar todas las cookies', 'Accetta tutti i cookie',
+    'Reject all', 'Accept only necessary', 'Manage settings', 'Customize preferences',
+    'Отказаться', 'Ablehnen', 'Refuser', 'Rechazar', 'You can accept or reject cookies',
+    'Settings', 'Cookie settings', 'Accept selected', 'Nur notwendige', 'Настроить',
+    'Sign in with Google', 'Subscribe now', 'Buy now', 'Log in', '',
+  ];
+
+  it.each(LABELS)('agrees on %j', (label) => {
+    const viaNode = matchesConsentVerb(label);
+
+    const el = {
+      innerText: label,
+      textContent: label,
+      getAttribute: () => null,
+      getBoundingClientRect: () => ({ width: 120, height: 32 }),
+      click: () => {},
+    };
+    const originalDocument = (globalThis as unknown as { document?: unknown }).document;
+    const originalWindow = (globalThis as unknown as { window?: unknown }).window;
+    (globalThis as unknown as { document?: unknown }).document = {
+      querySelectorAll: () => [el],
+    };
+    (globalThis as unknown as { window?: unknown }).window = {
+      getComputedStyle: () => ({ display: 'block', visibility: 'visible', opacity: '1' }),
+    };
+    const viaPage = evaluateTextConsent(
+      CONSENT_VERBS as unknown as string[],
+      AUTH_DENYLIST as unknown as string[],
+      40,
+      FORBIDDEN_CONSENT_FRAGMENTS as unknown as string[],
+    );
+    (globalThis as unknown as { document?: unknown }).document = originalDocument;
+    (globalThis as unknown as { window?: unknown }).window = originalWindow;
+
+    expect(viaPage.clicked, `in-page matcher disagreed with the Node matcher on "${label}"`)
+      .toBe(viaNode);
+  });
+});
+
+describe('no farm site trips the robot challenge detector', () => {
+  /*
+   * The robot skips a page (and logs an error) when its title or URL contains a challenge keyword
+   * such as "cloudflare". That makes a site whose own URL contains the keyword permanently
+   * unusable: cloudflare.com was measured setting 3 cookies and was still unlistable, because the
+   * detector matched the word inside its own hostname and skipped it on every visit. Cheap to
+   * check here; expensive to discover as a mystery skip in a run log.
+   */
+  const CHALLENGE_KEYWORDS = [
+    'just a moment', 'attention required', 'cloudflare', 'captcha', 'are you human', '/sorry/',
+  ];
+
+  it('lists no site whose URL would be skipped as a challenge', () => {
+    const selfFlagging = FARM_SITES.filter((site) =>
+      CHALLENGE_KEYWORDS.some((kw) => site.url.toLowerCase().includes(kw)),
+    );
+    expect(
+      selfFlagging.map((s) => s.url),
+      'these sites would be skipped on every visit by the challenge detector',
+    ).toEqual([]);
+  });
+
+describe('a label that starts with a verb but refuses is still refused', () => {
+  /*
+   * The prefix rule is the fix for banners that phrase acceptance as a sentence, and it is also the
+   * risk: a label can BEGIN with a consent verb and still mean "only what is necessary", "accept
+   * nothing", or "accept and reject". Every case below was found by attacking the rule rather than
+   * trusting it — "Accept no cookies", "Accetta solo i necessari" and "Akzeptieren und ablehnen"
+   * were all CLICKED until the qualifier and negation fragments were added.
+   *
+   * Clicking one of these is worse than clicking nothing: it records a refusal the operator did not
+   * choose, or opens a preferences dialog that blocks the page.
+   */
+  const MUST_REFUSE = [
+    'Accept only necessary cookies', 'Accept and manage preferences', 'Accept selected cookies',
+    'Accetta solo i necessari', 'Solo accetta i necessari', 'Accept only essential',
+    'Akzeptieren und ablehnen', 'Alle akzeptieren und ablehnen', 'Nur notwendige akzeptieren',
+    'Accepter et refuser', 'Aceptar y rechazar', 'Принять и отказаться',
+    'Accept no cookies', 'Accept zero cookies', 'Agree to disagree',
+    // Round two, found by an independent reviewer attacking the rule AFTER the first fixes landed:
+    // every one of these begins with a verb and accepts less than everything, and all were clicked.
+    'Accept nothing', 'Accept nothing at all', 'Accept none', 'Accept zero',
+    'Accept minimal cookies', 'Accept nur das Nötigste',
+    'Accept all, but let me customize', 'Accept cookies settings',
+    'Allow all third-party trackers to be disabled', 'Tout accepter mais pas les pubs',
+  ];
+
+  it.each(MUST_REFUSE)('refuses %j', (label) => {
+    expect(matchesConsentVerb(label), `"${label}" must never be treated as an accept action`).toBe(false);
+  });
+
+  it('still clicks the legitimate phrasing the prefix rule exists for', () => {
+    // Guards against the fix above being applied so broadly that real banners stop working.
+    const MUST_CLICK = [
+      'accept all', 'accept all cookies', 'accept all cookies and continue',
+      'i accept the use of cookies', 'agree and continue', 'accept terms and conditions',
+      'i accept the privacy policy', 'accept all cookies to continue shopping',
+      'alle akzeptieren und weiter', 'принять все и продолжить', 'tout accepter et continuer',
+      'aceptar todas las cookies', 'accetta tutti i cookie', 'aceitar e continuar',
+      'zaakceptuj wszystkie', 'tümünü kabul et', 'acceptera alla', 'принять и закрыть',
+    ];
+    const missed = MUST_CLICK.filter((label) => !matchesConsentVerb(label));
+    expect(missed, `these legitimate labels stopped matching: ${missed.join(', ')}`).toEqual([]);
+  });
+});
+
+
+describe('diacritics survive normalization, and partial accepts are refused', () => {
+  /*
+   * Two defects found by an independent reviewer attacking this module BEFORE release, both proven
+   * by execution rather than inspection:
+   *
+   * 1. The boundary-stripping regex was `[^a-zа-яё0-9]`, which treats every Latin letter outside
+   *    ASCII as punctuation. It amputated the edge character of any label carrying a diacritic, so
+   *    Polish and Hungarian verbs this module advertises could never match: "akceptuję" normalised
+   *    to "akceptuj", "zgadzam się" to "zgadzam si", "összes elfogadása" lost its first letter.
+   *
+   * 2. "Accept essential cookies" and "Accept functional cookies" are PARTIAL accepts — the
+   *    opposite of what a warm-up wants — and matched the `accept` verb, so the robot recorded a
+   *    restricted consent the operator never chose.
+   */
+  const MUST_CLICK = [
+    // Diacritic-bearing verbs that the ASCII-only normalizer made unmatchable.
+    'akceptuję', 'Akceptuję', 'zgadzam się', 'Zgadzam się', 'zaakceptuj wszystkie',
+    'összes elfogadása', 'Összes elfogadása', 'přijmout vše', 'souhlasím',
+    'Tümünü kabul et', 'Acceptera alla',
+  ];
+  const MUST_REFUSE = [
+    'Accept essential cookies', 'Accept functional cookies',
+    'Accept required cookies', 'Accept strictly necessary',
+  ];
+
+  it.each(MUST_CLICK)('clicks %j despite its diacritics', (label) => {
+    expect(matchesConsentVerb(label), `"${label}" must match a verb in the list`).toBe(true);
+  });
+
+  it.each(MUST_REFUSE)('refuses the partial accept %j', (label) => {
+    expect(matchesConsentVerb(label), `"${label}" consents to a SUBSET and must not be clicked`).toBe(false);
+  });
+
+  it('strips surrounding punctuation without eating letters', () => {
+    // The rule exists to drop quotes and bullets, not characters from the alphabet.
+    expect(normalizeConsentText('«Accept all»')).toBe('accept all');
+    expect(normalizeConsentText('"Accept all"')).toBe('accept all');
+    expect(normalizeConsentText('• Accept all')).toBe('accept all');
+    // …and a diacritic at either edge must survive untouched.
+    expect(normalizeConsentText('akceptuję')).toBe('akceptuję');
+    expect(normalizeConsentText('összes elfogadása')).toBe('összes elfogadása');
+  });
+});
+
 });

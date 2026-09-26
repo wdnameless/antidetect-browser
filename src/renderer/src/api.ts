@@ -170,6 +170,14 @@ export interface CookieFarmReport {
   status: 'completed' | 'aborted' | 'error';
   consents?: CookieFarmConsent[];
   managedProfile?: boolean;
+  /**
+   * Where the run's traffic exited, recorded when the report was created.
+   *
+   * Optional because a report written before this field existed will not carry it, and null when
+   * the profile has no proxy or its country is unresolved — in either case there is nothing
+   * truthful to show, so the header omits it rather than guessing.
+   */
+  exitGeo?: { code: string | null; country: string | null } | null;
 }
 
 export interface CookieFarmProgress {

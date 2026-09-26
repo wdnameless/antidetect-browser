@@ -40,6 +40,18 @@ export interface CookieRobotReport {
   dwells?: number[];
   consents?: Array<{ domain: string; clicked: boolean; label?: string }>;
   managedProfile?: boolean;
+  /**
+   * Where the profile's traffic exits, as the profile's proxy reports it.
+   *
+   * Resolved once when the report is created and STORED, rather than read from the profile row when
+   * the modal renders: the report is a record of a past run, and a proxy can be re-checked or
+   * replaced afterwards. Reading it later would silently re-label an old run with a new country.
+   *
+   * `code` is the ISO 3166-1 alpha-2 value the flag is derived from; `country` is the provider's
+   * display name. Both are optional because a profile may have no proxy, or one that has not been
+   * checked yet — in which case there is nothing truthful to show.
+   */
+  exitGeo?: { code: string | null; country: string | null } | null;
 }
 
 export interface CookieRobotHandle {
@@ -543,6 +555,37 @@ export function createProfilePageSupplier(
 }
 
 /**
+ * The profile's exit geography, resolved from its proxy row.
+ *
+ * Read straight from the database rather than importing `profileManager`: that module already
+ * imports this one for the script runtime, and reaching back would create a cycle. The query only
+ * touches two columns, so the duplication is a join, not a second source of truth.
+ *
+ * Returns null when the profile has no proxy, or one whose country has not been resolved — the
+ * report must not invent a location it cannot evidence. A `code` without a `country` is kept: the
+ * flag is derived from the code, and a row checked by an older build may carry the name form only.
+ */
+function resolveExitGeo(profileId: string): { code: string | null; country: string | null } | null {
+  try {
+    const row = getDb()
+      .prepare(
+        `SELECT px.country AS country, px.country_code AS country_code
+           FROM profiles p JOIN proxies px ON px.id = p.proxy_id
+          WHERE p.id = ?`,
+      )
+      .get(profileId) as { country: string | null; country_code: string | null } | undefined;
+    if (!row) return null;
+    const code = row.country_code && row.country_code.trim() ? row.country_code.trim().toUpperCase() : null;
+    const country = row.country && row.country.trim() ? row.country : null;
+    if (!code && !country) return null;
+    return { code, country };
+  } catch {
+    // A reporting nicety must never fail a run that is otherwise working.
+    return null;
+  }
+}
+
+/**
  * Core robot execution loop given a page/browser session or CDP endpoint.
  */
 export async function runCookieRobot(
@@ -565,6 +608,7 @@ export async function runCookieRobot(
     startedAt,
     finishedAt: 0,
     dwells: [],
+    exitGeo: resolveExitGeo(config.profileId),
   };
 
   const maxPages = Math.max(1, positiveOr(config.maxPages, 20));
@@ -620,6 +664,40 @@ export async function runCookieRobot(
   let pageInstance: Page | null = null;
   let closeBrowserOrPage: (() => Promise<void>) | null = null;
 
+  /*
+   * Count the cookies the browsing SESSION holds, not just the page's own origin.
+   *
+   * `page.cookies()` is scoped to the page's origin, and every page is closed after its visit — so
+   * counting that way under-reports the footprint badly and the number is overwritten by each
+   * successive page. Measured against four real sites, the per-page method recorded 11 while the
+   * browser session actually held 63; an end-to-end run of eleven domains reported 0. The operator
+   * reads this as "cookies" in the report, so an under-count is a wrong answer, not a cosmetic one.
+   *
+   * Falls back to the page's own jar when the handle cannot reach a browser — the unit tests pass
+   * plain stand-ins carrying only `click`/`boundingBox` — so nothing that worked before stops
+   * working, and a failed count reports nothing rather than zero.
+   */
+  const countSessionCookies = async (): Promise<number | null> => {
+    try {
+      // SAFETY: the page may be a Puppeteer Page (carrying `browser()`) or a stand-in
+      // supplied by the unit tests, which carries no browser handle at all.
+      const handle = pageInstance as unknown as { browser?: () => Browser | null };
+      const browser = typeof handle?.browser === 'function' ? handle.browser() : null;
+      if (browser && typeof browser.cookies === 'function') {
+        const all = await browser.cookies();
+        if (all) return all.length;
+      }
+    } catch {
+      // Fall through to the page's own jar.
+    }
+    try {
+      const own = await pageInstance?.cookies();
+      return own ? own.length : null;
+    } catch {
+      return null;
+    }
+  };
+
   try {
     if (customPageSupplier) {
       const supplied = await customPageSupplier();
@@ -639,9 +717,9 @@ export async function runCookieRobot(
     let consentsAcceptedCount = 0;
     const syncNavProgress = async (domain: string) => {
       try {
-        const cookies = await pageInstance?.cookies();
-        if (cookies) {
-          report.cookiesSet = cookies.length;
+        const counted = await countSessionCookies();
+        if (counted !== null) {
+          report.cookiesSet = counted;
         }
       } catch {
         // ignore cookie retrieval errors
@@ -756,9 +834,11 @@ export async function runCookieRobot(
           if (outcome.clicked) {
             consentsAcceptedCount++;
             try {
-              const cookies = await pageInstance.cookies();
-              report.cookiesSet = cookies.length;
-              progress.cookiesSet = report.cookiesSet;
+              const counted = await countSessionCookies();
+              if (counted !== null) {
+                report.cookiesSet = counted;
+                progress.cookiesSet = counted;
+              }
             } catch {
               // ignore cookie retrieval errors
             }
@@ -813,9 +893,11 @@ export async function runCookieRobot(
 
         // Count cookies accumulated
         try {
-          const cookies = await pageInstance.cookies();
-          report.cookiesSet = cookies.length;
-          progress.cookiesSet = report.cookiesSet;
+          const counted = await countSessionCookies();
+          if (counted !== null) {
+            report.cookiesSet = counted;
+            progress.cookiesSet = counted;
+          }
         } catch {
           // Ignore cookie retrieval errors
         }

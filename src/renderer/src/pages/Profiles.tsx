@@ -3739,6 +3739,28 @@ const NOISE_SURFACES = [
             </div>
           ) : null}
 
+          {/*
+            Where this run's traffic exited. Read from the REPORT, not from the profile: a report
+            records a past run, and re-checking or replacing the proxy afterwards must not
+            re-label it. Absent when the profile has no proxy or its country is unresolved — shown
+            as nothing rather than guessed, because a wrong flag is worse than no flag.
+
+            Rendered through `geoLabel`, the same helper the proxies table and the profiles PROXY
+            column use, so the flag and the two-letter code are derived one way everywhere rather
+            than by a third implementation that could drift from them.
+          */}
+          {cookieFarmModal.report?.exitGeo ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+              <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{t('Exit location')}</span>
+              <span style={{ fontSize: 13, color: 'var(--accent)' }}>
+                {geoLabel({
+                  code: cookieFarmModal.report.exitGeo.code,
+                  country: cookieFarmModal.report.exitGeo.country,
+                })}
+              </span>
+            </div>
+          ) : null}
+
           {cookieFarmModal.loading && !cookieFarmModal.report ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
               <div className="preflight-loading-box" style={{ margin: 0, padding: '12px 16px' }}>

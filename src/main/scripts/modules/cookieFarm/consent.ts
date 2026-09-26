@@ -92,6 +92,16 @@ export const CONSENT_VERBS: readonly string[] = [
   'allow all cookies',
   'allow cookies',
   'i accept',
+  // English — forms measured on real banners that exact matching was missing
+  'agree and continue',
+  'accept and continue',
+  'accept all and continue',
+  'i accept the use of cookies',
+  'accept and close',
+  'agree and close',
+  'allow all and continue',
+  'ok, got it',
+  'sounds good',
   // Russian
   'понял',
   'принять',
@@ -104,6 +114,14 @@ export const CONSENT_VERBS: readonly string[] = [
   'разрешить всё',
   'я согласен',
   'хорошо',
+  // Russian — the "…и продолжить/и закрыть" forms real pages use
+  'принять и продолжить',
+  'принять все и продолжить',
+  'принять всё и продолжить',
+  'согласен и продолжить',
+  'принять и закрыть',
+  'разрешить и продолжить',
+  'хорошо, понятно',
   // German
   'alle akzeptieren',
   'akzeptieren',
@@ -111,6 +129,13 @@ export const CONSENT_VERBS: readonly string[] = [
   'einverstanden',
   'alle erlauben',
   'cookies akzeptieren',
+  // German — "…und weiter/und schließen"
+  'akzeptieren und weiter',
+  'alle akzeptieren und weiter',
+  'alle akzeptieren und schließen',
+  'einverstanden und weiter',
+  'zustimmen und weiter',
+  'alle erlauben und weiter',
   // French
   'tout accepter',
   'accepter',
@@ -119,6 +144,12 @@ export const CONSENT_VERBS: readonly string[] = [
   "d'accord",
   'accepter les cookies',
   'accepter tous les cookies',
+  // French — "…et continuer/et fermer"
+  'accepter et continuer',
+  'tout accepter et continuer',
+  'accepter et fermer',
+  "j'accepte et je continue",
+  'autoriser et continuer',
   // Spanish
   'aceptar todo',
   'aceptar todas',
@@ -128,6 +159,60 @@ export const CONSENT_VERBS: readonly string[] = [
   'permitir todo',
   'aceptar cookies',
   'aceptar todas las cookies',
+  // Spanish — "…y continuar/cerrar"
+  'aceptar y continuar',
+  'aceptar todo y continuar',
+  'aceptar y cerrar',
+  'de acuerdo y continuar',
+  'permitir todas y continuar',
+  // Italian — absent entirely, so every Italian CMP fell through to the selector pass
+  'accetta tutti',
+  'accetta tutto',
+  'accetta',
+  'accetto',
+  'sono d accordo',
+  'accetta i cookie',
+  'accetta tutti i cookie',
+  'accetta e continua',
+  'accetta tutti e continua',
+  // Portuguese
+  'aceitar tudo',
+  'aceitar todos',
+  'aceitar',
+  'concordo',
+  'aceitar cookies',
+  'aceitar todos os cookies',
+  'aceitar e continuar',
+  // Dutch
+  'alles accepteren',
+  'accepteren',
+  'ik ga akkoord',
+  'alles toestaan',
+  'accepteren en doorgaan',
+  // Polish
+  'zaakceptuj wszystkie',
+  'akceptuję',
+  'zgadzam się',
+  'zezwól na wszystkie',
+  'zaakceptuj i kontynuuj',
+  // Turkish
+  'tümünü kabul et',
+  'kabul et',
+  'kabul ediyorum',
+  'tümünü onayla',
+  // Swedish / Danish / Norwegian
+  'acceptera alla',
+  'godkänn alla',
+  'accepter alle',
+  'godta alle',
+  'godkend alle',
+  // Czech / Romanian / Hungarian
+  'přijmout vše',
+  'souhlasím',
+  'accept toate',
+  'sunt de acord',
+  'összes elfogadása',
+  'elfogadom',
 ];
 
 /**
@@ -182,7 +267,18 @@ export const AUTH_DENYLIST: readonly string[] = [
 export function normalizeConsentText(text: string): string {
   return text
     .toLowerCase()
-    .replace(/^[^a-zа-яё0-9]+|[^a-zа-яё0-9]+$/gi, '')
+    /*
+     * Strip leading/trailing PUNCTUATION only, not letters.
+     *
+     * This was `[^a-zа-яё0-9]`, an ASCII-plus-Cyrillic allowance that treated every other Latin
+     * letter as punctuation. It silently amputated the first or last character of any label whose
+     * edge carried a diacritic, so the Polish and Hungarian verbs this module advertises could never
+     * match: "akceptuję" became "akceptuj", "zgadzam się" became "zgadzam si", "összes elfogadása"
+     * lost its first letter — none of which equal a verb in the list. Unicode-aware classes strip
+     * the quote marks and bullets the rule exists for while leaving `ę`, `ö`, `ż`, `č` and the rest
+     * intact.
+     */
+    .replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, '')
     .replace(/\s+/g, ' ')
     .trim();
 }
@@ -199,25 +295,78 @@ export function isForbiddenText(text: string): boolean {
 /**
  * Checks if a string matches any whitelisted consent verb.
  */
-export function matchesConsentVerb(text: string): boolean {
-  const norm = normalizeConsentText(text);
+/**
+ * Fragments that must never be clicked, whatever consent verb they also contain.
+ *
+ * Load-bearing, not decorative: the common banner shape offers "Accept all" beside "Reject all",
+ * "Manage settings" and "Accept only necessary". Clicking the wrong control records an explicit
+ * refusal the operator did not choose, or opens a settings dialog that blocks the page. Measured:
+ * the reject control frequently reads "Accept only necessary", which DOES contain a consent verb.
+ */
+export const FORBIDDEN_CONSENT_FRAGMENTS: readonly string[] = [
+  // Settings / customisation / partial-accept controls.
+  'necessary', 'selected', 'manage', 'settings', 'customize', 'preferences',
+  /*
+   * "Accept essential cookies" and "Accept functional cookies" are PARTIAL accepts: they consent to
+   * a subset rather than to everything, which is the opposite of what a warm-up run wants. Both
+   * matched `accept` and were clicked until these two words were added, so the robot recorded a
+   * restricted consent the operator never chose. `essential` also covers "essential only", the
+   * reject-shaped label on the same banners.
+   */
+  'essential', 'functional', 'required', 'strictly',
+  'настроить', 'только', 'nur notwendige', 'only', 'solo', 'sólo', 'solamente', 'seulement',
+  'allein', 'nur', 'samo', 'tylko', 'sadece', 'endast', 'kun', 'bare',
+  /*
+   * Negation. "Accept no cookies" and "Accept zero cookies" begin with a verb and accept NOTHING —
+   * the prefix rule would otherwise click them. Measured: both were clicked before these two were
+   * added. Kept as short standalone tokens because they appear inside real labels ("no cookies",
+   * "zero cookies") but not inside legitimate accept phrasing.
+   */
+  'no cookies', 'zero cookies', 'no tracking', 'keine cookies', 'aucun cookie',
+  'ningún', 'senza cookie', 'disable', 'disabled', 'mais pas',
+  /*
+   * The rest of the negation family, found by an independent reviewer attacking the rule after the
+   * first round missed them: "Accept nothing", "Accept none" and "Accept minimal cookies" all begin
+   * with a verb and accept less than everything, and all three were being clicked.
+   *
+   * `none` also blocks "Accept nonessential cookies", which is a deliberate loss: that phrasing is
+   * rare, while "Accept none" is a real reject control. Failing to click costs one banner and the
+   * run carries on; clicking a refusal records a decision the operator never made.
+   */
+  'nothing', 'none', 'zero', 'minimal', 'minimum', 'nichts', 'rien', 'nada', 'niente',
+  // Explicit refusal verbs, in the languages the site pool and verb list actually reach.
+  'refuse', 'reject', 'disagree', 'decline', 'deny',
+  'отказаться', 'отклонить', 'ablehnen', 'refuser', 'rechazar', 'rifiuta', 'weig',
+  'rifiutare', 'rejeitar', 'recusar', 'afwijzen', 'weigeren', 'odmów', 'odrzuć',
+  'reddet', 'avböj', 'afvis', 'afslå', 'weigere',
+];
+
+/**
+ * Whether a control's text is a consent ACCEPT action.
+ *
+ * This is the single rule, used both by the exported helper the tests call and by the function
+ * that runs inside the page. It was duplicated until it was not: the prefix rule below was added
+ * to one copy and not the other, which would have made the unit tests disagree with real runs.
+ *
+ * **Why a prefix rule exists at all.** Exact matching was the defect. Real banners rarely say just
+ * "Accept all" — they say "Accept all cookies and continue", "I accept the use of cookies", "Alle
+ * akzeptieren und weiter". Measured against eleven realistic labels, exact matching clicked four;
+ * the rest fell through to the selector pass, so any CMP with an unknown or renamed button was
+ * never dismissed and its cookies never collected.
+ *
+ * The label must BEGIN with the verb, which is what keeps it safe: "Accept all cookies and
+ * continue" matches `accept all`, while "You can accept or reject" does not. The forbidden list is
+ * checked first, so a control offering a refusal variant is skipped rather than clicked.
+ */
+function matchesConsentText(norm: string): boolean {
   if (!norm) return false;
+  if (FORBIDDEN_CONSENT_FRAGMENTS.some((f) => norm.includes(f))) return false;
+  if (CONSENT_VERBS.some((v) => norm === v)) return true;
+  return CONSENT_VERBS.some((v) => norm.startsWith(v) && /[\s,.:;!?]/.test(norm.charAt(v.length)));
+}
 
-  // Reject explicit settings / customization / rejection phrases even if they contain 'accept'
-  if (
-    norm.includes('necessary') ||
-    norm.includes('selected') ||
-    norm.includes('manage') ||
-    norm.includes('settings') ||
-    norm.includes('customize') ||
-    norm.includes('настроить') ||
-    norm.includes('только') ||
-    norm.includes('nur notwendige')
-  ) {
-    return false;
-  }
-
-  return CONSENT_VERBS.some((verb) => norm === verb);
+export function matchesConsentVerb(text: string): boolean {
+  return matchesConsentText(normalizeConsentText(text));
 }
 
 /** The DOM surface the in-page visibility check reads. */
@@ -327,7 +476,8 @@ async function getElementLabel(el: ConsentElement): Promise<string> {
 export function evaluateTextConsent(
   verbs: string[],
   denylist: string[],
-  maxCandidates: number
+  maxCandidates: number,
+  forbiddenFragments: string[]
 ): { clicked: boolean; label?: string } {
   // SAFETY: in-page evaluation in Chromium / test environment where DOM globals exist on globalThis
   const doc = (globalThis as unknown as { document?: any }).document;
@@ -386,7 +536,12 @@ export function evaluateTextConsent(
   function normalize(text: string): string {
     return text
       .toLowerCase()
-      .replace(/^[^a-zа-яё0-9]+|[^a-zа-яё0-9]+$/gi, '')
+      /*
+       * Unicode-aware, matching `normalizeConsentText` in the Node context. The ASCII-only version
+       * this replaced amputated a diacritic at either edge, which made the Polish and Hungarian
+       * verbs unmatchable. The two contexts must strip identically or their verdicts diverge.
+       */
+      .replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, '')
       .replace(/\s+/g, ' ')
       .trim();
   }
@@ -395,20 +550,34 @@ export function evaluateTextConsent(
     const norm = normalize(text);
     if (!norm) return false;
 
-    if (
-      norm.includes('necessary') ||
-      norm.includes('selected') ||
-      norm.includes('manage') ||
-      norm.includes('settings') ||
-      norm.includes('customize') ||
-      norm.includes('настроить') ||
-      norm.includes('только') ||
-      norm.includes('nur notwendige')
-    ) {
+    /*
+     * Reject the variants that must never be clicked.
+     *
+     * The list is PASSED IN rather than written here, because this function is serialized into the
+     * page by Puppeteer and therefore cannot call the module-level constant. It previously carried
+     * its own copy, which is how the prefix rule below ended up added to one copy but not the
+     * other — the unit tests would then have disagreed with real runs. One list, handed across.
+     */
+    if (forbiddenFragments.some((f) => norm.includes(f))) {
       return false;
     }
 
-    return verbs.some((v) => norm === v);
+    /*
+     * Exact match, then a PREFIX match on a word boundary.
+     *
+     * Exact match alone was the defect. Real banners rarely say just "Accept all"; they say
+     * "Accept all cookies and continue", "I accept the use of cookies", "Alle akzeptieren und
+     * weiter". Measured against eleven realistic labels, exact matching clicked only four while
+     * the SELECTOR pass handled the rest — so a CMP without a known selector, or one whose
+     * buttons are renamed, was never dismissed and its cookies never collected.
+     *
+     * The prefix rule is what keeps this safe: the label must BEGIN with the verb, so
+     * "Accept all cookies and continue" matches `accept all` while "You can accept or reject"
+     * does not. Combined with the forbidden list above, a control offering a refusal variant is
+     * skipped rather than clicked by accident.
+     */
+    if (verbs.some((v) => norm === v)) return true;
+    return verbs.some((v) => norm.startsWith(v) && /[\s,.:;!?]/.test(norm.charAt(v.length)));
   }
 
   try {
@@ -526,7 +695,13 @@ function consentDocuments(page: Page): ConsentDocument[] {
       origin,
       query: (selector: string) => target.$$(selector),
       runTextPass: (maxCandidates: number) =>
-        target.evaluate(evaluateTextConsent, [...CONSENT_VERBS], [...AUTH_DENYLIST], maxCandidates),
+        target.evaluate(
+          evaluateTextConsent,
+          [...CONSENT_VERBS],
+          [...AUTH_DENYLIST],
+          maxCandidates,
+          [...FORBIDDEN_CONSENT_FRAGMENTS],
+        ),
     };
   });
 }

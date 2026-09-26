@@ -361,4 +361,54 @@ describe('Cookie Robot Unit Tests', () => {
       expect(report.domainsTouched).toEqual(['allowed1.com', 'allowed2.com']);
     });
   });
+
+  describe('the reported cookie count describes the session, not one page', () => {
+    /*
+     * `page.cookies()` is scoped to the page's origin and every page is closed after its visit, so
+     * counting that way reported the LAST page's jar, not the footprint earned by the run.
+     * Measured against four real sites: 11 reported where the session held 63, and an end-to-end
+     * run of eleven domains reported 0. The count is shown to the operator as the run's result, so
+     * a number that ignores every previously-visited domain is a wrong answer.
+     */
+    it('uses the browser session total when the handle can reach it', async () => {
+      const sessionJar = Array.from({ length: 164 }, (_, i) => ({ name: `c${i}`, value: 'v' }));
+      const mockPage = {
+        goto: vi.fn().mockResolvedValue(undefined),
+        url: vi.fn().mockReturnValue('https://p1.com'),
+        // The page's own origin holds far fewer than the session, which is the whole point.
+        cookies: vi.fn().mockResolvedValue([{ name: 'only-this-origin', value: 'v' }]),
+        // SAFETY: the robot asks the handle for its browser; this stand-in answers like a Page.
+        browser: vi.fn().mockReturnValue({ cookies: vi.fn().mockResolvedValue(sessionJar) }),
+        evaluate: vi.fn().mockResolvedValue(null),
+        mouse: { move: vi.fn().mockResolvedValue(undefined) },
+      } as unknown as Page;
+
+      const report = await runCookieRobot(
+        { profileId: 'prof-session-count', urls: ['https://p1.com'], maxPages: 1, dwellMsMin: 5, dwellMsMax: 10 },
+        vi.fn().mockResolvedValue({ page: mockPage, cleanup: vi.fn().mockResolvedValue(undefined) }),
+      );
+
+      expect(report.cookiesSet, 'the session jar must be counted, not one origin').toBe(164);
+    });
+
+    it('falls back to the page jar when there is no browser handle, rather than reporting nothing', async () => {
+      // The stand-ins used throughout this file carry no browser handle. A count must still be
+      // produced, otherwise a working run would start reporting 0 in exactly these conditions.
+      const mockPage = {
+        goto: vi.fn().mockResolvedValue(undefined),
+        url: vi.fn().mockReturnValue('https://p1.com'),
+        cookies: vi.fn().mockResolvedValue([{ name: 'a', value: '1' }, { name: 'b', value: '2' }]),
+        evaluate: vi.fn().mockResolvedValue(null),
+        mouse: { move: vi.fn().mockResolvedValue(undefined) },
+      } as unknown as Page;
+
+      const report = await runCookieRobot(
+        { profileId: 'prof-fallback-count', urls: ['https://p1.com'], maxPages: 1, dwellMsMin: 5, dwellMsMax: 10 },
+        vi.fn().mockResolvedValue({ page: mockPage, cleanup: vi.fn().mockResolvedValue(undefined) }),
+      );
+
+      expect(report.cookiesSet).toBe(2);
+    });
+  });
+
 });

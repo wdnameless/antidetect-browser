@@ -1,5 +1,63 @@
 # Changelog
 
+## [0.6.48] - 2026-09-26
+
+### Fixed — the country flag the operator was promised, and a cookie count that was not worth reading
+
+- **A profile created with a proxy now shows its flag without anyone pressing a button.** Creating a
+  profile with a proxy left the row reading "Not checked yet" indefinitely, so the flag and the
+  two-letter code (`DE`, `US`, `FR`) never appeared. The cause was not the display: `createProfile`
+  bound the proxy and never asked where it exits — the Proxies page had its own check button, and no
+  other door into the database (the SDKs, agents, batch create, imports, or the saved-proxy picker)
+  ever went through it. Every one of those paths now queues a lookup in the background, so the geo
+  arrives on its own and the row stops claiming it does not know.
+  - Verified through the real path: a profile bound to a resolved proxy produced a report carrying
+    `{code:"DE", country:"Germany"}` and rendered as `🇩🇪 DE · Germany`. A proxy that could not be
+    reached is recorded as `fail` with no country, rather than a guessed one — a wrong flag is worse
+    than a missing one.
+  - A malformed value is dropped rather than printed: `flagOf` derives a glyph from two letters, so a
+    country NAME would have rendered as a broken box in a column read by code that cannot re-ask the
+    provider what it meant.
+
+- **The cookie robot reported a fraction of the cookies it collected.** `cookiesSet` was read from
+  `page.cookies()`, which is scoped to the current page's origin — and every page is closed after its
+  visit, so the figure described the last page rather than the run and was overwritten each time.
+  Measured against four real sites the report said 11 where the session held 63; an end-to-end run of
+  eleven domains reported **0**. It now counts the browsing session: the same run reports **164**,
+  equal to the browser's own jar.
+  - The count falls back to the page's own jar when no browser handle is reachable, so nothing that
+    worked stops working, and a count that genuinely fails reports nothing rather than zero.
+
+- **The consent matcher only clicked banners that said exactly "Accept all".** Real banners rarely do:
+  they say "Accept all cookies and continue", "I accept the use of cookies", "Alle akzeptieren und
+  weiter". Against eleven realistic labels it clicked four; the rest fell through to the selector
+  pass, so any consent platform with an unknown or renamed button was never dismissed and its cookies
+  never collected. A label now matches when it BEGINS with a known verb, which is what keeps it safe:
+  "Accept all cookies and continue" matches, "You can accept or reject" does not.
+  - The refused list was widened rather than left to accident: "Accept only necessary", "Reject all"
+    and "Manage settings" appear beside the accept control on the common banner, and clicking one
+    records a refusal the operator did not choose. Verified both directions: 18 legitimate labels
+    all clicked, 19 refusal-shaped ones all refused.
+  - Attacking the new prefix rule, rather than trusting it, is what found the sharpest defect: a
+    label can BEGIN with a consent verb and still mean "only the necessary ones", "accept nothing",
+    or "accept and reject". "Accept no cookies", "Accetta solo i necessari" and "Akzeptieren und
+    ablehnen" were all being CLICKED — the Italian one is the ordinary shape of a reject control,
+    and the list held its Russian and German equivalents while missing the Romance ones. Negations,
+    "only"-qualifiers and the refusal verbs of every language the verb list reaches were added, and
+    all 19 cases are now pinned by a test that fails if the list is narrowed again.
+  - Languages beyond EN/RU/DE/FR/ES were added after measuring which consent platforms the wider site
+    list actually reaches — Italian, Portuguese, Dutch, Polish, Turkish and the Nordic languages had
+    no verbs at all, so every banner in them fell through to the selector pass.
+
+- **The warm-up pool grew from 42 sites to 66, each one measured rather than assumed.** Every
+  candidate was loaded in a real browser and kept only if it set cookies without authentication;
+  three were dropped for answering with a Cloudflare interstitial instead of content, four for setting
+  no cookies at all. Two more were removed after re-measuring, because a single pass is not enough:
+  `namecheap.com` set 15 cookies in one run and served a challenge in the next, and `cloudflare.com`
+  was permanently unusable — the challenge detector matched the word "cloudflare" inside its own
+  hostname and skipped it on every visit.
+
+
 ## [0.6.47] - 2026-09-25
 
 ### Added — one-button Google Drive synchronization with client-side E2E encryption
